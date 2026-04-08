@@ -426,7 +426,7 @@ bool CBike::BurstTyre(uint8 tyreComponentId, bool bPhysicalEffect) {
         }
     }
 
-    const auto shouldImpactVehicle = [&] {
+    if ([&] {
         if (!m_pDriver) {
             return false;
         }
@@ -462,9 +462,7 @@ bool CBike::BurstTyre(uint8 tyreComponentId, bool bPhysicalEffect) {
         }
 
         return true;
-    }();
-
-    if (shouldImpactVehicle) {
+    }()) {
         if (tyreComponentId == CAR_PIECE_WHEEL_LF) {
             const auto DoKnockOffEvent = [&] (CPed* ped, bool isDriver) {
                 CEventKnockOffBike event{ this,
@@ -883,7 +881,7 @@ void CBike::PlayCarHorn() {
     }
 
     m_nCarHornTimer = CGeneral::GetRandomNumber() % 128 - 106; // TODO: GetRandomNumberInRange
-    const auto chance = m_nCarHornTimer % 8;
+    const uint32 chance = m_nCarHornTimer % 8;
 
     if (chance < 4) {
         if (chance >= 2) {
