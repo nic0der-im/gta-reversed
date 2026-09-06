@@ -23,6 +23,8 @@ static inline auto& DWCineyCamLastFwd = StaticRef<CVector>(0xB6FEB0);
 static inline auto& DWCineyCamLastNearClip = StaticRef<float>(0xB6EC08);
 static inline auto& DWCineyCamLastFov = StaticRef<float>(0xB6EC0C);
 
+static bool IsLampPost(eModelID modelId);
+
 // 0x509AE0
 static void WellBufferMe(float target, float& valueToChange, float& speedSoFar, float topSpeed, float speedStep, bool isAnAngle) {
     const auto valueToTargetDiff = [&] {
