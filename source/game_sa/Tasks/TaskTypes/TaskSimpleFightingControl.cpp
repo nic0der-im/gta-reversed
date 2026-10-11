@@ -224,7 +224,7 @@ bool CTaskSimpleFightingControl::ProcessPed(CPed* ped) {
 
     if (m_nextAttackTime == 0) {
         // 0x62A2DC
-        const auto rnd = (float)CGeneral::GetRandomNumber() * (1.0f / 32768.0f) + 0.25f;
+        const auto rnd = (float)CGeneral::GetRandomNumber() * RAND_MAX_FLOAT_RECIPROCAL + 0.25f;
         const auto div = shootingRange * m_unk3 * 0.025f * 0.7f + 0.3f;
         m_nextAttackTime = (uint32)(rnd / div * 2000.0f) + CTimer::GetTimeInMS();
     }
