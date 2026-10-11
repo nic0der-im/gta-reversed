@@ -35,7 +35,7 @@ CTaskComplexUseClosestFreeScriptedAttractor::CTaskComplexUseClosestFreeScriptedA
 }
 
 // 0x634740
-C2dEffect* CTaskComplexUseClosestFreeScriptedAttractor::ComputeClosestFreeScriptedEffect(CPed const& ped) {
+C2dEffect* __stdcall CTaskComplexUseClosestFreeScriptedAttractor::ComputeClosestFreeScriptedEffect(CPed const& ped) {
     const auto pedPos = ped.GetPosition();
 
     C2dEffect* closest{};

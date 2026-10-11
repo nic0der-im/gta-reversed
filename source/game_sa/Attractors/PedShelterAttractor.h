@@ -33,7 +33,9 @@ public:
     // 0x5E9680
     bool IsAtHeadOfQueue(CPed* ped) override { return true; }
 
-    static CVector GetDisplacement(int32 pedId);
+    static CVector* GetDisplacement(int32 pedId);
+    using CPedAttractor::ComputeAttractPos;     // Don't hide the by-value overloads
+    using CPedAttractor::ComputeAttractHeading;
     void ComputeAttractPos(int32 pedId, CVector& outPos) override;
     void ComputeAttractHeading(int32 bQueue, float& heading) override;
     bool BroadcastDeparture(CPed* ped) override;

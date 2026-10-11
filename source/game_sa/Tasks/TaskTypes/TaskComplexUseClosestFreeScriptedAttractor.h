@@ -24,7 +24,7 @@ public:
     CTaskComplexUseClosestFreeScriptedAttractor(const CTaskComplexUseClosestFreeScriptedAttractor&);
     ~CTaskComplexUseClosestFreeScriptedAttractor() = default;
 
-    static C2dEffect* ComputeClosestFreeScriptedEffect(CPed const& ped);
+    static C2dEffect* __stdcall ComputeClosestFreeScriptedEffect(CPed const& ped);
 
     CTask*    Clone()                       const override { return new CTaskComplexUseClosestFreeScriptedAttractor{ *this }; } // 0x636F70
     eTaskType GetTaskType()                 const override { return Type; } // 0x634710
