@@ -92,8 +92,13 @@ void CTaskAllocatorKillThreatsBasic::ComputeClosestPeds(CPedGroup& group1, CPedG
             if (!m2 || !m2->IsAlive()) {
                 continue;
             }
-            const auto d = m1->GetPosition() - m2->GetPosition();
-            distSq[i][j] = d.z * d.z + d.x * d.x + d.y * d.y;
+            const CVector& p1 = m1->GetPosition();
+            const CVector& p2 = m2->GetPosition();
+            const double dx = double(p1.x) - double(p2.x);
+            const double dy = double(p1.y) - double(p2.y);
+            const double dz = double(p1.z) - double(p2.z);
+            // NOTE: the original keeps these in x87 registers and rounds to float once, in this order
+            distSq[i][j] = float(dz * dz + dx * dx + dy * dy); // 0x69C8E0
         }
     }
 
