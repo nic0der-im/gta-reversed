@@ -26,7 +26,7 @@ void CMenuSystem::InjectHooks() {
     RH_ScopedInstall(CreateNewMenu, 0x582300);
     RH_ScopedInstall(ActivateItems, 0x581990);
     RH_ScopedInstall(ActivateOneItem, 0x581B30);
-    RH_ScopedInstall(FillGridWithCarColours, 0x5820E0, { .Reversed = false });
+    RH_ScopedInstall(FillGridWithCarColours, 0x5820E0);
     RH_ScopedInstall(InsertMenu, 0x581E00);
     RH_ScopedInstall(SwitchOffMenu, 0x580750);
 }
@@ -603,7 +603,39 @@ void CMenuSystem::ActivateOneItem(MenuId id, uint8 row, bool enable) {
 
 // 0x5820E0
 void CMenuSystem::FillGridWithCarColours(MenuId id) {
-    plugin::Call<0x5820E0, MenuId>(id);
+    std::array<CRGBA, MENU_CAR_COLOR_COUNT> chosen; // filled with CRGBA(0, 0, 0, 255) by the ctor
+    chosen.fill(CRGBA{ 0, 0, 0, 255 });
+
+    uint8 numChosen = 0;
+    uint8 count     = 1; // NOTE: Also covers the (still black) slot that's about to be filled
+    uint8 colorIdx  = 0;
+    do {
+        const auto& color = CVehicleModelInfo::ms_vehicleColourTable[colorIdx];
+
+        bool isSimilar = false;
+        for (uint32 i = 0; i < count; i++) {
+            const auto& other = chosen[i];
+            if (count > 1
+                && color.r > other.r - 15 && color.g > other.g - 15 && color.b > other.b - 15
+                && color.r < other.r + 15 && color.g < other.g + 15 && color.b < other.b + 15
+            ) {
+                isSimilar = true;
+            }
+        }
+
+        if (isSimilar) {
+            if (++colorIdx < 0x80) { // 0x58221E
+                continue; // NOTE: Doesn't touch `count`, so the `while` condition is still evaluated
+            }
+            --colorIdx; // Out of colors => accept the current one anyway
+        }
+
+        chosen[numChosen]                        = CRGBA{ color.r, color.g, color.b, 255 };
+        MenuNumber[id]->m_anUsedCarColors[numChosen] = colorIdx;
+        numChosen++;
+        count++;
+        colorIdx = 0;
+    } while (count < MENU_CAR_COLOR_COUNT + 1);
 }
 
 // Insert menu column
