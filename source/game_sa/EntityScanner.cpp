@@ -117,7 +117,7 @@ void CEntityScanner::ScanForEntitiesInRange(const eRepeatSectorList sectorList, 
             case REPEATSECTOR_VEHICLES: ProcessList(rs.Vehicles); break;
             case REPEATSECTOR_PEDS:     ProcessList(rs.Peds);     break;
             case REPEATSECTOR_OBJECTS:  ProcessList(rs.Objects);  break;
-            default:                    break; // NOTE: Original uses a null list here => nothing scanned
+            default:                    break; // NOTE: Original dereferences a null list here (crashes); unreachable with the 3-value enum
             }
         }
     }
