@@ -8,6 +8,8 @@ class Interior_c;
 struct InteriorInfo_t;
 
 class NOTSA_EXPORT_VTABLE CTaskInteriorShopKeeper : public CTaskComplex {
+    friend class CTaskInteriorUseInfo;
+
 public:
     static constexpr auto Type = eTaskType::TASK_INTERIOR_SHOPKEEPER;
 
