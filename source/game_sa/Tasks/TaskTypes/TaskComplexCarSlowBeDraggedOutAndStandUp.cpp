@@ -81,7 +81,7 @@ bool CTaskComplexCarSlowBeDraggedOutAndStandUp::MakeAbortable(CPed* ped, eAbortP
 CTask* CTaskComplexCarSlowBeDraggedOutAndStandUp::CreateNextSubTask(CPed* ped) {
     switch (m_pSubTask->GetTaskType()) {
     case TASK_COMPLEX_CAR_SLOW_BE_DRAGGED_OUT: // 0x337
-        if (ped->IsAlive() && ped->m_fHealth > 0.0f) {
+        if (ped->IsAlive() && !(ped->m_fHealth <= 0.0f)) {
             return new CTaskComplexGetUpAndStandStill{};
         }
         ped->GetEventGroup().Add(CEventDeath{ false }, false);
@@ -136,7 +136,7 @@ CTask* CTaskComplexCarSlowBeDraggedOutAndStandUp::CreateFirstSubTask(CPed* ped) 
         break;
     }
     if (audioEvent) {
-        ped->m_pedAudio.AddAudioEvent(*audioEvent, 0.0f, 1.0f, nullptr, SURFACE_DEFAULT, 0, 0);
+        ped->GetAE().AddAudioEvent(*audioEvent, 0.0f, 1.0f, nullptr, SURFACE_DEFAULT, 0, 0);
     }
 
     return CreateSubTask(TASK_COMPLEX_CAR_SLOW_BE_DRAGGED_OUT, ped);

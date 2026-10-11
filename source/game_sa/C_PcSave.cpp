@@ -13,9 +13,9 @@ void C_PcSave::InjectHooks() {
     RH_ScopedClass(C_PcSave);
     RH_ScopedCategoryGlobal();
 
-    // See note in CGenericGameStorage::InjectHooks as to why GenerateGameFilename is unhooked by default
+    // bad: the original sprintf is unbounded and callers pass a 104-byte buffer (GenericGameStorage.cpp:803); cause not fixed, so left unhooked
     RH_ScopedInstall(SetSaveDirectory, 0x619040);
-    RH_ScopedInstall(GenerateGameFilename, 0x6190A0);
+    RH_ScopedInstall(GenerateGameFilename, 0x6190A0, { .Reversed = false });
     RH_ScopedInstall(PopulateSlotInfo, 0x619140);
     RH_ScopedInstall(SaveSlot, 0x619060);
     RH_ScopedInstall(DeleteSlot, 0x6190D0);
