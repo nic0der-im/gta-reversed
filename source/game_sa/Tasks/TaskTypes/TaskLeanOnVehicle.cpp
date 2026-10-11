@@ -11,8 +11,8 @@ void CTaskLeanOnVehicle::InjectHooks() {
 
     RH_ScopedInstall(FinishAnimCB, 0x661160);
 
-    RH_ScopedVMTInstall(MakeAbortable, 0x661110, { .Reversed = false });
-    RH_ScopedVMTInstall(ProcessPed, 0x6648C0, { .Reversed = false });
+    RH_ScopedVMTInstall(MakeAbortable, 0x661110);
+    RH_ScopedVMTInstall(ProcessPed, 0x6648C0);
 
 }
 
@@ -77,5 +77,64 @@ bool CTaskLeanOnVehicle::MakeAbortable(CPed* ped, eAbortPriority priority, const
 
 // 0x6648C0
 bool CTaskLeanOnVehicle::ProcessPed(CPed* ped) {
-    return plugin::CallMethodAndReturn<bool, 0x6648C0, CTaskLeanOnVehicle*, CPed*>(this, ped);
+    if (!m_Vehicle) {
+        m_StopLeaning = true;
+    }
+    ped->m_pEntityIgnoredCollision = m_Vehicle;
+
+    const auto animId = m_LeanAnim ? (int32)m_LeanAnim->m_AnimId : -1;
+
+    if (m_StopLeaning) {
+        ped->m_pEntityIgnoredCollision = nullptr;
+        return true;
+    }
+
+    ped->SetMoveState(PEDMOVE_STILL);
+
+    if (m_bFinished && !RpAnimBlendClumpGetAssociation(ped->GetRpClump(), (uint32)ANIM_ID_LEANOUT)) {
+        ped->m_pEntityIgnoredCollision = nullptr;
+        return true;
+    }
+
+    CAnimBlendAssociation* newAnim;
+    if (m_LeanAnimId) { // Aborting (non-immediate)
+        if (animId == ANIM_ID_LEANIN) {
+            m_LeanAnim->m_BlendDelta = -8.0f;
+        } else if (animId == ANIM_ID_LEANIDLE) { // 0x664941
+            m_LeanAnim->SetDeleteCallback(CDefaultAnimCallback::DefaultAnimCB, nullptr);
+            newAnim = CAnimManager::BlendAnimation(ped->GetRpClump(), ANIM_GROUP_GANGS, ANIM_ID_LEANOUT, 1000.0f);
+            goto SetNewAnim;
+        } else if (animId == ANIM_ID_LEANOUT) {
+            m_LeanAnim->m_Speed = 3.0f;
+        }
+    }
+
+    if (!m_LeanAnim) { // 0x664982
+        if (m_LastAnimId == ANIM_ID_UNDEFINED) {
+            if (!field_10) {
+                newAnim = CAnimManager::BlendAnimation(ped->GetRpClump(), ANIM_GROUP_GANGS, ANIM_ID_LEANIN, 4.0f);
+                goto SetNewAnim;
+            }
+        } else if (m_LastAnimId != ANIM_ID_LEANIN) {
+            return false;
+        }
+        // 0x6649a8: lean-in finished (or skipped), start the idle anim
+        if (m_LeanAnimDurationInMs >= 0) {
+            m_LeanTimer.m_nStartTime = CTimer::GetTimeInMS();
+            m_LeanTimer.m_nInterval  = m_LeanAnimDurationInMs;
+            m_LeanTimer.m_bStarted   = true;
+        }
+        newAnim = CAnimManager::BlendAnimation(ped->GetRpClump(), ANIM_GROUP_GANGS, ANIM_ID_LEANIDLE, 1000.0f);
+    } else { // 0x6649d1
+        if (!m_LeanTimer.m_bStarted || !m_LeanTimer.IsOutOfTime() || m_LeanAnim->m_AnimId == ANIM_ID_LEANOUT) {
+            return false;
+        }
+        m_LeanAnim->SetDeleteCallback(CDefaultAnimCallback::DefaultAnimCB, nullptr);
+        newAnim = CAnimManager::BlendAnimation(ped->GetRpClump(), ANIM_GROUP_GANGS, ANIM_ID_LEANOUT, 1000.0f);
+    }
+
+SetNewAnim:
+    m_LeanAnim = newAnim;
+    m_LeanAnim->SetFinishCallback(FinishAnimCB, this);
+    return false;
 }
