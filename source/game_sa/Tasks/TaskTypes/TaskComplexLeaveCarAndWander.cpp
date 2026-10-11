@@ -12,13 +12,13 @@ void CTaskComplexLeaveCarAndWander::InjectHooks() {
 
     RH_ScopedInstall(Destructor, 0x63BE50);
 
-    RH_ScopedInstall(CreateSubTask, 0x63BEC0, {.Reversed = false});
+    RH_ScopedInstall(CreateSubTask, 0x63BEC0);
 
-    RH_ScopedVMTInstall(Clone, 0x63DAD0, {.Reversed = false});
-    RH_ScopedVMTInstall(GetTaskType, 0x63BE40, {.Reversed = false});
-    RH_ScopedVMTInstall(CreateNextSubTask, 0x6422C0, {.Reversed = false});
-    RH_ScopedVMTInstall(CreateFirstSubTask, 0x642340, {.Reversed = false});
-    RH_ScopedVMTInstall(ControlSubTask, 0x63BEB0, {.Reversed = false});
+    RH_ScopedVMTInstall(Clone, 0x63DAD0);
+    RH_ScopedVMTInstall(GetTaskType, 0x63BE40);
+    RH_ScopedVMTInstall(CreateNextSubTask, 0x6422C0);
+    RH_ScopedVMTInstall(CreateFirstSubTask, 0x642340);
+    RH_ScopedVMTInstall(ControlSubTask, 0x63BEB0);
 }
 
 // 0x63BDD0
@@ -54,10 +54,8 @@ CTask* CTaskComplexLeaveCarAndWander::CreateSubTask(eTaskType taskType) {
         };
     case TASK_NONE:
         return new CTaskSimpleNone{};
-    case TASK_FINISHED:
+    default: // 0x516 (TASK_FINISHED) and anything else
         return nullptr;
-    default:
-        NOTSA_UNREACHABLE();
     }
 }
 
@@ -68,17 +66,18 @@ CTask* CTaskComplexLeaveCarAndWander::CreateNextSubTask(CPed* ped) {
     case TASK_COMPLEX_LEAVE_CAR:
         break;
     default:
-        NOTSA_UNREACHABLE();
+        return nullptr;
     }
 
-    // Make sure ped's default task is `ComplexWander`
-    if (const auto defaultPrimary = ped->GetTaskManager().GetTaskPrimary(TASK_PRIMARY_DEFAULT)) {
-        if (!notsa::isa<CTaskComplexWander>(defaultPrimary)) {
-            ped->GetTaskManager().SetTask(CTaskComplexWander::GetWanderTaskByPedType(ped), TASK_PRIMARY_DEFAULT);
-        }
+    auto* const next = CreateSubTask(TASK_FINISHED);
+
+    // Make sure ped's default task is `ComplexWander` (also if there's none)
+    const auto defaultPrimary = ped->GetTaskManager().GetTaskPrimary(TASK_PRIMARY_DEFAULT);
+    if (!defaultPrimary || defaultPrimary->GetTaskType() != TASK_COMPLEX_WANDER) {
+        ped->GetTaskManager().SetTask(CTaskComplexWander::GetWanderTaskByPedType(ped), TASK_PRIMARY_DEFAULT);
     }
 
-    return CreateSubTask(TASK_FINISHED);
+    return next;
 }
 
 // 0x642340
