@@ -16,7 +16,7 @@ void CConversations::InjectHooks() {
     RH_ScopedInstall(AwkwardSay, 0x43A810);
     RH_ScopedInstall(EnableConversation, 0x43A7F0);
     RH_ScopedInstall(StartSettingUpConversation, 0x43A840);
-    RH_ScopedInstall(DoneSettingUpConversation, 0x43ADB0, {.Reversed = false});
+    RH_ScopedInstall(DoneSettingUpConversation, 0x43ADB0);
 }
 
 // 0x43A7B0
@@ -154,7 +154,71 @@ void CConversations::StartSettingUpConversation(CPed* ped) {
 
 // 0x43ADB0
 void CConversations::DoneSettingUpConversation(bool bSuppressSubtitles) {
-    plugin::Call<0x43ADB0, bool>(bSuppressSubtitles);
+    const auto numNodes = m_SettingUpConversationNumNodes;
+    auto       temps    = std::span{ m_aTempNodes.data(), (size_t)std::max(numNodes, 0) };
+
+    // Resolve yes/no node names to temp node indices (last match wins)
+    for (auto& t : temps) {
+        t.m_NodeYes = -1;
+        t.m_NodeNo  = -1;
+        for (int16 j = 0; j < numNodes; j++) {
+            if (strcmp(t.m_NameNodeYes, m_aTempNodes[j].m_Name) == 0) {
+                t.m_NodeYes = j;
+            }
+            if (strcmp(t.m_NameNodeNo, m_aTempNodes[j].m_Name) == 0) {
+                t.m_NodeNo = j;
+            }
+        }
+    }
+
+    // Find a free conversation slot
+    CConversationForPed* slot = nullptr;
+    for (auto& conv : m_Conversations) {
+        if (!conv.m_pPed) {
+            slot = &conv;
+            break;
+        }
+    }
+    assert(slot); // NOTE: original would write through a null pointer here
+
+    if (numNodes > 0) {
+        // Reserve a free node slot for every temp node
+        for (auto& t : temps) {
+            int32 freeSlot = 0; // NOTE: original falls back to slot 0 if none is free
+            for (size_t k = 0; k < m_Nodes.size(); k++) {
+                if (m_Nodes[k].m_Name[0] == '\0') {
+                    freeSlot = (int32)k;
+                    m_Nodes[k].m_Name[0] = 'X';
+                    m_Nodes[k].m_Name[1] = '\0';
+                    break;
+                }
+            }
+            t.m_FinalSlot = freeSlot;
+        }
+
+        for (auto& t : temps) {
+            auto& node = m_Nodes[t.m_FinalSlot];
+            strcpy(node.m_Name, t.m_Name);
+            node.m_NodeYes = t.m_NodeYes < 0 ? -1 : (int16)m_aTempNodes[t.m_NodeYes].m_FinalSlot;
+            node.m_NodeNo  = t.m_NodeNo < 0 ? -1 : (int16)m_aTempNodes[t.m_NodeNo].m_FinalSlot;
+            node.m_Speech  = t.m_Speech;
+            node.m_SpeechY = t.m_SpeechY;
+            node.m_SpeechN = t.m_SpeechN;
+        }
+    }
+
+    slot->m_FirstNode                 = m_aTempNodes[0].m_FinalSlot;
+    slot->m_CurrentNode               = m_aTempNodes[0].m_FinalSlot;
+    slot->m_pPed                      = m_SettingUpConversationPed;
+    m_SettingUpConversationPed->RegisterReference(slot->m_pPed);
+    slot->m_LastChange                = CTimer::GetTimeInMS();
+    slot->m_LastTimeWeWereCloseEnough = 0;
+    slot->m_Status                    = CConversationForPed::INACTIVE;
+    slot->m_Enabled                   = true;
+    slot->m_SuppressSubtitles         = bSuppressSubtitles;
+
+    m_SettingUpConversationNumNodes = 0;
+    m_SettingUpConversation         = false;
 }
 
 CConversationForPed* CConversations::FindConversationForPed(CPed* ped) {
