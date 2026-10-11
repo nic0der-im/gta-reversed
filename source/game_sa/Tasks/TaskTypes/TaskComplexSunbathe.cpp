@@ -4,7 +4,7 @@
 namespace {
 // Reproduces 0x407180: min + trunc((rand & 0xFFFF) * (max - min) / 32768)
 int32 RandomIntOriginal(int32 min, int32 max) {
-    return min + static_cast<int32>((static_cast<int64>(CGeneral::GetRandomNumber() & 0xFFFF) * (max - min)) >> 15);
+    return min + static_cast<int32>((static_cast<int64>(CGeneral::GetRandomNumber() & 0xFFFF) * (max - min)) / 32768);
 }
 }
 
