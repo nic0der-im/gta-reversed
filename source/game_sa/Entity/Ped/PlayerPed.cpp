@@ -58,7 +58,7 @@ void CPlayerPed::InjectHooks() {
     RH_ScopedInstall(MakePlayerGroupDisappear, 0x60A440);
     RH_ScopedInstall(MakePlayerGroupReappear, 0x60A4B0);
     RH_ScopedInstall(HandleSprintEnergy, 0x60A550);
-    RH_ScopedInstall(GetButtonSprintResults, 0x60A820);
+    RH_ScopedInstall(GetButtonSprintResults, 0x60A820, { .Reversed = false }); // caller SetRealMoveAnim (0x60A9C0, original code) keeps EDX live across the call
     RH_ScopedInstall(HandlePlayerBreath, 0x60A8D0);
     RH_ScopedOverloadedInstall(MakeChangesForNewWeapon, "", 0x60B460, void(CPlayerPed::*)(eWeaponType));
     RH_ScopedGlobalInstall(LOSBlockedBetweenPeds, 0x60B550);
@@ -678,8 +678,11 @@ float CPlayerPed::ControlButtonSprint(eSprintType sprintType) {
     return plugin::CallMethodAndReturn<float, 0x60A610, CPlayerPed *, eSprintType>(this, sprintType);
 }
 
+// Reverse CPlayerPed::SetRealMoveAnim before hooking this func
 // 0x60A820
 float CPlayerPed::GetButtonSprintResults(eSprintType sprintType) {
+    return plugin::CallMethodAndReturn<float, 0x60A820, CPlayerPed *, eSprintType>(this, sprintType);
+
     // Forces the compiler to preserve the value of `edx`.
     // Otherwise it's value is lost when called from 0x60B44C.
     // which causes a crash (as it is used to store a pointer to an anim blend assoc)
