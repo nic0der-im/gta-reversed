@@ -1927,7 +1927,7 @@ void RpAnimBlendPlugin::InjectHooks() {
     RH_ScopedGlobalOverloadedInstall(RpAnimBlendGetNextAssociation, "Any", 0x4D6AB0, CAnimBlendAssociation * (*)(CAnimBlendAssociation * association));
     RH_ScopedGlobalOverloadedInstall(RpAnimBlendGetNextAssociation, "Flags", 0x4D6AD0, CAnimBlendAssociation * (*)(CAnimBlendAssociation * association, uint32 flags));
 
-    RH_ScopedGlobalInstall(RpAnimBlendClumpUpdateAnimations, 0x4D34F0);
+    RH_ScopedGlobalInstall(RpAnimBlendClumpUpdateAnimations, 0x4D34F0, {.Reversed = false}); // TODO: Hook this again... Unhooked for testing. Review: live FrameUpdateCallBackT/W deviate from original (DONT_ADD 0x400 / IGNORE_ROOT 0x2000 in non-velocity variants; velocity helpers 4D1A50/4D1DB0/4D2450/4D2100/4D27F0 unverified).
 #ifdef USE_COPY_PASTE_FRAME_UPDATE
     const auto state = (DISABLE_CUSTOM_FRAME_UPDATE_FUNCTIONS) ? HS::RedirectToGTA : HS::RedirectToOurs;
     // Most of these functions aren't hookable (without effort) they take args in <eax> and whatnot, they aren't regular `__cdecl` calls
