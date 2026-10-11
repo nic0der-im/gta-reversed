@@ -1773,7 +1773,7 @@ void RpAnimBlendClumpUpdateAnimations(RpClump* clump, float timeStep, bool isOnS
             return;
         }
         const auto ah = a->GetHier();
-        if (ah->GetSequences().empty()) {
+        if (!ah->m_pSequences) { // NOTE: Original checks the pointer, not the count
             return;
         }
         CAnimManager::UncompressAnimation(a->GetHier());
@@ -1792,7 +1792,7 @@ void RpAnimBlendClumpUpdateAnimations(RpClump* clump, float timeStep, bool isOnS
     // 0x4D35A2 - Update animation's timesteps
     const auto animTimeMult = totalTime == 0.f
         ? 1.f
-        : 1.f / totalTime * totalBlendAmnt;
+        : totalBlendAmnt / totalTime;
     RpAnimBlendClumpForEachAssociation(clump, [&](CAnimBlendAssociation* a) {
         a->UpdateTimeStep(timeStep, animTimeMult);
     });
@@ -1927,7 +1927,7 @@ void RpAnimBlendPlugin::InjectHooks() {
     RH_ScopedGlobalOverloadedInstall(RpAnimBlendGetNextAssociation, "Any", 0x4D6AB0, CAnimBlendAssociation * (*)(CAnimBlendAssociation * association));
     RH_ScopedGlobalOverloadedInstall(RpAnimBlendGetNextAssociation, "Flags", 0x4D6AD0, CAnimBlendAssociation * (*)(CAnimBlendAssociation * association, uint32 flags));
 
-    RH_ScopedGlobalInstall(RpAnimBlendClumpUpdateAnimations, 0x4D34F0, {.Reversed = false}); // TODO: Hook this again... Unhooked for testing.
+    RH_ScopedGlobalInstall(RpAnimBlendClumpUpdateAnimations, 0x4D34F0);
 #ifdef USE_COPY_PASTE_FRAME_UPDATE
     const auto state = (DISABLE_CUSTOM_FRAME_UPDATE_FUNCTIONS) ? HS::RedirectToGTA : HS::RedirectToOurs;
     // Most of these functions aren't hookable (without effort) they take args in <eax> and whatnot, they aren't regular `__cdecl` calls
