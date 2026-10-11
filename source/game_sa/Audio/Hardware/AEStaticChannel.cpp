@@ -150,7 +150,7 @@ void CAEStaticChannel::Stop() {
 }
 
 // 0x4F0C40
-bool CAEStaticChannel::SetAudioBuffer(IDirectSound3DBuffer* buffer, uint16 size, int16 f88, int16 f8c, int16 loopOffset, uint16 frequency) {
+bool CAEStaticChannel::SetAudioBuffer(IDirectSound3DBuffer* buffer, uint32 size, int16 f88, int16 f8c, int16 loopOffset, uint16 frequency) {
     if (size == 0 || frequency == 0) {
         return false;
     }

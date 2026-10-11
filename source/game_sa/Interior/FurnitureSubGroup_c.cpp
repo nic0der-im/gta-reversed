@@ -2,6 +2,7 @@
 #include "FurnitureSubGroup_c.h"
 #include "Furniture_c.h"
 #include "General.h"
+#include "FurnitureManager_c.h"
 
 void FurnitureSubGroup_c::InjectHooks() {
     RH_ScopedClass(FurnitureSubGroup_c);
@@ -12,7 +13,6 @@ void FurnitureSubGroup_c::InjectHooks() {
     RH_ScopedInstall(AddFurniture, 0x5C00C0);
 }
 
-static auto& g_currFurnitureId = StaticRef<uint32>(0xBAB378);
 static auto& g_furnitureStore  = StaticRef<std::array<Furniture_c, 256>>(0xBAE1F8);
 
 // Truncates `v`, then rounds up if the fractional part is >= 0.02 [0x5C0190 etc.]
@@ -23,11 +23,11 @@ static uint8 FurnitureWidth(float v) {
 
 // 0x5C00C0
 bool FurnitureSubGroup_c::AddFurniture(uint16 modelId, int16 id, uint8 wealthMin, uint8 wealthMax, uint8 maxAng) {
-    if (g_currFurnitureId >= g_furnitureStore.size()) {
+    if (FurnitureManager_c::g_currFurnitureId >= g_furnitureStore.size()) {
         return false;
     }
 
-    auto& f = g_furnitureStore[g_currFurnitureId++];
+    auto& f = g_furnitureStore[FurnitureManager_c::g_currFurnitureId++];
     f.m_nModelId = modelId;
     f.m_nId      = id;
 

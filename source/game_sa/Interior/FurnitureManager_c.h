@@ -9,9 +9,10 @@
 class Furniture_c;
 
 class FurnitureManager_c {
+public:
+    static inline auto& g_currFurnitureId = StaticRef<uint32>(0xBAB378);
 private:
     static inline auto& g_currSubGroupId  = StaticRef<uint32>(0xBAB37C);
-    static inline auto& g_currFurnitureId = StaticRef<uint32>(0xBAB378);
     static inline auto& g_subGroupStore   = StaticRef<std::array<FurnitureSubGroup_c, 128>>(0xBAD3F8);
 
 public:
