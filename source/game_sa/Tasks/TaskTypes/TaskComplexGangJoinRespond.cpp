@@ -63,7 +63,9 @@ CTask* CTaskComplexGangJoinRespond::CreateFirstSubTask(CPed* ped) {
 // 0x661950
 CTask* CTaskComplexGangJoinRespond::ControlSubTask(CPed* ped) {
     // Face the player
-    const auto dir = FindPlayerPed()->GetPosition() - ped->GetPosition();
+    CVector dir = FindPlayerPed()->GetPosition() - ped->GetPosition();
+    dir.z = 0.f;
+    dir.Normalise();
     ped->m_fAimingRotation = CGeneral::LimitRadianAngle(CGeneral::GetRadianAngleBetweenPoints(dir.x, dir.y, 0.f, 0.f));
 
     if (!m_animsReferenced) {

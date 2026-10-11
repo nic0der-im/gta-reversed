@@ -92,7 +92,8 @@ void CTaskAllocatorKillThreatsBasic::ComputeClosestPeds(CPedGroup& group1, CPedG
             if (!m2 || !m2->IsAlive()) {
                 continue;
             }
-            distSq[i][j] = (m1->GetPosition() - m2->GetPosition()).MagnitudeSquared();
+            const auto d = m1->GetPosition() - m2->GetPosition();
+            distSq[i][j] = d.z * d.z + d.x * d.x + d.y * d.y;
         }
     }
 
