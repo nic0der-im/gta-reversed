@@ -2,6 +2,8 @@
 
 #include "CarFXRenderer.h"
 #include "CustomCarEnvMapPipeline.h"
+#include "TxdStore.h"
+#include "ClothesBuilder.h"
 
 void CCarFXRenderer::InjectHooks() {
     RH_ScopedClass(CCarFXRenderer);
@@ -9,7 +11,7 @@ void CCarFXRenderer::InjectHooks() {
 
     RH_ScopedInstall(RegisterPlugins, 0x5D5B00);
     RH_ScopedInstall(Initialise, 0x5D5AC0);
-    RH_ScopedInstall(InitialiseDirtTexture, 0x5D5BC0, { .Reversed = false });
+    RH_ScopedInstall(InitialiseDirtTexture, 0x5D5BC0);
     RH_ScopedInstall(Shutdown, 0x5D5AD0);
     RH_ScopedInstall(PreRenderUpdate, 0x5D5B10);
     RH_ScopedInstall(IsCCPCPipelineAttached, 0x5D5B80);
@@ -31,7 +33,29 @@ bool CCarFXRenderer::Initialise() {
 
 // 0x5D5BC0
 void CCarFXRenderer::InitialiseDirtTexture() {
-    plugin::Call<0x5D5BC0>();
+    CTxdStore::ScopedTXDSlot txd{"vehicle"};
+
+    auto* const grunge = RwTextureRead("vehiclegrunge256", nullptr);
+    grunge->filterAddressing = rwFILTERLINEAR; // 2 (0x50)
+
+    const auto width  = grunge->raster->width;
+    const auto height = grunge->raster->height;
+
+    // 16 darkened copies: level 0 = flat white, level 15 = original grunge texture
+    for (int32 level = 0; level < NUM_DIRT_TEXTURES; level++) {
+        auto* const tex = CClothesBuilder::CopyTexture(grunge);
+        ms_aDirtTextures[level] = tex;
+        RwTextureSetName(tex, "vehiclegrunge256");
+
+        auto* pixels = RwRasterLock(tex->raster, 0, rwRASTERLOCKREAD | rwRASTERLOCKWRITE); // 3
+        const auto base = (uint8)((0xFF0 - level * 0xFF) / 16);
+        for (auto i = 0; i < width * height; i++, pixels += 4) { // NOTE: raster stride is ignored, as in the original
+            for (auto c = 0; c < 3; c++) { // RGB, alpha untouched
+                pixels[c] = (uint8)((uint32)pixels[c] * level / 16 + base);
+            }
+        }
+        RwRasterUnlock(tex->raster);
+    }
 }
 
 // 0x5D5AD0
