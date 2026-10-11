@@ -17,7 +17,7 @@ void CQuadBike::InjectHooks() {
     RH_ScopedVMTInstall(GetRideAnimData, 0x6CDC90);
     RH_ScopedVMTInstall(PreRender, 0x6CEAD0);
     RH_ScopedVMTInstall(ProcessAI, 0x6CE460);
-    RH_ScopedVMTInstall(ProcessControl, 0x6CDCC0, { .Reversed = false });
+    RH_ScopedVMTInstall(ProcessControl, 0x6CDCC0);
     RH_ScopedVMTInstall(ProcessControlInputs, 0x6CE020);
     RH_ScopedVMTInstall(ProcessDrivingAnims, 0x6CE280);
     RH_ScopedVMTInstall(ProcessSuspension, 0x6CE270);
@@ -208,42 +208,45 @@ bool CQuadBike::ProcessAI(uint32& extraHandlingFlags) {
 
 // 0x6CDCC0
 void CQuadBike::ProcessControl() {
-    return plugin::CallMethod<0x6CDCC0, CQuadBike*>(this);
-
     if (GetStatus() != STATUS_PLAYER || !bDoQuadDamping) {
         CAutomobile::ProcessControl();
         return;
     }
 
-    const auto turnSpeed_Mult_Matrix = m_matrix->InverseTransformVector(m_vecTurnSpeed);
-    float v2 = vecQuadResistance.y, v5 = vecQuadResistance.x;
-    if (AreFrontWheelsNotTouchingGround()) {
-        if (!AreRearWheelsNotTouchingGround() && m_matrix->GetForward().z > 0.0f) {
-            v5 = vecQuadResistance.x - std::min(0.07f, fabs(m_pHandling->m_fWheelieAng - m_matrix->GetForward().z) * 0.25f);
-        }
-    } else {
-        if (m_WheelCounts[CAR_WHEEL_REAR_LEFT] == 1.0f && m_WheelCounts[CAR_WHEEL_REAR_RIGHT] == 1.0f) {
-            if (m_matrix->GetForward().z < 0.0f) {
-                v5 = vecQuadResistance.x * (0.9f + std::min(0.1f, fabs(m_pHandling->m_fStoppieAng - m_matrix->GetForward().z) * 0.3f));
-            }
+    // NOTE: Original damps the *turn* speed (`this + 0x50`), expressed in local space
+    auto&      mat   = *m_matrix;
+    const auto local = mat.InverseTransformVector(m_vecTurnSpeed);
+
+    const auto& comp   = m_fWheelsSuspensionCompression;
+    const auto  fwdZ   = mat.GetForward().z;
+    float       resX   = vecQuadResistance.x;
+    float       resY   = vecQuadResistance.y;
+    float       xBase  = resX;
+    float       xMult  = 0.995f; // 0x871ABC
+
+    if (comp[0] == 1.0f && comp[2] == 1.0f) { // 0x6CDD31
+        if ((comp[1] < 1.0f || comp[3] < 1.0f) && fwdZ > 0.0f) { // 0x6CDD43 - wheelie
+            xBase = resX - std::min(std::abs(m_pHandling->m_fWheelieAng - fwdZ) * 0.25f, 0.07f);
         } else {
-            v2 = 0.5f;
+            xBase = 0.995f; // 0x6CDDB3 - NOTE: ignores `vecQuadResistance.x`
         }
+    } else if (m_WheelCounts[1] == 1.0f && m_WheelCounts[3] == 1.0f) { // 0x6CDDC4
+        if (fwdZ < 0.0f) { // stoppie
+            xBase = (std::min(std::abs(m_pHandling->m_fStoppieAng - fwdZ) * 0.3f, 0.1f) + 0.9f) * resX;
+        }
+    } else { // 0x6CDE24
+        xMult = 0.5f; // 0x871AC0
     }
 
-    const CVector velocityOS = m_matrix->InverseTransformVector(m_vecTurnSpeed);
-    CVector unk{ // In the original code `x` is calculated once then immediately overwritten by the below line
-        std::pow(vecQuadResistance.x, CTimer::GetTimeStep()),
-        vecQuadResistance.y / (velocityOS.y * velocityOS.y + 1.0f),
-        1.0f
-    };
-    const auto centreOfMassOS = m_matrix->InverseTransformVector(m_vecCentreOfMass);
+    resX = std::pow(xBase / (local.x * local.x * xMult + 1.0f), CTimer::GetTimeStep());
+    resY = std::pow(resY / (local.y * local.y * 1.0f + 1.0f), CTimer::GetTimeStep()); // 1.0f = 0x871AC4/0x871AC8
 
-    const float v9 = std::pow(unk.y, CTimer::GetTimeStep()) * velocityOS.y - velocityOS.y;
-    ApplyTurnForce(m_matrix->GetUp() * -1.0f * v9 * m_fTurnMass, m_matrix->GetRight() + centreOfMassOS);
+    const auto dx = local.x * resX - local.x;
+    const auto dy = local.y * resY - local.y;
+    const auto comWS = mat.TransformVector(m_vecCentreOfMass);
 
-    const float v19 = velocityOS.x * unk.x - velocityOS.x;
-    ApplyTurnForce(m_matrix->GetUp() * v19 * m_fTurnMass, m_matrix->GetForward() + centreOfMassOS);
+    ApplyTurnForce(mat.GetUp() * -1.0f * dy * m_fTurnMass, comWS + mat.GetRight());
+    ApplyTurnForce(mat.GetUp() * dx * m_fTurnMass, comWS + mat.GetForward());
 
     CAutomobile::ProcessControl();
 }
