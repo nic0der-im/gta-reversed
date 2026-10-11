@@ -6,7 +6,7 @@ void CDecision::InjectHooks() {
     RH_ScopedClass(CDecision);
     RH_ScopedCategory("DecisionMakers");
 
-    RH_ScopedInstall(SetDefault, 0x600530);
+    RH_ScopedInstall(SetDefault, 0x600530, { .Reversed = false }); // not installed: CDecision::InjectHooks() is never called
     RH_ScopedInstall(Set, 0x600570);
     //RH_ScopedInstall(Add, 0x600600, { .Reversed = false });
     RH_ScopedInstall(From, 0x6006B0);
