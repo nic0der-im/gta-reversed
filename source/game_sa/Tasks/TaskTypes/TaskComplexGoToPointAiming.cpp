@@ -34,6 +34,7 @@ CTaskComplexGoToPointAiming::CTaskComplexGoToPointAiming(
     m_slowDownDistance{slowDownDist}
 {
     CEntity::SafeRegisterRef(m_aimAtEntity);
+    m_newTargetSet = true; // 0x668841: original ORs bit 0 of +0x34
 }
 
 CTaskComplexGoToPointAiming::CTaskComplexGoToPointAiming(const CTaskComplexGoToPointAiming& o) :
