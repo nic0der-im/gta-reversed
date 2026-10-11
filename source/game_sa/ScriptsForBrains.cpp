@@ -45,8 +45,6 @@ void CScriptsForBrains::StartNewStreamedScriptBrain(uint8 index, CEntity* entity
 
 void CScriptsForBrains::StartOrRequestNewStreamedScriptBrain(uint8 index, CEntity* entity, int8 attachType, bool bAddToWaitingArray) {
     // Flag masks as used by the original (CPed: dword @ 0x474, CObject: m_nObjectFlags)
-    constexpr uint32 PED_HAS_BRAIN     = 0x800000;
-    constexpr uint32 PED_WAITING_BRAIN = 0x1000000;
     constexpr uint32 OBJ_WAITING_BRAIN = 0x100000;
     constexpr uint32 OBJ_HAS_BRAIN     = 0x200000;
 

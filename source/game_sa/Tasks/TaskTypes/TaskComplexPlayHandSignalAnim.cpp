@@ -63,7 +63,7 @@ CTaskComplexPlayHandSignalAnim::~CTaskComplexPlayHandSignalAnim() {
 }
 
 // 0x61B460
-AnimationId CTaskComplexPlayHandSignalAnim::GetAnimIdForPed(CPed* ped) {
+AnimationId __stdcall CTaskComplexPlayHandSignalAnim::GetAnimIdForPed(CPed* ped) {
     switch (ped->m_nPedType) {
     case PED_TYPE_GANG1:  return ANIM_ID_GSIGN1;
     case PED_TYPE_GANG2:  return ANIM_ID_GSIGN2;
