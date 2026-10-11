@@ -296,8 +296,17 @@ ePopcycleGroup CPopCycle::PickARandomGroupOfOtherPeds() {
 
 // 0x60FFD0
 eModelID CPopCycle::PickPedMIToStreamInForCurrentZone() {
+    const auto& percs = m_nPercTypeGroup[m_nCurrentTimeIndex][m_nCurrentTimeOfWeek][m_pCurrZoneInfo->PopType];
     for (auto tr = 0; tr < 10; tr++) { // 10 tries
-        const auto grpId        = PickARandomGroupOfOtherPeds();
+        // The original inlines its own group pick (not 0x610420): r in [0, 99], skips zero-percentage groups.
+        int32 r = (int32)((float)(CGeneral::GetRandomNumber() & 0xFFFF) * (1.0f / 32768.0f) * 100.0f);
+        size_t g = 0;
+        // `g + 1 <` is a deliberate clamp: the original is unbounded and reads past the row if r exceeds the row sum.
+        while (g + 1 < POPCYCLE_TOTAL_GROUP_PERCS && (int32)percs[g] <= r) {
+            r -= percs[g];
+            g++;
+        }
+        const auto grpId        = (ePopcycleGroup)g;
         const auto pedGrpId     = CPopulation::GetPedGroupId(grpId, CPopulation::CurrentWorldZone);
         const auto npeds        = CPopulation::GetNumPedsInGroup(pedGrpId);
         auto& nextPedToLoadSlot = CStreaming::ms_NextPedToLoadFromGroup[grpId];
