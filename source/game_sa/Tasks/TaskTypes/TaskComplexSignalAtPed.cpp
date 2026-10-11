@@ -7,6 +7,13 @@
 #include "TaskSimpleRunAnim.h"
 #include "Ragdoll/IKChainManager.h"
 
+namespace {
+// 0x407180: min + trunc((rand() & 0xFFFF) * (max - min) / 32768), exclusive at the top
+int32 RandomIntOriginal(int32 min, int32 max) {
+    return min + static_cast<int32>((static_cast<int64>(CGeneral::GetRandomNumber() & 0xFFFF) * (max - min)) >> 15);
+}
+}
+
 void CTaskComplexSignalAtPed::InjectHooks() {
     RH_ScopedVirtualClass(CTaskComplexSignalAtPed, 0x86fa8c, 11);
     RH_ScopedCategory("Tasks/TaskTypes");
@@ -44,7 +51,7 @@ CTask* CTaskComplexSignalAtPed::CreateNextSubTask(CPed* ped) {
     switch (m_pSubTask->GetTaskType()) {
     case TASK_COMPLEX_TURN_TO_FACE_ENTITY: { // 0x398
         const auto pause = m_initialPause == -1
-            ? CGeneral::GetRandomNumberInRange(0, 2000, true)
+            ? RandomIntOriginal(0, 2000)
             : m_initialPause;
         return new CTaskSimpleStandStill{ pause, false, false, 8.f };
     }
@@ -54,7 +61,7 @@ CTask* CTaskComplexSignalAtPed::CreateNextSubTask(CPed* ped) {
         if (m_areAnimsReferenced && m_playAnimAtEnd) {
             return new CTaskSimpleRunAnim{
                 ANIM_GROUP_GANGS,
-                (AnimationId)(ANIM_ID_PRTIAL_GNGTLKA + CGeneral::GetRandomNumberInRange(0, 8, true)),
+                (AnimationId)(ANIM_ID_PRTIAL_GNGTLKA + RandomIntOriginal(0, 8)),
                 4.f,
                 false
             };

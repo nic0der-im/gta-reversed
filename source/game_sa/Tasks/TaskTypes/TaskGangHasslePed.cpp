@@ -7,6 +7,13 @@
 #include "TaskSimpleRunAnim.h"
 #include "TaskComplexGangLeader.h"
 
+namespace {
+// 0x407180: min + trunc((rand() & 0xFFFF) * (max - min) / 32768), exclusive at the top
+int32 RandomIntOriginal(int32 min, int32 max) {
+    return min + static_cast<int32>((static_cast<int64>(CGeneral::GetRandomNumber() & 0xFFFF) * (max - min)) >> 15);
+}
+}
+
 void CTaskGangHasslePed::InjectHooks() {
     RH_ScopedVirtualClass(CTaskGangHasslePed, 0x86FA00, 11);
     RH_ScopedCategory("Tasks/TaskTypes");
@@ -61,7 +68,7 @@ CTask* CTaskGangHasslePed::CreateFirstSubTask(CPed* ped) {
 
     const auto radius = CGeneral::GetRandomNumberInRange(3.f, 5.f);
     m_nTime = (int32)CTimer::GetTimeInMS();
-    m_nSomeRandomShit = CGeneral::GetRandomNumberInRange(m_RndMin, m_RndMax, true);
+    m_nSomeRandomShit = RandomIntOriginal(m_RndMin, m_RndMax);
     m_bFirstSubTaskInitialised = true;
 
     return new CTaskComplexSeekEntityStandard{ m_Ped, 999'999, 1000, radius, 2.f, 2.f, false, true };
@@ -111,7 +118,7 @@ CTask* CTaskGangHasslePed::ControlSubTask(CPed* ped) {
         if (r > 50 && r < 56) { // 0x660173
             task = new CTaskSimpleRunAnim{
                 ANIM_GROUP_GANGS,
-                (AnimationId)(ANIM_ID_PRTIAL_GNGTLKA + CGeneral::GetRandomNumberInRange(0, 8, true)),
+                (AnimationId)(ANIM_ID_PRTIAL_GNGTLKA + RandomIntOriginal(0, 8)),
                 4.f,
                 false
             };
