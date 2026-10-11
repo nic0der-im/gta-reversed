@@ -30,7 +30,7 @@ void CTaskSimplePlayerOnFoot::InjectHooks() {
 
     RH_ScopedInstall(ProcessPlayerWeapon, 0x6859A0);
     RH_ScopedInstall(PlayIdleAnimations, 0x6872C0);
-    RH_ScopedInstall(PlayerControlFighter, 0x687530, {.Reversed = false});
+    RH_ScopedInstall(PlayerControlFighter, 0x687530);
     RH_ScopedInstall(PlayerControlZelda, 0x6883D0);
 
     RH_ScopedVMTInstall(Clone, 0x68AFF0);
@@ -760,7 +760,152 @@ void CTaskSimplePlayerOnFoot::PlayIdleAnimations(CPlayerPed* player) {
 
 // 0x687530
 void CTaskSimplePlayerOnFoot::PlayerControlFighter(CPlayerPed* player) {
-    plugin::CallMethod<0x687530, CTaskSimplePlayerOnFoot*, CPlayerPed*>(this, player);
+    auto* const fight = player->GetIntelligence()->GetTaskFighting();
+    if (!fight) {
+        return;
+    }
+
+    const bool hasFiringWeapon = CWeaponInfo::GetWeaponInfo(player->GetActiveWeapon().m_Type, eWeaponSkill::STD)->m_nWeaponFire != 0;
+
+    auto* const pad = player->GetPadFromPlayer();
+    const int16 walkLR = pad->GetPedWalkLeftRight();
+    const int16 walkUD = pad->GetPedWalkUpDown();
+    float x = (float)walkLR / 128.0f;
+    float y = (float)walkUD / 128.0f;
+    const float maxFightMoveDelta = CTimer::GetTimeStep() * 0.07f;
+
+    auto* const playerData = player->GetPlayerData();
+    auto* const targeted = player->m_pTargetedObject;
+    const auto IsLockedOn = [&] { return targeted || (CCamera::m_bUseMouse3rdPerson && pad->GetTarget()); };
+
+    // Rotates the stick input by the camera angle and expresses it in the ped's right/forward axes
+    const auto ToPedSpace = [&](float negSin, float cos, float mag) {
+        auto& m = *player->m_matrix;
+        x = (m.GetRight().z * 0.0f + negSin * m.GetRight().x + cos * m.GetRight().y) * mag;
+        y = -((m.GetForward().z * 0.0f + negSin * m.GetForward().x + cos * m.GetForward().y) * mag);
+    };
+
+    if (!CGameLogic::IsPlayerUse2PlayerControls(player)) { // 0x6876CE
+        if (IsLockedOn()) {
+            float mag = std::sqrt(x * x + y * y);
+            if (mag > 0.0f) {
+                mag = std::min(mag, 1.0f);
+                const auto angle = CGeneral::LimitRadianAngle(CGeneral::GetRadianAngleBetweenPoints(0.0f, 0.0f, -x, y) - TheCamera.m_fOrientation);
+                ToPedSpace(-std::sin(angle), std::cos(angle), mag);
+            }
+        }
+    } else {
+        const float mag = std::sqrt(x * x + y * y);
+        if (mag > 0.0f) {
+            const auto angle = CGeneral::LimitRadianAngle(CGeneral::GetRadianAngleBetweenPoints(0.0f, 0.0f, -x, y) - TheCamera.m_fOrientation);
+            const float negSin = -std::sin(angle);
+            const float cos    = std::cos(angle);
+            if (CGameLogic::IsPlayerAllowedToGoInThisDirection(player, CVector{negSin, cos, 0.0f}, 0.0f)) {
+                ToPedSpace(negSin, cos, mag);
+            } else {
+                x = 0.0f;
+                y = 0.0f;
+            }
+        }
+    }
+
+    // Moves `cur` towards `target` by at most `maxFightMoveDelta`
+    const auto Approach = [&](float& cur, float target) {
+        const float d = target - cur;
+        if (std::abs(d) <= maxFightMoveDelta) {
+            cur = target;
+        } else if (d <= 0.0f) {
+            cur -= maxFightMoveDelta;
+        } else {
+            cur += maxFightMoveDelta;
+        }
+    };
+
+    // 0x687B6C
+    const auto ControlFromFightMovement = [&] {
+        const auto& fm = playerData->m_vecFightMovement;
+        if (std::abs(fm.y) > 0.0f && std::abs(fm.x) < std::abs(fm.y)) {
+            fight->ControlFight(nullptr, fm.y >= 0.0f ? 5 : 3);
+        } else if (std::abs(fm.x) > 0.0f) {
+            fight->ControlFight(nullptr, fm.x > 0.0f ? 6 : 4);
+        }
+    };
+
+    // NOTE: m_nLastCommand is compared as a signed byte in the original
+    const bool lastCmdBelow11 = (int8)fight->m_nLastCommand < 11;
+
+    if (IsLockedOn()) { // 0x6879D1
+        Approach(playerData->m_vecFightMovement.y, y);
+        Approach(playerData->m_vecFightMovement.x, x);
+
+        bool doFight = false;
+        if (targeted) {
+            const auto distSq = (targeted->GetPosition() - player->GetPosition()).MagnitudeSquared();
+            if (distSq > 16.0f && lastCmdBelow11) {
+                doFight = true; // 0x687AE1
+            }
+        }
+        if (!doFight) {
+            doFight = pad->GetSprint() || hasFiringWeapon;
+        }
+        if (!doFight) {
+            return ControlFromFightMovement();
+        }
+
+        // 0x687AE1
+        if (pad->GetSprint()) {
+            fight->ControlFight(nullptr, 0x11);
+        } else if (y >= -0.5f) {
+            fight->ControlFight(nullptr, 0xF);
+        } else {
+            fight->ControlFight(nullptr, 0x10);
+        }
+        return;
+    }
+
+    // 0x6877D5
+    const float angle = CGeneral::GetRadianAngleBetweenPoints(0.0f, 0.0f, -(float)walkLR, (float)walkUD);
+    float mag = std::sqrt(x * x + y * y);
+    bool applyMovement = true;
+    if (mag > 1.0f) {
+        mag = 1.0f;
+    } else if (mag == 0.0f) {
+        playerData->m_vecFightMovement.x = 0.0f;
+        playerData->m_vecFightMovement.y = 0.0f;
+        applyMovement = false;
+    }
+    if (applyMovement && y <= 0.0f) { // 0x687821
+        float newY = -mag;
+        const float d = newY - playerData->m_vecFightMovement.y;
+        if (std::abs(d) > maxFightMoveDelta) {
+            newY = d <= 0.0f ? playerData->m_vecFightMovement.y - maxFightMoveDelta : playerData->m_vecFightMovement.y + maxFightMoveDelta;
+        }
+        playerData->m_vecFightMovement.y = newY;
+        playerData->m_vecFightMovement.x = 0.0f;
+        player->m_fAimingRotation = CGeneral::LimitRadianAngle(angle - TheCamera.m_fOrientation);
+    }
+
+    // 0x6878D3 (NOTE: the target check is redundant here, we're not locked on)
+    if (!player->m_pTargetedObject && y <= 0.0f && lastCmdBelow11) {
+        m_nTimer += (int32)(CTimer::GetTimeStep() * 0.02f * 1000.0f);
+    } else {
+        m_nTimer = 0;
+    }
+
+    if (!pad->GetSprint() && !pad->GetDuck() && !hasFiringWeapon && y <= 0.0f) {
+        if ((float)(uint32)m_nTimer < 2000.0f) {
+            return ControlFromFightMovement();
+        }
+    }
+
+    // NOTE: original calls pad->GetSprint() here and discards the result
+    const uint8 cmd = mag > 0.5f ? 0x10 : 0xF;
+    if (pad->DuckJustDown() && CTaskSimpleDuck::CanPedDuck(player)) {
+        player->GetIntelligence()->SetTaskDuckSecondary(0);
+        fight->ControlFight(nullptr, 0x12);
+        return;
+    }
+    fight->ControlFight(nullptr, cmd);
 }
 
 // 0x687C20
