@@ -70,7 +70,7 @@ void CPedShelterAttractor::InjectHooks() {
     RH_ScopedCategory("Attractors");
 
     RH_ScopedInstall(GetDisplacement, 0x5EF420, { .Reversed = false }); // not installed: CPedShelterAttractor::InjectHooks() is never called
-    RH_ScopedVMTInstall(ComputeAttractPos, 0x5EFC40);
-    RH_ScopedVMTInstall(ComputeAttractHeading, 0x5E9690);
+    RH_ScopedVMTInstall(ComputeAttractPos, 0x5EFC40, { .Reversed = false }); // not installed: CPedShelterAttractor::InjectHooks() is never called
+    RH_ScopedVMTInstall(ComputeAttractHeading, 0x5E9690, { .Reversed = false }); // not installed: CPedShelterAttractor::InjectHooks() is never called
     RH_ScopedVMTInstall(BroadcastDeparture, 0x5EF570, { .Reversed = false }); // not installed: CPedShelterAttractor::InjectHooks() is never called
 }
