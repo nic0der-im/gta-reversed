@@ -45,7 +45,7 @@ CTask* CTaskComplexWaitForBus::CreateNextSubTask(CPed* ped) {
         return nullptr; // Got on the bus, so task is finito
     }
     default:
-        NOTSA_UNREACHABLE();
+        return nullptr; // 0x632A28
     }
 }
 

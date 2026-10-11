@@ -13,6 +13,12 @@
 #include "RealTimeShadowManager.h"
 
 // Entity type -> the repeat sector's list for it. All lists share the same layout, so they're accessed as `CPhysical*` lists.
+// Original sector math (0x542560, 0x544A30): floor(coord * double(0.02f) + 60.0); differs from CWorld::GetSectorX/Y at multiples of 50
+namespace {
+int32 OrigSectorX(float c) { return static_cast<int32>(std::floor(static_cast<double>(c) * static_cast<double>(0.02f) + 60.0)); }
+int32 OrigSectorY(float c) { return OrigSectorX(c); }
+}
+
 static CPtrListDoubleLink<CPhysical*>& GetRepeatSectorListFor(CRepeatSector& rs, eEntityType type) {
     switch (type) {
     case ENTITY_TYPE_VEHICLE: return reinterpret_cast<CPtrListDoubleLink<CPhysical*>&>(rs.Vehicles);
@@ -168,10 +174,10 @@ void CPhysical::Add()
     }
 
     const auto rect = GetBoundRect();
-    const auto sx0  = CWorld::GetSectorX(rect.left);
-    const auto sy0  = CWorld::GetSectorY(rect.bottom);
-    const auto sx1  = CWorld::GetSectorX(rect.right);
-    const auto sy1  = CWorld::GetSectorY(rect.top);
+    const auto sx0  = OrigSectorX(rect.left);
+    const auto sy0  = OrigSectorY(rect.bottom);
+    const auto sx1  = OrigSectorX(rect.right);
+    const auto sy1  = OrigSectorY(rect.top);
     for (auto y = sy0; y <= sy1; ++y) {
         for (auto x = sx0; x <= sx1; ++x) {
             auto& rs = CWorld::GetRepeatSector(x, y);
@@ -605,10 +611,10 @@ void CPhysical::RemoveAndAdd() {
 
     CEntryInfoNode* entryInfoNode = m_pCollisionList.m_node; // Existing nodes are reused first
     const auto      rect          = GetBoundRect();
-    const auto      sx0           = CWorld::GetSectorX(rect.left);
-    const auto      sy0           = CWorld::GetSectorY(rect.bottom);
-    const auto      sx1           = CWorld::GetSectorX(rect.right);
-    const auto      sy1           = CWorld::GetSectorY(rect.top);
+    const auto      sx0           = OrigSectorX(rect.left);
+    const auto      sy0           = OrigSectorY(rect.bottom);
+    const auto      sx1           = OrigSectorX(rect.right);
+    const auto      sy1           = OrigSectorY(rect.top);
     for (auto y = sy0; y <= sy1; ++y) {
         for (auto x = sx0; x <= sx1; ++x) {
             auto& rs   = CWorld::GetRepeatSector(x, y);
