@@ -8,7 +8,7 @@ class CEvent;
 class NOTSA_EXPORT_VTABLE CTaskComplexCarSlowBeDraggedOutAndStandUp : public CTaskComplex {
 public:
     CVehicle* m_Vehicle;
-    int32     dword10;
+    int32     m_Door;
 
 public:
     static constexpr auto Type = TASK_COMPLEX_CAR_SLOW_BE_DRAGGED_OUT_AND_STAND_UP;
@@ -17,7 +17,7 @@ public:
     ~CTaskComplexCarSlowBeDraggedOutAndStandUp() override;
 
     eTaskType GetTaskType() const override { return Type; }
-    CTask* Clone() const override { return new CTaskComplexCarSlowBeDraggedOutAndStandUp(m_Vehicle, dword10); } // 0x64A190;
+    CTask* Clone() const override { return new CTaskComplexCarSlowBeDraggedOutAndStandUp(m_Vehicle, m_Door); } // 0x64A190;
     bool MakeAbortable(CPed* ped, eAbortPriority priority = ABORT_PRIORITY_URGENT, const CEvent* event = nullptr) override;
     CTask* CreateNextSubTask(CPed* ped) override;
     CTask* CreateFirstSubTask(CPed* ped) override;
