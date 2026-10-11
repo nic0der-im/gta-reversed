@@ -1,6 +1,13 @@
 #include "StdInc.h"
 #include "TaskComplexSunbathe.h"
 
+namespace {
+// Reproduces 0x407180: min + trunc((rand & 0xFFFF) * (max - min) / 32768)
+int32 RandomIntOriginal(int32 min, int32 max) {
+    return min + static_cast<int32>((static_cast<int64>(CGeneral::GetRandomNumber() & 0xFFFF) * (max - min)) >> 15);
+}
+}
+
 void CTaskComplexSunbathe::InjectHooks() {
     RH_ScopedVirtualClass(CTaskComplexSunbathe, 0x86e0ac, 11);
     RH_ScopedCategory("Tasks/TaskTypes");
@@ -82,7 +89,7 @@ bool CTaskComplexSunbathe::CanSunbathe() {
 bool CTaskComplexSunbathe::ShouldLoadSunbatheAnims() {
     const auto* const ped = CWorld::Players[CWorld::PlayerInFocus].m_pPed;
     if (ped->bInVehicle && ped->m_pVehicle) {
-        return ped->m_pVehicle->m_vecMoveSpeed.SquaredMagnitude() <= 0.04f;
+        return !(ped->m_pVehicle->m_vecMoveSpeed.SquaredMagnitude() > 0.04f);
     }
     return true;
 }
@@ -102,7 +109,7 @@ CTask* CTaskComplexSunbathe::CreateSubTask(eTaskType taskType, CPed* ped) {
             durationMs = timeLeft + 1000;
         } else {
             durationMs = std::min(timeLeft + 1000, 12000);
-            durationMs = CGeneral::GetRandomNumberInRange(3000, durationMs);
+            durationMs = RandomIntOriginal(3000, durationMs);
         }
         return new CTaskSimpleRunTimedAnim{
             ANIM_GROUP_BEACH,
@@ -127,9 +134,9 @@ CTask* CTaskComplexSunbathe::CreateSubTask(eTaskType taskType, CPed* ped) {
     case TASK_SIMPLE_IDLE_SUNBATHING: { // 0x1ad
         int32 animId;
         if (m_SunbatherType == SUNBATHER_MALE_1) {
-            animId = CGeneral::GetRandomNumberInRange(0, 3) + SUNBATHE_PARKSIT_M_IDLEA;
+            animId = RandomIntOriginal(0, 3) + SUNBATHE_PARKSIT_M_IDLEA;
         } else if (m_SunbatherType == SUNBATHER_FEMALE_1) {
-            animId = CGeneral::GetRandomNumberInRange(0, 3) + SUNBATHE_PARKSIT_W_IDLEA;
+            animId = RandomIntOriginal(0, 3) + SUNBATHE_PARKSIT_W_IDLEA;
         } else {
             animId = TASK_SIMPLE_IDLE_SUNBATHING; // BUG: Original code uses the task type as the anim id here
         }
@@ -155,7 +162,7 @@ CTask* CTaskComplexSunbathe::CreateSubTask(eTaskType taskType, CPed* ped) {
         if ((!m_pSunbatheAnimBlock->IsLoaded && ShouldLoadSunbatheAnims()) || !m_pBeachAnimBlock->IsLoaded) {
             return new CTaskSimplePause{10000};
         }
-        return new CTaskSimplePause{CGeneral::GetRandomNumberInRange(1000, 5000)};
+        return new CTaskSimplePause{RandomIntOriginal(1000, 5000)};
     default: // Includes TASK_FINISHED (0x516)
         return nullptr;
     }
@@ -200,7 +207,7 @@ CTask* CTaskComplexSunbathe::CreateNextSubTask(CPed* ped) {
     case TASK_SIMPLE_START_SUNBATHING: // 0x1AC
         if (m_pBeachAnimBlock->IsLoaded) {
             m_BathingTimer.m_nStartTime = CTimer::GetTimeInMS();
-            m_BathingTimer.m_nInterval  = CGeneral::GetRandomNumberInRange(20000, 100000);
+            m_BathingTimer.m_nInterval  = RandomIntOriginal(20000, 100000);
             m_BathingTimer.m_bStarted   = true;
             const auto task = CreateSubTask(TASK_SIMPLE_SUNBATHE, ped);
             m_bBathing = true;
@@ -225,7 +232,7 @@ CTask* CTaskComplexSunbathe::CreateFirstSubTask(CPed* ped) {
     CGeneral::GetRandomNumber(); // NOTE: Result discarded (but advances the RNG state)
 
     if (ped->m_nPedType == PED_TYPE_CIVFEMALE) {
-        m_SunbatherType = (eSunbatherType)CGeneral::GetRandomNumberInRange(2, 5);
+        m_SunbatherType = static_cast<eSunbatherType>(RandomIntOriginal(2, 5));
     } else if (CPopulation::IsSunbather((eModelID)ped->m_nModelIndex)) {
         m_SunbatherType = (eSunbatherType)(CGeneral::GetRandomNumber() < 0x3FFF);
     } else {
@@ -246,7 +253,7 @@ CTask* CTaskComplexSunbathe::CreateFirstSubTask(CPed* ped) {
 
     const auto StartBathing = [&] { // 0x639DCC
         m_BathingTimer.m_nStartTime = CTimer::GetTimeInMS();
-        m_BathingTimer.m_nInterval  = CGeneral::GetRandomNumberInRange(20000, 100000);
+        m_BathingTimer.m_nInterval  = RandomIntOriginal(20000, 100000);
         m_BathingTimer.m_bStarted   = true;
         m_bBathing = true;
         return CreateSubTask(TASK_SIMPLE_SUNBATHE, ped);

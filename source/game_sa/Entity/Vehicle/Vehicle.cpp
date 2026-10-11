@@ -2291,7 +2291,7 @@ RwObject* RemoveObjectsCB(RwObject* object, void* data) {
 
     auto* const atomic = reinterpret_cast<RpAtomic*>(object);
 
-    // BUG: `data` is the frame pointer slot in some callers (see `RemoveReplacementUpgrade`), and it gets clobbered here
+    // NOTE: the original writes the atomic id through `data` on every atomic, so callers must pass an int32 slot
     const auto flags = CVisibilityPlugins::GetAtomicId(atomic);
     *static_cast<int32*>(data) = flags;
 
@@ -2472,8 +2472,9 @@ void CVehicle::AddReplacementUpgrade(int32 modelIndex, int32 nodeId) {
 // 0x6D39E0
 void CVehicle::RemoveReplacementUpgrade(int32 frameId) {
     auto frameOfUpgrade = CClumpModelInfo::GetFrameFromId(GetRpClump(), frameId);
-    RwFrameForAllObjects(frameOfUpgrade, RemoveObjectsCB, &frameOfUpgrade);
-    RwFrameForAllChildren(frameOfUpgrade, RemoveObjectsCB, &frameOfUpgrade);
+    int32 flags{};
+    RwFrameForAllObjects(frameOfUpgrade, RemoveObjectsCB, &flags);
+    RwFrameForAllChildren(frameOfUpgrade, RemoveObjectsCB, &flags);
 
     CopyObjectsCB_TargetClump = GetRpClump();
     RwFrameForAllObjects(
