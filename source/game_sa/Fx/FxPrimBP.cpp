@@ -8,7 +8,7 @@ void FxPrimBP_c::InjectHooks() {
     RH_ScopedCategory("Fx");
 
     RH_ScopedInstall(GetRWMatrix, 0x4A9DC0);
-    RH_ScopedInstall(Load, 0x5C2010, { .Reversed = false });
+    RH_ScopedInstall(Load, 0x5C2010);
 }
 
 // 0x4A9CF0
@@ -36,11 +36,9 @@ void FxPrimBP_c::GetRWMatrix(RwMatrix& outMatrix) {
 
 // 0x5C2010
 bool FxPrimBP_c::Load(FILESTREAM file, int32 version, FxName32_t* textureNames) {
-    return plugin::CallMethodAndReturn<bool, 0x5C2010, FxPrimBP_c*, FILESTREAM, int32, FxName32_t*>(this, file, version, textureNames);
-
     char line[256], field[128];
 
-    ReadFieldImpl(file, field, "FX_PRIM_BASE_DATA:");
+    ReadField<void>(file, "FX_PRIM_BASE_DATA:");
     ReadFieldImpl(file, field, "NAME:");
     
     CVector mat[4];
@@ -63,7 +61,7 @@ bool FxPrimBP_c::Load(FILESTREAM file, int32 version, FxName32_t* textureNames) 
     ) {
         m_pMatrixBuffered = nullptr;
     } else {
-        m_pMatrixBuffered = g_fxMan.Allocate<FxBufferedMatrix>(1);
+        m_pMatrixBuffered = (FxBufferedMatrix*)g_fxMan.GetMemPool().GetMem(sizeof(FxBufferedMatrix), 2); // NOTE: align is 2 (not Allocate<>'s 4)
         assert(m_pMatrixBuffered);
 
         m_pMatrixBuffered->CopyFromVectors(mat[0], mat[1], mat[2], mat[3]);
