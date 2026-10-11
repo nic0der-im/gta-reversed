@@ -12,6 +12,27 @@
 #include "TaskSimpleClimb.h"
 #include "RealTimeShadowManager.h"
 
+// Entity type -> the repeat sector's list for it. All lists share the same layout, so they're accessed as `CPhysical*` lists.
+static CPtrListDoubleLink<CPhysical*>& GetRepeatSectorListFor(CRepeatSector& rs, eEntityType type) {
+    switch (type) {
+    case ENTITY_TYPE_VEHICLE: return reinterpret_cast<CPtrListDoubleLink<CPhysical*>&>(rs.Vehicles);
+    case ENTITY_TYPE_PED:     return reinterpret_cast<CPtrListDoubleLink<CPhysical*>&>(rs.Peds);
+    case ENTITY_TYPE_OBJECT:  return reinterpret_cast<CPtrListDoubleLink<CPhysical*>&>(rs.Objects);
+    default:                  NOTSA_UNREACHABLE();
+    }
+}
+
+// Add `self` to `list` and prepend a new entry-info node (which tracks that) to its collision list
+static void AddNewEntryInfoNode(CPhysical& self, CRepeatSector& rs, CPtrListDoubleLink<CPhysical*>& list) {
+    auto* const node      = list.AddItem(&self);
+    auto* const entryInfo = new CEntryInfoNode();
+    entryInfo->m_doubleLink     = node;
+    entryInfo->m_repeatSector   = &rs;
+    entryInfo->m_doubleLinkList = &list;
+    entryInfo->AddToList(self.m_pCollisionList.m_node);
+    self.m_pCollisionList.m_node = entryInfo;
+}
+
 void CPhysical::InjectHooks()
 {
     RH_ScopedVirtualClass(CPhysical, 0x863BA0, 23);
@@ -20,7 +41,7 @@ void CPhysical::InjectHooks()
     RH_ScopedInstall(Constructor, 0x542260);
     RH_ScopedInstall(Destructor, 0x542450);
 
-    RH_ScopedInstall(RemoveAndAdd, 0x542560, { .Reversed = false });
+    RH_ScopedInstall(RemoveAndAdd, 0x542560);
     RH_ScopedInstall(ApplyTurnForce, 0x542A50);
     RH_ScopedInstall(ApplyForce, 0x542B50);
     RH_ScopedInstall(GetSpeed, 0x542CE0);
@@ -30,7 +51,7 @@ void CPhysical::InjectHooks()
     RH_ScopedInstall(SetDamagedPieceRecord, 0x5428C0);
     RH_ScopedInstall(RemoveFromMovingList, 0x542860);
     RH_ScopedInstall(AddToMovingList, 0x542800);
-    RH_ScopedVMTInstall(Add, 0x544A30, { .Reversed = false });
+    RH_ScopedVMTInstall(Add, 0x544A30);
     RH_ScopedVMTInstall(Remove, 0x5424C0);
     RH_ScopedVMTInstall(GetBoundRect, 0x5449B0);
     RH_ScopedVMTInstall(ProcessControl, 0x5485E0);
@@ -141,45 +162,22 @@ CPhysical::~CPhysical()
 // 0x544A30
 void CPhysical::Add()
 {
-    // TODO: Refactor `CEntryInfoNode` to be templated then use it here
-#if 0
     if (m_bIsBIGBuilding) {
         CEntity::Add();
         return;
     }
 
-    const auto boundRect = GetBoundRect();
-    int32 startSectorX = CWorld::GetSectorX(boundRect.left);
-    int32 startSectorY = CWorld::GetSectorY(boundRect.bottom);
-    int32 endSectorX = CWorld::GetSectorX(boundRect.right);
-    int32 endSectorY = CWorld::GetSectorY(boundRect.top);
-    for (int32 sectorY = startSectorY; sectorY <= endSectorY; ++sectorY) {
-        for (int32 sectorX = startSectorX; sectorX <= endSectorX; ++sectorX) {
-            CPtrListDoubleLink* list = nullptr;
-            CRepeatSector* repeatSector = GetRepeatSector(sectorX, sectorY);
-            switch (m_nType) {
-            case ENTITY_TYPE_VEHICLE:
-                list = &repeatSector.Vehicles;
-                break;
-            case ENTITY_TYPE_PED:
-                list = &repeatSector.Peds;
-                break;
-            case ENTITY_TYPE_OBJECT:
-                list = &repeatSector.Objects;
-                break;
-            }
-
-            auto newEntityInfoNode = new CEntryInfoNode();
-            if (newEntityInfoNode) {
-                newEntityInfoNode->m_doubleLink = list->AddItem(this);
-                newEntityInfoNode->m_repeatSector = repeatSector;
-                newEntityInfoNode->m_doubleLinkList = list;
-            }
-            newEntityInfoNode->AddToList(m_pCollisionList.m_node);
-            m_pCollisionList.m_node = newEntityInfoNode;
+    const auto rect = GetBoundRect();
+    const auto sx0  = CWorld::GetSectorX(rect.left);
+    const auto sy0  = CWorld::GetSectorY(rect.bottom);
+    const auto sx1  = CWorld::GetSectorX(rect.right);
+    const auto sy1  = CWorld::GetSectorY(rect.top);
+    for (auto y = sy0; y <= sy1; ++y) {
+        for (auto x = sx0; x <= sx1; ++x) {
+            auto& rs = CWorld::GetRepeatSector(x, y);
+            AddNewEntryInfoNode(*this, rs, GetRepeatSectorListFor(rs, GetType()));
         }
     }
-#endif
 }
 
 // 0x5424C0
@@ -599,61 +597,42 @@ int32 CPhysical::ProcessEntityCollision(CEntity* entity, CColPoint* colPoint) {
 
 // 0x542560
 void CPhysical::RemoveAndAdd() {
-// TODO: Refactor `CEntryInfoNode` to be templated, otherwise this function will be a mess
-#if 0
     if (m_bIsBIGBuilding) {
         CEntity::Remove();
         CEntity::Add();
         return;
     }
 
-    CEntryInfoNode* entryInfoNode = m_pCollisionList.m_node;
-    CRect boundRect = GetBoundRect();
-    int32 startSectorX = CWorld::GetSectorX(boundRect.left);
-    int32 startSectorY = CWorld::GetSectorY(boundRect.bottom);
-    int32 endSectorX = CWorld::GetSectorX(boundRect.right);
-    int32 endSectorY = CWorld::GetSectorY(boundRect.top);
-    for (int32 sectorY = startSectorY; sectorY <= endSectorY; ++sectorY) {
-        for (int32 sectorX = startSectorX; sectorX <= endSectorX; ++sectorX) {
-            CRepeatSector* const rs = GetRepeatSector(sectorX, sectorY);
-            const auto ProcessSectorList = [&]<typename PtrListType>(PtrListType& list) {
-                if (entryInfoNode) {
-                    auto* doubleLink = reinterpret_cast<typename PtrListType::NodeType*>(entryInfoNode->m_doubleLink);
-
-                    entryInfoNode->m_doubleLinkList->UnlinkNode(doubleLink);
-                    list.AddNode(doubleLink);
-   
-                    entryInfoNode->m_repeatSector = rs;
-                    entryInfoNode->m_doubleLinkList = &list;
-                    entryInfoNode = entryInfoNode->m_next;
-                } else {
-                    auto newEntityInfoNode = new CEntryInfoNode();
-                    if (newEntityInfoNode) {
-                        newEntityInfoNode->m_doubleLink = list.AddItem(this);
-                        newEntityInfoNode->m_repeatSector = rs;
-                        newEntityInfoNode->m_doubleLinkList = &list;
-                    }
-                    newEntityInfoNode->AddToList(m_pCollisionList.m_node);
-                    m_pCollisionList.m_node = newEntityInfoNode;
-                }
-            };
-            switch (m_nType) {
-            case ENTITY_TYPE_VEHICLE: ProcessSectorList(rs->Vehicles); break;
-            case ENTITY_TYPE_PED:     ProcessSectorList(rs->Peds);     break;
-            case ENTITY_TYPE_OBJECT:  ProcessSectorList(rs->Objects);  break;
+    CEntryInfoNode* entryInfoNode = m_pCollisionList.m_node; // Existing nodes are reused first
+    const auto      rect          = GetBoundRect();
+    const auto      sx0           = CWorld::GetSectorX(rect.left);
+    const auto      sy0           = CWorld::GetSectorY(rect.bottom);
+    const auto      sx1           = CWorld::GetSectorX(rect.right);
+    const auto      sy1           = CWorld::GetSectorY(rect.top);
+    for (auto y = sy0; y <= sy1; ++y) {
+        for (auto x = sx0; x <= sx1; ++x) {
+            auto& rs   = CWorld::GetRepeatSector(x, y);
+            auto& list = GetRepeatSectorListFor(rs, GetType());
+            if (entryInfoNode) {
+                auto* const node = entryInfoNode->m_doubleLink;
+                entryInfoNode->m_doubleLinkList->UnlinkNode(node);
+                list.AddNode(node);
+                entryInfoNode->m_repeatSector   = &rs;
+                entryInfoNode->m_doubleLinkList = &list;
+                entryInfoNode                   = entryInfoNode->m_next;
+            } else {
+                AddNewEntryInfoNode(*this, rs, list);
             }
         }
     }
 
+    // Free the leftover nodes
     while (entryInfoNode) {
-        CEntryInfoNode* nextEntryInfoNode = entryInfoNode->m_next;
-
+        auto* const next = entryInfoNode->m_next;
         entryInfoNode->m_doubleLinkList->DeleteNode(entryInfoNode->m_doubleLink);
         m_pCollisionList.DeleteNode(entryInfoNode);
-
-        entryInfoNode = nextEntryInfoNode;
+        entryInfoNode = next;
     }
-#endif
 }
 
 // 0x542800
