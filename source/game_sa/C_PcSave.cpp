@@ -13,8 +13,8 @@ void C_PcSave::InjectHooks() {
     RH_ScopedClass(C_PcSave);
     RH_ScopedCategoryGlobal();
 
-    // bad: the original sprintf is unbounded and callers pass a 104-byte buffer (GenericGameStorage.cpp:803); cause not fixed, so left unhooked
     RH_ScopedInstall(SetSaveDirectory, 0x619040);
+    // Hook kept off (old warning, cause unresolved). The original sprintf is unbounded: GenericGameStorage.cpp:803 passes the 104-byte ms_LoadFileNameWithPath, so very long save-directory paths overflow into ms_LoadFileName. The original code path runs either way.
     RH_ScopedInstall(GenerateGameFilename, 0x6190A0, { .Reversed = false });
     RH_ScopedInstall(PopulateSlotInfo, 0x619140);
     RH_ScopedInstall(SaveSlot, 0x619060);
