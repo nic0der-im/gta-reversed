@@ -20,6 +20,13 @@ CTaskSimpleChoking::CTaskSimpleChoking(const CTaskSimpleChoking& o) :
 {
 }
 
+namespace {
+// 0x407180
+int32 RandomIntOriginal(int32 min, int32 max) {
+    return min + static_cast<int32>((static_cast<int64>(CGeneral::GetRandomNumber() & 0xFFFF) * (max - min)) >> 15);
+}
+}
+
 // 0x620480
 static void ChokingFinishCB(CAnimBlendAssociation*, void* data) {
     auto* const self = static_cast<CTaskSimpleChoking*>(data);
@@ -30,8 +37,8 @@ static void ChokingFinishCB(CAnimBlendAssociation*, void* data) {
 // 0x6203F0
 bool CTaskSimpleChoking::MakeAbortable(CPed* ped, eAbortPriority priority, CEvent const* event) {
     if (priority == ABORT_PRIORITY_URGENT || priority == ABORT_PRIORITY_IMMEDIATE) {
-        // 0x39 == first event type that may abort us
-        if (event && event->GetEventType() < 0x39) {
+        // 0x39 == first event priority that may abort us (vtable slot 2)
+        if (event && event->GetEventPriority() < 0x39) {
             return false;
         }
         if (m_pAnim) {
@@ -75,8 +82,8 @@ bool CTaskSimpleChoking::ProcessPed(CPed* ped) {
             m_pAnim = CAnimManager::BlendAnimation(ped->GetRpClump(), ANIM_GROUP_DEFAULT, ANIM_ID_IDLE_TIRED, 4.f);
             m_pAnim->SetFinishCallback(ChokingFinishCB, this);
             m_nTimeRemaining = CTimer::GetTimeInMS() - m_nTimeStarted;
-            if (m_nTimeRemaining >= (uint32)CGeneral::GetRandomNumberInRange(8000, 12000)) {
-                m_nTimeRemaining = CGeneral::GetRandomNumberInRange(8000, 12000);
+            if (m_nTimeRemaining >= (uint32)RandomIntOriginal(8000, 12000)) {
+                m_nTimeRemaining = RandomIntOriginal(8000, 12000);
             }
         } else {
             m_pAnim->SetBlendDelta(-4.f);
