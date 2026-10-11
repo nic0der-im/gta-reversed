@@ -36,12 +36,12 @@ void CCarFXRenderer::InitialiseDirtTexture() {
     CTxdStore::ScopedTXDSlot txd{"vehicle"};
 
     auto* const grunge = RwTextureRead("vehiclegrunge256", nullptr);
-    grunge->filterAddressing = rwFILTERLINEAR; // 2 (0x50)
+    grunge->filterAddressing = (grunge->filterAddressing & ~0xFFu) | rwFILTERLINEAR; // original: MOV byte ptr [tex+0x50], 2 (low byte only)
 
     const auto width  = grunge->raster->width;
     const auto height = grunge->raster->height;
 
-    // 16 darkened copies: level 0 = flat white, level 15 = original grunge texture
+    // 16 darkened copies: level 0 = flat white, level 15 = grunge scaled by 15/16 plus 15 (not identical to the original)
     for (int32 level = 0; level < NUM_DIRT_TEXTURES; level++) {
         auto* const tex = CClothesBuilder::CopyTexture(grunge);
         ms_aDirtTextures[level] = tex;

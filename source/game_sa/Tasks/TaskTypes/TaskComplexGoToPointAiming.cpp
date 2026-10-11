@@ -153,7 +153,7 @@ CTask* CTaskComplexGoToPointAiming::ControlSubTask(CPed* ped) {
         // Move direction in the ped's local space (y is flipped), normalized unless within the target radius
         const auto dir = m_movePos - ped->GetPosition();
         CVector2D move{dir.Dot(ped->GetRight()), dir.Dot(ped->GetForward()) * -1.f}; // 0x858C1C = -1.0f
-        if (move.SquaredMagnitude() <= sq(m_moveTargetRadius)) {
+        if (!(move.SquaredMagnitude() > sq(m_moveTargetRadius))) { // negated form: NaN zeroes, as the original
             move = {};
         } else {
             move /= move.Magnitude();
