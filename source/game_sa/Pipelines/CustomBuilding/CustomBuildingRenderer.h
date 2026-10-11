@@ -13,7 +13,7 @@ public:
     static void Shutdown();
     static bool PluginAttach();
     static void AtomicSetup(RpAtomic* atomic);
-    static bool IsCBPCPipelineAttached(RpAtomic* atomic);
+    static int32 IsCBPCPipelineAttached(RpAtomic* atomic);
     static void UpdateDayNightBalanceParam();
     static void Update();
 };
