@@ -39,8 +39,9 @@ CTask* Clone() const override {
                                            (m_nFlags & 2) >> 1, (m_nFlags & 0x10) >> 4, (m_nFlags & 0x20) >> 5, (m_nFlags & 4) >> 2); // todo: flags
     }
 
- // 0x61B770
+ // 0x61BF20
     bool ProcessPed(CPed* ped) override;
+    void StartAnim(CPed* ped);
     void OffsetPedPosition(CPed* ped);
 
 private:
