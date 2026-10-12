@@ -151,7 +151,7 @@ void Interior_c::UnFurnish() {
     const auto entityHeldByPlayer = player
         ? player->GetEntityThatThisPedIsHolding()
         : nullptr;
-    const auto objHeldByPlayer = entityHeldByPlayer && entityHeldByPlayer->IsObject()
+    const auto objHeldByPlayer = entityHeldByPlayer && entityHeldByPlayer->GetIsTypeObject()
         ? entityHeldByPlayer->AsObject()
         : nullptr;
     for (auto it = m_FurnitureEntityList.GetHead(); it;) {
@@ -286,7 +286,7 @@ void Interior_c::CalcMatrix(const CVector& pos) {
     RwV3d axis{0.f, 0.f, 1.f};
     RwMatrixRotate(&m_Mat, &axis, m_Props->m_rot, rwCOMBINEREPLACE); // Apply rotation
     RwMatrixTranslate(&m_Mat, &pos, rwCOMBINEPOSTCONCAT); // Apply translation
-    RwMatrixMultiply(&m_Mat, &m_Mat, RwFrameGetMatrix(RpAtomicGetFrame(m_Group->GetEntity()->m_pRwAtomic))); // Multiply by entity's matrix
+    RwMatrixMultiply(&m_Mat, &m_Mat, RwFrameGetMatrix(RpAtomicGetFrame(m_Group->GetEntity()->GetRpAtomic()))); // Multiply by entity's matrix
 }
 
 // 0x591D20
@@ -866,6 +866,7 @@ CObject* Interior_c::PlaceFurnitureOnWall(
     int32*              d
 ) {
     return plugin::CallMethodAndReturn<CObject*, 0x593120>(
+        this,
         interior,
         subGroup,
         type,

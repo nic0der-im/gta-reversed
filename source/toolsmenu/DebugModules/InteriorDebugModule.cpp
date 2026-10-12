@@ -80,7 +80,7 @@ void InteriorDebugModule::RenderPropsTab() {
         }
         if (TreeNode("Props")) {
             if (auto* const p = m_Int->m_Props) {
-                Text("Type:     %s\n",   p->m_IntType);
+                Text("Type:     %s\n",   notsa::find_value_or(s_IntTypeNames, p->m_IntType.get(), "UNKNOWN"));
                 Text("Group ID: %d\n",   p->m_groupId);
                 Text("Width:    %d\n",   p->m_width);
                 Text("Height:   %d\n",   p->m_height);
