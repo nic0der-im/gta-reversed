@@ -52,7 +52,7 @@ CTask* CTaskComplexKillPedFromBoat::ControlSubTask(CPed* ped) {
 
     switch (m_pSubTask->GetTaskType()) {
     case TASK_SIMPLE_STAND_STILL: { // 0x622AB8
-        if (IsCopVsPlayer() && Wanted() != 0 && m_pSubTask->MakeAbortable(ped, ABORT_PRIORITY_URGENT, nullptr)) {
+        if (IsCopVsPlayer() && Wanted() != eWantedLevel::WANTED_CLEAN && m_pSubTask->MakeAbortable(ped, ABORT_PRIORITY_URGENT, nullptr)) {
             return new CTaskComplexKillPedOnFoot(m_Ped, -1, 0, 0, 0, 1);
         }
         break;
@@ -67,7 +67,7 @@ CTask* CTaskComplexKillPedFromBoat::ControlSubTask(CPed* ped) {
                 AudioEngine.SayPedless(AE_SPEECH_PED, CTX_GLOBAL_POLICE_OVERBOARD, ped, 0, 1.0f, false, false, false);
             }
         }
-        if (IsCopVsPlayer() && Wanted() == 0 && m_pSubTask->MakeAbortable(ped, ABORT_PRIORITY_URGENT, nullptr)) {
+        if (IsCopVsPlayer() && Wanted() == eWantedLevel::WANTED_CLEAN && m_pSubTask->MakeAbortable(ped, ABORT_PRIORITY_URGENT, nullptr)) {
             return new CTaskSimpleStandStill(0, true, false, 8.0f);
         }
         break;
