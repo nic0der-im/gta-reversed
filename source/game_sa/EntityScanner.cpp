@@ -79,7 +79,7 @@ void CEntityScanner::ScanForEntitiesInRange(const eRepeatSectorList sectorList, 
                 continue;
             }
 
-            const auto distSq = (entity->GetPosition() - pos).MagnitudeSquared();
+            const auto distSq = (entity->GetPosition() - pos).SquaredMagnitude();
             if (!(distSq < rangeSq)) {
                 continue;
             }
