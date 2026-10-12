@@ -6,7 +6,7 @@
 #include "TaskComplexPlayHandSignalAnim.h"
 #include "TaskComplexGangLeader.h"
 #include "TaskSimpleHoldEntity.h"
-#include "IKChainManager_c.h"
+#include "Ragdoll/IKChainManager.h"
 #include "TaskComplexPassObject.h"
 #include "TaskComplexGangLeader.h"
 #include "TaskComplexFollowNodeRoute.h"
@@ -20,6 +20,8 @@
 #include "TaskSimpleStandStill.h"
 #include "TaskComplexTurnToFaceEntityOrCoord.h"
 #include "TaskSimplePause.h"
+#include "TaskSimpleCarDrive.h"
+#include "TaskComplexLeaveCar.h"
 
 void CTaskComplexGangFollower::InjectHooks() {
     RH_ScopedVirtualClass(CTaskComplexGangFollower, 0x86F938, 14);
@@ -75,11 +77,11 @@ CTaskComplexGangFollower::~CTaskComplexGangFollower() {
 // 0x65ED40
 CVector CTaskComplexGangFollower::CalculateOffsetPosition() {
     if (notsa::contains({ PEDMOVE_WALK, PEDMOVE_RUN, PEDMOVE_SPRINT }, m_Leader->m_nMoveState)) {
-        m_OffsetPos                 = m_Leader->GetMatrix() * CVector{ CTaskComplexFollowLeaderInFormation::ms_offsets.movingOffsets[m_GrpMemIdx] };
+        m_OffsetPos                 = m_Leader->GetMatrix().TransformPoint(CVector{ CTaskComplexFollowLeaderInFormation::ms_offsets.MovingOffsets[m_GrpMemIdx] });
         m_IsUsingStandingStillOffsets = false;
     } else if (!m_IsUsingStandingStillOffsets || (m_Leader->GetPosition() - m_LeaderInitialPos).SquaredMagnitude() >= sq(3.f)) {
         m_LeaderInitialPos          = m_Leader->GetPosition();
-        m_OffsetPos                 = CVector{ CTaskComplexFollowLeaderInFormation::ms_offsets.movingOffsets[m_GrpMemIdx] };
+        m_OffsetPos                 = CVector{ CTaskComplexFollowLeaderInFormation::ms_offsets.MovingOffsets[m_GrpMemIdx] };
         m_IsUsingStandingStillOffsets = true;
     }
     return m_OffsetPos;
