@@ -143,7 +143,7 @@ CRealTimeShadow* CRealTimeShadowManager::GetRealTimeShadow(CPhysical* physical) 
     if (!isPlayer1Ped) {
         const auto* const playerPed = CWorld::Players[CWorld::PlayerInFocus].m_pPed;
         if (playerPed->bInVehicle && playerPed->m_pVehicle) {
-            if (playerPed->m_pVehicle->GetMoveSpeed().MagnitudeSquared() > 0.09f) { // Don't bother if the player is driving fast
+            if (playerPed->m_pVehicle->GetMoveSpeed().SquaredMagnitude() > 0.09f) { // Don't bother if the player is driving fast
                 canGetShadow = false;
             }
         }

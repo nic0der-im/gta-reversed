@@ -840,7 +840,7 @@ void CTaskSimplePlayerOnFoot::PlayerControlFighter(CPlayerPed* player) {
 
         bool doFight = false;
         if (targeted) {
-            const auto distSq = (targeted->GetPosition() - player->GetPosition()).MagnitudeSquared();
+            const auto distSq = (targeted->GetPosition() - player->GetPosition()).SquaredMagnitude();
             if (distSq > 16.0f && lastCmdBelow11) {
                 doFight = true; // 0x687AE1
             }
