@@ -19,8 +19,8 @@ CVector* CPedShelterAttractor::GetDisplacement(int32 pedId) {
             do { // Rejection sampling: retry until not within 1 unit of an existing displacement
                 const auto angle  = (float)rand() * (1.0f / 32767.0f) * SHELTER_TWO_PI; // 0x858C7C, 0x858CBC
                 const auto radius = (float)rand() * (1.0f / 32767.0f) * 2.0f;
-                candidate = { std::cos(angle) * radius, std::sin(angle) * radius, 0.0f };
-                tooClose  = rng::any_of(ms_displacements, [&](const CVector& d) { return (d - candidate).MagnitudeSquared() < 1.0f; }); // 0x858624
+                candidate = CVector{ std::cos(angle) * radius, std::sin(angle) * radius, 0.0f };
+                tooClose  = rng::any_of(ms_displacements, [&](const CVector& d) { return (d - candidate).SquaredMagnitude() < 1.0f; }); // 0x858624
             } while (tooClose);
             ms_displacements.emplace_back(candidate); // 0x5EE370
         }
@@ -70,7 +70,7 @@ void CPedShelterAttractor::InjectHooks() {
     RH_ScopedCategory("Attractors");
 
     RH_ScopedInstall(GetDisplacement, 0x5EF420, { .Reversed = false }); // not installed: CPedShelterAttractor::InjectHooks() is never called
-    RH_ScopedVMTInstall(ComputeAttractPos, 0x5EFC40, { .Reversed = false }); // not installed: CPedShelterAttractor::InjectHooks() is never called
-    RH_ScopedVMTInstall(ComputeAttractHeading, 0x5E9690, { .Reversed = false }); // not installed: CPedShelterAttractor::InjectHooks() is never called
+    RH_ScopedVMTOverloadedInstall(ComputeAttractPos, "v", 0x5EFC40, void(CPedShelterAttractor::*)(int32, CVector&), { .Reversed = false }); // not installed: CPedShelterAttractor::InjectHooks() is never called
+    RH_ScopedVMTOverloadedInstall(ComputeAttractHeading, "v", 0x5E9690, void(CPedShelterAttractor::*)(int32, float&), { .Reversed = false }); // not installed: CPedShelterAttractor::InjectHooks() is never called
     RH_ScopedVMTInstall(BroadcastDeparture, 0x5EF570, { .Reversed = false }); // not installed: CPedShelterAttractor::InjectHooks() is never called
 }

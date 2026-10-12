@@ -56,7 +56,7 @@ C2dEffect* __stdcall CTaskComplexUseClosestFreeScriptedAttractor::ComputeClosest
             }
         }
         auto* const fx     = CScripted2dEffects::GetEffect(i);
-        const auto  distSq = (pedPos - fx->m_Pos).MagnitudeSquared(); // NOTE: effect position is at offset 0 of the 0x40-byte entry
+        const auto  distSq = (pedPos - fx->m_Pos).SquaredMagnitude(); // NOTE: effect position is at offset 0 of the 0x40-byte entry
         if (distSq < closestDistSq && GetPedAttractorManager()->HasEmptySlot(fx, nullptr)) {
             closestDistSq = distSq;
             closest       = reinterpret_cast<C2dEffect*>(fx); // binary compatible
