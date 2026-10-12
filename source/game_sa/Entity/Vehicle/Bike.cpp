@@ -688,7 +688,7 @@ void CBike::BlowUpCar(CEntity* damager, bool bHideExplosion) {
     m_vecMoveSpeed.z += 0.13f;
     SetStatus(STATUS_WRECKED);
     physicalFlags.bRenderScorched = true;
-    CVisibilityPlugins::SetClumpForAllAtomicsFlag(this->m_pRwClump, eAtomicComponentFlag::ATOMIC_PIPE_NO_EXTRA_PASSES);
+    CVisibilityPlugins::SetClumpForAllAtomicsFlag(GetRpClump(), eAtomicComponentFlag::ATOMIC_PIPE_NO_EXTRA_PASSES);
     m_fHealth = 0.0f;
     m_wBombTimer = 0;
 
@@ -795,7 +795,7 @@ void CBike::VehicleDamage(float damageIntensity, eVehicleCollisionComponent comp
             GetStatus() != STATUS_ABANDONED &&
             playerVehicle->m_vecMoveSpeed.Magnitude() >= m_vecMoveSpeed.Magnitude() &&
             playerVehicle->m_vecMoveSpeed.Magnitude() > 0.1) {
-            FindPlayerPed()->SetWantedLevelNoDrop(1);
+            FindPlayerPed()->SetWantedLevelNoDrop(eWantedLevel::WANTED_LEVEL_1);
         }
     }
 
