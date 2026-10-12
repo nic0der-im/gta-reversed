@@ -71,11 +71,11 @@ CTask* CTaskInteriorUseInfo::CreateNextSubTask(CPed* ped) {
             return new CTaskInteriorLieInBed{ m_Dur, m_IntInfo, true, m_bDoInstantly };
         case eInteriorInfoType::UNK_1: { // Sit on chair
             // NOTE: CTaskInteriorSitOnChair (vtbl 0x870314, size 0x2c) isn't reversed yet, so call its original ctor
-            auto* const mem = CTask::operator new(0x2c);
+            auto* const mem = static_cast<CTask*>(CTask::operator new(0x2c));
             if (!mem) {
                 return nullptr;
             }
-            return plugin::CallMethodAndReturn<CTask*, 0x675C30, void*, int32, InteriorInfo_t*, bool>(mem, m_Dur, m_IntInfo, m_bDoInstantly);
+            return plugin::CallMethodAndReturn<CTask*, 0x675C30>(mem, m_Dur, m_IntInfo, m_bDoInstantly);
         }
         case eInteriorInfoType::UNK_2: // Stand still (basically forever)
             return new CTaskSimpleStandStill{ 9'999'999, false, false, 8.f };
