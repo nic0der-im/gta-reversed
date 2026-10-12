@@ -1,5 +1,9 @@
 #include "StdInc.h"
 #include "TaskComplexSunbathe.h"
+#include "TaskSimpleRunAnim.h"
+#include "TaskSimpleRunTimedAnim.h"
+#include "TaskSimplePause.h"
+#include "InterestingEvents.h"
 
 namespace {
 // Reproduces 0x407180: min + trunc((rand & 0xFFFF) * (max - min) / 32768)
