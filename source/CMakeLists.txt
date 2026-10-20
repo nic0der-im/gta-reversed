@@ -81,6 +81,9 @@ if (${RE_PROJECT}_NATIVE)
     list(FILTER SOURCE_FILES_WITHOUT_MODULES_LIST EXCLUDE REGEX "^(app/platform/win|reversiblehooks|toolsmenu)/")
     list(FILTER SOURCE_FILES_WITHOUT_MODULES_LIST EXCLUDE REGEX "^(oswrapper/oswrapper_win|dllmain|InjectHooksMain)\\.cpp$")
     list(FILTER SOURCE_FILES_WITHOUT_MODULES_LIST EXCLUDE REGEX "^game_sa/RenderWare/D3D[^/]*\\.cpp$")
+    # `D3DResourceSystem` is called from shared game code (`Game.cpp`, `MenuManager_Process.cpp`).
+    # Natively every method is an unreversed stub, but the symbols must exist.
+    list(APPEND SOURCE_FILES_WITHOUT_MODULES_LIST "game_sa/RenderWare/D3DResourceSystem.cpp")
     list(FILTER SOURCE_FILES_WITHOUT_MODULES_LIST EXCLUDE REGEX "^game_sa/Audio/Loaders/AE(WMA|MF)Decoder\\.")
 endif()
 
@@ -122,12 +125,13 @@ target_link_options(${RE_PROJECT_LIB_NAME} PRIVATE
 )
 target_compile_options(${RE_PROJECT_LIB_NAME} PRIVATE
     "$<$<CXX_COMPILER_ID:MSVC>:/MP;/Zc:preprocessor;/W3;/wd4200;/wd4251;/wd4275;/wd4996;/wd26495;/wd26812;/wd28159>"
-    "$<$<OR:$<CXX_COMPILER_ID:Clang,GCC>,$<CXX_COMPILER_ID:GNU>>:-Wall;-Wno-switch>"
+    "$<$<OR:$<CXX_COMPILER_ID:AppleClang,Clang,GCC>,$<CXX_COMPILER_ID:GNU>>:-Wall;-Wno-switch>"
 )
 if (${RE_PROJECT}_NATIVE)
     # MSVC extensions and attributes are still used by the shared game code
+    # (`this->Class::Class()` constructor calls in the hook wrappers, typed anonymous unions, ...)
     target_compile_options(${RE_PROJECT_LIB_NAME} PRIVATE
-        "$<$<OR:$<CXX_COMPILER_ID:Clang,GCC>,$<CXX_COMPILER_ID:GNU>>:-Wno-microsoft-anon-tag;-Wno-ignored-attributes>"
+        "$<$<OR:$<CXX_COMPILER_ID:AppleClang,Clang,GCC>,$<CXX_COMPILER_ID:GNU>>:-fms-extensions;-Wno-microsoft-explicit-constructor-call;-Wno-microsoft-anon-tag;-Wno-ignored-attributes>"
     )
 endif()
 
@@ -178,7 +182,7 @@ macro(add_dependency)
         if (NOT ${RE_PROJECT}_NATIVE)
             add_compile_options(${target} PRIVATE
                 "$<$<CXX_COMPILER_ID:MSVC>:-w>"
-                "$<$<OR:$<CXX_COMPILER_ID:Clang,GCC>,$<CXX_COMPILER_ID:GNU>>:-Wno-everything>"
+                "$<$<OR:$<CXX_COMPILER_ID:AppleClang,Clang,GCC>,$<CXX_COMPILER_ID:GNU>>:-Wno-everything>"
             )
         endif()
     endforeach()

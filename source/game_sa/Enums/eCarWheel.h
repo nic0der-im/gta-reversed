@@ -9,4 +9,5 @@ enum eCarWheel {
     MAX_CARWHEELS
 };
 
+enum eCarPiece : int; //!< Opaque declaration (definition: `Vehicle.h`)
 enum eCarPiece CarWheelToCarPiece(eCarWheel i);

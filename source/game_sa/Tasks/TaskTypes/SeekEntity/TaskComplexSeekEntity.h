@@ -423,7 +423,12 @@ protected: // Wrappers for hooks
         bool     flag0,
         bool     flag1
     ) {
+#ifdef NOTSA_NATIVE
+        // Clang doesn't accept an explicit constructor call through the injected class name
+        new (this) CTaskComplexSeekEntity(entity, taskTimer1Interval, taskTimer2Interval, maxEntityDist2D, unk1, unk2, flag0, flag1);
+#else
         this->CTaskComplexSeekEntity::CTaskComplexSeekEntity(entity, taskTimer1Interval, taskTimer2Interval, maxEntityDist2D, unk1, unk2, flag0, flag1);
+#endif
         return this;
     }
 

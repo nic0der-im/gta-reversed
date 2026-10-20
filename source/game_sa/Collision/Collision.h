@@ -60,6 +60,8 @@ public:
 
         // OG code considered lines that begin and end within the sphere as not intersecting it
         bool AllowLineOriginInsideSphere{false};
+
+        DebugSettings() {} //!< User provided - clang can't evaluate the NSDMIs while the enclosing class is incomplete
     } s_DebugSettings{};
 
 public:

@@ -11,7 +11,8 @@
 #include "TheCarGenerators.h"
 
 using IplTreeNode  = CQuadTreeNode<IplDef*>;
-auto& ms_pQuadTree = StaticRef<IplTreeNode*>(0x8E3FAC);
+//! File-local (the same name is used for the collision quad tree in `ColStore.cpp`)
+static auto& ms_pQuadTree = StaticRef<IplTreeNode*>(0x8E3FAC);
 
 auto& ms_pPool = StaticRef<CIplPool*>(0x8E3FB0);
 

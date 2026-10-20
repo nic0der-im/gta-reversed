@@ -202,7 +202,11 @@ inline T Read(CRunningScript* S) {
                 if constexpr (!std::is_floating_point_v<T>) {
                     // Check your call stack and change the function argument type to a float.
                     // Possibly unintended truncation of `float` to integeral type!
+#ifdef NOTSA_NATIVE
+                    OS_DebugBreak();
+#else
                     DebugBreak();
+#endif
                 }
                 return detail::safe_arithmetic_cast<T>(S->GetAtIPAs<float>());
             }

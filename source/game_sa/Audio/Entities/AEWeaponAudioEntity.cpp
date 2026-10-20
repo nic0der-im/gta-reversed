@@ -966,11 +966,19 @@ void CAEWeaponAudioEntity::Clear() {
 }
 
 CAEWeaponAudioEntity* CAEWeaponAudioEntity::Constructor() {
+#ifdef NOTSA_NATIVE
+    new (this) CAEWeaponAudioEntity();
+#else
     CAEWeaponAudioEntity::CAEWeaponAudioEntity();
+#endif
     return this;
 }
 
 CAEWeaponAudioEntity* CAEWeaponAudioEntity::Destructor() {
+#ifdef NOTSA_NATIVE
+    this->~CAEWeaponAudioEntity();
+#else
     CAEWeaponAudioEntity::~CAEWeaponAudioEntity();
+#endif
     return this;
 }

@@ -36,7 +36,15 @@ void CTaskComplexWander::InjectHooks() {
     RH_ScopedOverloadedInstall(ScanForBlockedNode, "1", 0x66F4C0, bool(CTaskComplexWander::*)(const CVector&, CEntity*));
     RH_ScopedInstall(GetWanderTaskByPedType, 0x673D00);
 }
-CTaskComplexWander* CTaskComplexWander::Constructor(eMoveState moveState, uint8 dir, bool bWanderSensibly, float fTargetRadius) { this->CTaskComplexWander::CTaskComplexWander(moveState, dir, bWanderSensibly, fTargetRadius); return this; }
+CTaskComplexWander* CTaskComplexWander::Constructor(eMoveState moveState, uint8 dir, bool bWanderSensibly, float fTargetRadius) {
+#ifdef NOTSA_NATIVE
+    // Abstract type - the wrapper is only used by the Windows hook installation.
+    UNUSED(moveState, dir, bWanderSensibly, fTargetRadius);
+#else
+    this->CTaskComplexWander::CTaskComplexWander(moveState, dir, bWanderSensibly, fTargetRadius);
+#endif
+    return this;
+}
 
 // 0x66F450
 CTaskComplexWander::CTaskComplexWander(eMoveState moveState, uint8 dir, bool bWanderSensibly, float fTargetRadius) : CTaskComplex() {

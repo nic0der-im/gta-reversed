@@ -239,8 +239,13 @@ void* CMemoryMgr::Malloc(uint32 size, uint32 nHint) {
     _UNLOCK_MEMORYHEAP();
     return memory;
 #else
-    return plugin::CallAndReturn<void*, 0x72F420, size_t>(size);
+#ifdef NOTSA_NATIVE
+    // No game heap natively - use the CRT allocator directly
+    UNUSED(nHint);
     return ::malloc(size);
+#else
+    return plugin::CallAndReturn<void*, 0x72F420, size_t>(size);
+#endif
 #endif
 }
 
@@ -258,8 +263,11 @@ void CMemoryMgr::Free(void* memory) {
     }
     UNLOCK_MEMORYHEAP();
 #else
+#ifdef NOTSA_NATIVE
+    ::free(memory);
+#else
     return plugin::Call<0x72F430, void*>(memory);
-    return ::free(memory);
+#endif
 #endif
 }
 
@@ -292,14 +300,23 @@ uint8* CMemoryMgr::Realloc(void* memory, uint32 size, uint32 nHint) {
     UNLOCK_MEMORYHEAP();
     return newMemory;
 #else
-    return plugin::CallAndReturn<uint8*, 0x72F440, void*, size_t>(memory, size);
+#ifdef NOTSA_NATIVE
+    UNUSED(nHint);
     return static_cast<uint8*>(::realloc(memory, size));
+#else
+    return plugin::CallAndReturn<uint8*, 0x72F440, void*, size_t>(memory, size);
+#endif
 #endif
 }
 
 // 0x72F460
 uint8* CMemoryMgr::Calloc(uint32 numObj, uint32 sizeObj, uint32 hint) {
+#ifdef NOTSA_NATIVE
+    UNUSED(hint);
+    return static_cast<uint8*>(::calloc(numObj, sizeObj));
+#else
     return plugin::CallAndReturn<uint8*, 0x72F460, uint32, uint32>(numObj, sizeObj);
+#endif
 
 #ifdef MEMORY_MGR_USE_MEMORY_HEAP
     return Malloc(hint * size, hint);
@@ -312,14 +329,17 @@ uint8* CMemoryMgr::Calloc(uint32 numObj, uint32 sizeObj, uint32 hint) {
 uint8* CMemoryMgr::MallocAlign(uint32 size, uint32 align, uint32 nHint) {
     auto* memory = Malloc(size + align, nHint);
 
-    auto* result = (void*)(uint32((uint8*)memory + align) & ~(align - 1));
+    auto* result = (void*)(uintptr_t(uintptr_t((uint8*)memory + align)) & ~(uintptr_t(align) - 1));
     *((void**)result - 1) = memory;
     return static_cast<uint8*>(result);
 }
 
 void CMemoryMgr::FreeAlign(void* memory) {
-    return plugin::Call<0x72F4F0, void*>(memory);
+#ifdef NOTSA_NATIVE
     Free(*((void**)memory - 1));
+#else
+    return plugin::Call<0x72F4F0, void*>(memory);
+#endif
 }
 
 void CMemoryMgr::SetRestrictMemoryMove(bool restrict) {
@@ -377,6 +397,9 @@ void* CMemoryMgr::Malloc(uint32 size) {
 }
 
 void* CMemoryMgr::MallocAlign(uint32 size, uint32 align) {
+#ifdef NOTSA_NATIVE
+    return MallocAlign(size, align, 0);
+#else
     return plugin::CallAndReturn<void*, 0x72F4C0, uint32, uint32>(size, align);
 
     void* memory = MallocAlign(size, align, 0);
@@ -384,6 +407,7 @@ void* CMemoryMgr::MallocAlign(uint32 size, uint32 align) {
     GET_HEAP_DESC(memory)->m_Flags.NoDebugHint = true;
 #endif
     return memory;
+#endif
 }
 
 void* CMemoryMgr::Calloc(uint32 hint, uint32 size) {

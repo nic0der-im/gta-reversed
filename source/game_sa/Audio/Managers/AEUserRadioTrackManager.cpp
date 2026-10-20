@@ -316,7 +316,13 @@ DWORD __stdcall CAEUserRadioTrackManager::WriteUserTracksThread(CAEUserRadioTrac
         std::vector<tUserTracksInfo> offsets;
 
         // Retrieve all user tracks info
+#ifdef NOTSA_NATIVE
+        // `fs::path` converts to `std::wstring` on Windows only; natively use the narrow overload.
+        const auto userTracksDir = (fs::path(CFileMgr::ms_dirName) / "User Tracks").string();
+        int32 amountOfTracks = self->WriteUserTracksFile(userTracksDir.c_str(), dummy, ufiles, offsets, 0);
+#else
         int32 amountOfTracks = self->WriteUserTracksFile(fs::path(CFileMgr::ms_dirName) / "User Tracks", dummy, ufiles, offsets, 0);
+#endif
         CFileMgr::CloseFile(ufiles);
 
         // Open sa-utrax.dat containing the offsets
@@ -370,7 +376,7 @@ int32 CAEUserRadioTrackManager::WriteUserTracksFile(const std::wstring& dir, siz
     for (auto& entry : fs::directory_iterator(dir)) {
         if (fs::is_directory(entry)) {
             // NOTE: STD can also do recursive search, maybe use that?
-            numTracks += WriteUserTracksFile(entry.path(), currentLength, file, offsets, depth + 1);
+            numTracks += WriteUserTracksFile(entry.path().wstring(), currentLength, file, offsets, depth + 1);
             continue;
         }
 
@@ -386,7 +392,7 @@ int32 CAEUserRadioTrackManager::WriteUserTracksFile(const std::wstring& dir, siz
 
         // if shortcut was a directory.
         if (fs::is_directory(path)) {
-            numTracks += WriteUserTracksFile(path, currentLength, file, offsets, depth + 1);
+            numTracks += WriteUserTracksFile(path.wstring(), currentLength, file, offsets, depth + 1);
             continue;
         }
 

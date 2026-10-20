@@ -121,7 +121,9 @@ char* psPathnameCreate(const char* buffer) {
     if (path) {
         std::memcpy(path, buffer, pathSize);
 
-        while (auto ch = std::strchr(path, '/')) {
+        // Windows converts '/' into its separator ('\\'); natively the separator is '/',
+        // so the game's '\\' must be converted instead (otherwise this loops forever).
+        for (char* ch = path; (ch = std::strchr(ch, '\\')) != nullptr;) {
             *ch = psPathGetSeparator();
         }
     }

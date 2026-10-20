@@ -232,6 +232,12 @@ char* CFileLoader::LoadLine(auto file) {
     return FindFirstNonNullOrWS(ms_line);
 }
 
+//! This definition is not visible to the other translation units that call `LoadLine(FILE*)`,
+//! so it has to be instantiated here for them to link against.
+#ifdef NOTSA_NATIVE
+template char* CFileLoader::LoadLine<FILESTREAM>(FILESTREAM);
+#endif
+
 /*!
 * Load line from a text buffer with sanitization (replaces chars < 32 (space) with a space)
 * @param bufferIt Iterator into buffer. It is modified by this function to point after the last character of this line

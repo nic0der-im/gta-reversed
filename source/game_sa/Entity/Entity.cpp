@@ -987,7 +987,7 @@ C2dEffect* CEntity::GetRandom2dEffect(int32 effectType, bool mustBeFree) {
         }
     }
 
-    return numCandidates ? candidates[CGeneral::GetRandomNumberInRange(0u, numCandidates)] : nullptr;
+    return numCandidates ? candidates[CGeneral::GetRandomNumberInRange<size_t>(0, numCandidates)] : nullptr;
 }
 
 // Transforms a point from the entity's local (object) space to world space
@@ -1051,7 +1051,7 @@ void CEntity::CreateEffects() {
                 if (effect->enEx.m_nTimeOn > effect->enEx.m_nTimeOff && CClock::ms_nGameClockHours < effect->enEx.m_nTimeOff) {
                     ucDays--;
                 }
-                srand(std::bit_cast<uint32>(this) + ucDays);
+                srand(notsa::PtrToId(this) + ucDays);
             }
 
             const auto fHeading = GetHeading();

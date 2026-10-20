@@ -24,7 +24,7 @@ void CRect::InjectHooks()
 }
 
 // 0x404200
-inline void CRect::Restrict(const CRect& restriction)
+void CRect::Restrict(const CRect& restriction)
 {
     if (restriction.left < left)
         left = restriction.left;
@@ -40,7 +40,7 @@ inline void CRect::Restrict(const CRect& restriction)
 }
 
 // 0x404260
-inline void CRect::Resize(float resizeX, float resizeY)
+void CRect::Resize(float resizeX, float resizeY)
 {
     left   -= resizeX;
     right  += resizeX;
@@ -49,7 +49,7 @@ inline void CRect::Resize(float resizeX, float resizeY)
 }
 
 // 0x404290
-inline bool CRect::IsPointInside(const CVector2D& point) const
+bool CRect::IsPointInside(const CVector2D& point) const
 {
     return point.x >= left
         && point.x <= right
@@ -58,7 +58,7 @@ inline bool CRect::IsPointInside(const CVector2D& point) const
 }
 
 // 0x4042D0
-inline bool CRect::IsPointInside(const CVector2D& point, float tolerance) const
+bool CRect::IsPointInside(const CVector2D& point, float tolerance) const
 {
     return left   - tolerance <= point.x
         && right  + tolerance >= point.x
@@ -72,7 +72,7 @@ bool CRect::IsRectInside(const CRect& rect) const {
 }
 
 // 0x43E020
-inline void CRect::SetFromCenter(float x, float y, float size)
+void CRect::SetFromCenter(float x, float y, float size)
 {
     left   = x - size;
     bottom    = y - size;
@@ -81,14 +81,14 @@ inline void CRect::SetFromCenter(float x, float y, float size)
 }
 
 // 0x43E050
-inline void CRect::GetCenter(float* x, float* y) const
+void CRect::GetCenter(float* x, float* y) const
 {
     *x = (right + left) / 2.0f;
     *y = (bottom + top) / 2.0f;
 }
 
 // 0x5327F0
-inline void CRect::StretchToPoint(float x, float y)
+void CRect::StretchToPoint(float x, float y)
 {
     if (x < left)
         left = x;

@@ -160,9 +160,9 @@ void CReplay::StorePedAnimation(CPed* ped, CStoredAnimationState& state) {
 
 // 0x45C940
 void CReplay::StorePedUpdate(CPed* ped, uint8 index) {
-    auto vehicleIdx = [ped]() {
+    auto vehicleIdx = [ped]() -> int32 {
         if (ped->IsInVehicle()) {
-            return GetVehiclePool()->GetIndex(ped->GetVehicleIfInOne()) + 1;
+            return static_cast<int32>(GetVehiclePool()->GetIndex(ped->GetVehicleIfInOne())) + 1;
         } else {
             return 0;
         }
@@ -543,7 +543,7 @@ void CReplay::ProcessReplayCamera() {
         modelling->up    = TheCamera.GetUp();
         modelling->right = TheCamera.GetRight();
         break;
-    case REPLAY_CAM_MODE_FIXED:
+    case REPLAY_CAM_MODE_FIXED: {
         const auto direction = (CameraFocus - CameraFixed).Normalized();
         const auto right = direction.Cross({0.0f, 0.0f, 1.0f}).Normalized();
 
@@ -557,6 +557,7 @@ void CReplay::ProcessReplayCamera() {
         modelling->up    = TheCamera.GetUp();
         modelling->right = TheCamera.GetRight();
         break;
+    }
     default:
         break;
     }
@@ -1358,7 +1359,14 @@ constexpr uint32 CReplay::FindSizeOfPacket(eReplayPacket type) {
     case REPLAY_PACKET_TIMER:
         return 8;
     case REPLAY_PACKET_GENERAL:
+#ifdef NOTSA_NATIVE
+        // `CMatrix` holds a pointer (`m_pAttachMatrix`), so on 64-bit it's 80 bytes instead of 72,
+        // making the camera block 96 bytes. Writer and reader share this value, so the
+        // in-memory replay buffer stays consistent.
+        return sizeof(tReplayCameraBlock);
+#else
         return 88;
+#endif
     case REPLAY_PACKET_BULLET_TRACES:
         return 28;
     case REPLAY_PACKET_PARTICLE:

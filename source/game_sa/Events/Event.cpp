@@ -12,7 +12,7 @@ void CEvent::InjectHooks() {
 }
 
 // 0x4B5620
-void* CEvent::operator new(unsigned) {
+void* CEvent::operator new(size_t) {
     return GetEventPool()->New();
 }
 
@@ -33,7 +33,12 @@ CEvent::~CEvent() {
 
 // 0x4ABFC0
 CEvent* CEvent::Constructor() {
+#ifdef NOTSA_NATIVE
+    // `CEvent` is abstract - This wrapper only exists for the Windows hook installation.
+    // Natively, concrete derived events are constructed through their own constructors.
+#else
     this->CEvent::CEvent();
+#endif
     return this;
 }
 

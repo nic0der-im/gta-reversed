@@ -3388,8 +3388,10 @@ void CCollision::InjectHooks() {
     ////
 
     // Hooks disabled due to bad performance in debug mode
+#ifndef NOTSA_NATIVE // `HS` only exists when hooks are compiled in
     const auto state = HS::RedirectToGTA;
     const auto locked = state == HS::RedirectToGTA;
+#endif
     
     RH_ScopedInstall(Test2DLineAgainst2DLine, 0x4138D0, { .State = state, .Locked = locked });
 

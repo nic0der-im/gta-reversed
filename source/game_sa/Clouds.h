@@ -68,11 +68,18 @@ public:
     static inline auto& PlayerCoords = StaticRef<CVector>(0xC6E958); // gVecPlayerCoors
     static inline auto& CameraCoors = StaticRef<CVector>(0xC6E964);  // gVecCameraCoors
 
-    static inline struct DebugSettings {
+    //! Declared outside the `static inline` member declaration, and without default member
+    //! initializers: clang rejects both while the enclosing class is still incomplete.
+    struct DebugSettings {
         struct RenderSettingPair {
-            bool Enabled = true, Force = false;
-        } Moon, Rockstar, LowClouds, Rainbow, Streaks, VolumetricClouds;
-    } s_DebugSettings;
+            bool Enabled;
+            bool Force;
+        };
+        RenderSettingPair Moon, Rockstar, LowClouds, Rainbow, Streaks, VolumetricClouds;
+    };
+    static inline DebugSettings s_DebugSettings{
+        {true, false}, {true, false}, {true, false}, {true, false}, {true, false}, {true, false}
+    };
 
 public:
     static void InjectHooks();

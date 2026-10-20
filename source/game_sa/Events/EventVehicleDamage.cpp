@@ -34,7 +34,12 @@ CEventVehicleDamage::~CEventVehicleDamage()
 
 CEventVehicleDamage* CEventVehicleDamage::Constructor(CVehicle* vehicle, CEntity* attacker, eWeaponType weaponType)
 {
+#ifdef NOTSA_NATIVE
+    // Abstract type - the wrapper is only used by the Windows hook installation.
+    UNUSED(vehicle, attacker, weaponType);
+#else
     this->CEventVehicleDamage::CEventVehicleDamage(vehicle, attacker, weaponType);
+#endif
     return this;
 }
 

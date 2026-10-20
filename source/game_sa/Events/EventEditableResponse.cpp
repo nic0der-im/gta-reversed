@@ -31,7 +31,11 @@ CEventEditableResponse::CEventEditableResponse(eTaskType taskType) :
 }
 
 CEventEditableResponse* CEventEditableResponse::Constructor() {
+#ifdef NOTSA_NATIVE
+    // Abstract type - the wrapper is only used by the Windows hook installation.
+#else
     this->CEventEditableResponse::CEventEditableResponse();
+#endif
     return this;
 }
 

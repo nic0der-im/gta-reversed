@@ -2,6 +2,9 @@
 
 #include <type_traits>
 #include <cstdint>
+#include <format>
+#include <string>
+#include <typeinfo>
 
 namespace notsa {
 /*!
@@ -39,19 +42,6 @@ struct WEnum {
     constexpr StoreAs& get_underlying_ref() noexcept { return m_Value; }
 };
 
-// std::format support for `WEnum`
-template<typename Enum, typename StoreAs>
-struct std::formatter<WEnum<Enum, StoreAs>> : std::formatter<std::string> {
-    auto format(auto e, format_context& ctx) const {
-        if constexpr (requires { EnumToString(e.get()); }) {
-            if (const auto name = EnumToString(e.get())) {
-                return formatter<string>::format(*name, ctx);
-            }
-        }
-        return formatter<string>::format(std::format("{} ({})", typeid(Enum).name(), e.get_underlying()), ctx);
-    }
-};
-
 template<typename E>
 using WEnumU8 = WEnum<E, std::uint8_t>;
 template<typename E>
@@ -67,6 +57,25 @@ using WEnumU32 = WEnum<E, std::uint32_t>;
 template<typename E>
 using WEnumS32 = WEnum<E, std::int32_t>;
 };
+
+// std::format support for `WEnum`
+// (Specializations of `std::formatter` must be declared in namespace `std`, which is why
+// this isn't inside `notsa` - MSVC accepts the qualified spelling, libc++ doesn't.)
+namespace std {
+
+template<typename Enum, typename StoreAs>
+struct formatter<::notsa::WEnum<Enum, StoreAs>> : formatter<std::string> {
+    auto format(auto e, format_context& ctx) const {
+        if constexpr (requires { EnumToString(e.get()); }) {
+            if (const auto name = EnumToString(e.get())) {
+                return formatter<string>::format(*name, ctx);
+            }
+        }
+        return formatter<string>::format(std::format("{} ({})", typeid(Enum).name(), e.get_underlying()), ctx);
+    }
+};
+
+} // namespace std
 
 #define NOTSA_WENUM_DEFS_FOR(_e) \
     using _e##S8 = notsa::WEnumS8<_e>; \

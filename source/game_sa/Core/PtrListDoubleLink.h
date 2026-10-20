@@ -9,6 +9,7 @@
 #include "PtrNode.h"
 #include "PtrNodeDoubleLink.h"
 #include "PtrList.h"
+#include <Pools/PtrNodeDoubleLinkPool.h> //!< `IsNodeValid` needs the complete pool type (clang checks it at definition time)
 
 namespace notsa {
 namespace details {
@@ -81,7 +82,7 @@ public:
     using NodeType = typename Base::NodeType;
 
 public:
-    using Base::CPtrList;
+    using CPtrList<notsa::details::PtrListDoubleLinkTraits<ItemType>>::CPtrList;
 
     /*!
     * @brief Delete the specified node from the list

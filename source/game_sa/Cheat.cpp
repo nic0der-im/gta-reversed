@@ -25,13 +25,13 @@ uint32 CCheat::m_nLastScriptBypassTime;
 // NOTSA
 struct Cheat {
     DWORD   installAddress;
-    void*   method;
+    void  (*method)();
     const   std::string methodName;
     uint32  hash;
     eCheats type;
 };
 
-const auto cheats = std::to_array<Cheat>({
+const Cheat cheats[] = {
         { 0x4385b0,  CCheat::WeaponCheat1, "WeaponCheat1", 0xde4b237d, CHEAT_WEAPON_SET1 },
         { 0x438890,  CCheat::WeaponCheat2, "WeaponCheat2", 0xb22a28d1, CHEAT_WEAPON_SET2 },
         { 0x438b30,  CCheat::WeaponCheat3, "WeaponCheat3", 0x5a783fae, CHEAT_WEAPON_SET3 },
@@ -124,7 +124,7 @@ const auto cheats = std::to_array<Cheat>({
         { 0x43a680,  CCheat::MonsterTruckCheat, "MonsterTruckCheat", 0x171ba8cc, CHEAT_SPAWN_MONSTER },
         { 0x0, nullptr, "", 0x86988dae, CHEAT_PROSTITUTES_PAY_YOU },
         { 0x0, nullptr, "", 0x2bdd2fa1, CHEAT_ALL_TAXIS_NITRO },
-});
+};
 
 // 0x438480
 void CCheat::AddToCheatString(char LastPressedKey) {

@@ -1585,7 +1585,7 @@ void CStreaming::RequestModelStream(int32 chIdx) {
 
     tStreamingChannel& ch = ms_channel[chIdx];
     CdStreamPos pos;
-    uint32 modelSizeSectors = 0;
+    size_t modelSizeSectors = 0;
     CStreamingInfo* streamingInfo = &GetInfo(modelId);
 
     // Find first model that has to be loaded
@@ -1606,7 +1606,7 @@ void CStreaming::RequestModelStream(int32 chIdx) {
         RemoveModel(modelId);
 
         streamingInfo->GetCdPosnAndSize(pos, modelSizeSectors);         // Grab pos and size of this model
-        modelId = GetNextFileOnCd(pos.Offset + modelSizeSectors, true); // Find where the next file is after it
+        modelId = GetNextFileOnCd(pos.Offset + (uint32)modelSizeSectors, true); // Find where the next file is after it
         if (modelId == MODEL_INVALID) {
             return; // No more models...
         }

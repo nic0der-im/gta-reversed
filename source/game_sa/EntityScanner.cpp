@@ -82,8 +82,8 @@ void CEntityScanner::ScanForEntitiesInRange(eRepeatSectorList sectorList, CPed& 
                 if (distSq < distancesSq[i]) {
                     // Make room for it (If the array is full the furthest one is dropped)
                     const auto last = std::min(numEntities + 1, MAX_NUM_ENTITIES);
-                    rng::shift_right(m_apEntities.begin() + i, m_apEntities.begin() + last, 1);
-                    rng::shift_right(distancesSq.begin() + i, distancesSq.begin() + last, 1);
+                    std::shift_right(m_apEntities.begin() + i, m_apEntities.begin() + last, 1);
+                    std::shift_right(distancesSq.begin() + i, distancesSq.begin() + last, 1);
                     distancesSq[i]  = distSq;
                     m_apEntities[i] = entity;
                     if (numEntities < MAX_NUM_ENTITIES) {

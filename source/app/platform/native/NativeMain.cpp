@@ -26,12 +26,8 @@
 
 namespace fs = std::filesystem;
 
-//! Symbols which `app/platform/win/WinMain.cpp` provides on Windows (that file is
-//! excluded from the native build).
-bool IsForegroundApp() {
-    return ForegroundApp;
-}
-
+//! Symbol which `app/platform/win/WinMain.cpp` provides on Windows (that file is
+//! excluded from the native build). `IsForegroundApp` is inlined in `app.h` instead.
 void MessageLoop() {
     notsa::SDLWrapper::ProcessEvents();
 }

@@ -60,6 +60,22 @@ struct IDirectInputDevice8;
 using LPDIRECTINPUT8       = IDirectInput8*;
 using LPDIRECTINPUTDEVICE8 = IDirectInputDevice8*;
 
+//! DirectInput's joystick state, stored by value in `CControllerConfigManager`.
+//! Layout matches `dinput.h` (272 bytes); natively input comes from SDL (`Pad_SDL.cpp`).
+struct DIJOYSTATE2 {
+    std::int32_t lX, lY, lZ, lRx, lRy, lRz;
+    std::int32_t rglSlider[2];
+    std::uint32_t rgdwPOV[4];
+    std::uint8_t  rgbButtons[128];
+    std::int32_t lVX, lVY, lVZ, lVRx, lVRy, lVRz;
+    std::int32_t rglVSlider[2];
+    std::int32_t lAX, lAY, lAZ, lARx, lARy, lARz;
+    std::int32_t rglASlider[2];
+    std::int32_t lFX, lFY, lFZ, lFRx, lFRy, lFRz;
+    std::int32_t rglFSlider[2];
+};
+static_assert(sizeof(DIJOYSTATE2) == 272, "DIJOYSTATE2 must match the Windows SDK layout");
+
 //! Win32 type aliases.
 //! Only the ones demanded by headers shared with the Windows build are provided.
 using HANDLE     = void*;
@@ -68,10 +84,20 @@ using HINSTANCE  = void*;
 using LPVOID     = void*;
 using CHAR       = char;
 using BYTE       = std::uint8_t;
+using byte       = unsigned char; //!< MSVC declares this in `<rpcndr.h>` (It's not `std::byte`)
 using WORD       = std::uint16_t;
 using DWORD      = std::uint32_t;
 using BOOL       = std::int32_t;
 using HRESULT    = std::int32_t;
+
+//! Win32 macros used by the game code (Word packing of script handles etc.)
+#define LOWORD(l)  static_cast<std::uint16_t>(static_cast<std::uint32_t>(l) & 0xFFFFu)
+#define HIWORD(l)  static_cast<std::uint16_t>((static_cast<std::uint32_t>(l) >> 16) & 0xFFFFu)
+#define MAKEWORD(a, b) static_cast<std::uint16_t>((static_cast<std::uint8_t>(a)) | (static_cast<std::uint16_t>(static_cast<std::uint8_t>(b)) << 8))
+#define MAKELONG(a, b) (static_cast<std::uint32_t>(static_cast<std::uint16_t>(a)) | (static_cast<std::uint32_t>(static_cast<std::uint16_t>(b)) << 16))
+
+//! `CONST` is `const` in the Windows SDK
+#define CONST const
 
 //! Windows' `MAX_PATH` - Used as the size of several game path buffers
 constexpr std::int32_t MAX_PATH = 260;
@@ -147,3 +173,14 @@ struct SYSTEMTIME {
     std::uint16_t wMilliseconds;
 };
 static_assert(sizeof(SYSTEMTIME) == 16, "SYSTEMTIME must stay 16 bytes for PC compatible save games");
+
+//! Win32's 64-bit counter integer. There's no `QueryPerformanceCounter` natively -
+//! timing uses `std::chrono` (see `CAEAudioUtility::StaticInitialise`).
+union LARGE_INTEGER {
+    std::int64_t QuadPart;
+    struct {
+        std::uint32_t LowPart;
+        std::int32_t  HighPart;
+    } u;
+};
+static_assert(sizeof(LARGE_INTEGER) == 8, "LARGE_INTEGER must stay 8 bytes");

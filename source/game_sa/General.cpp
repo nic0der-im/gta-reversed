@@ -158,11 +158,17 @@ float CGeneral::GetAngleBetweenPoints(float x1, float y1, float x2, float y2) {
 }
 
 uint16 CGeneral::GetRandomNumber() { // Why does this return `uint16`? Should be `int32` (same as retval of `rand()`)
+#ifdef NOTSA_NATIVE
+    // POSIX' `rand()` returns up to `RAND_MAX` (2^31 - 1), but the game was written around
+    // MSVC's 15-bit generator, so keep the result in the original range.
+    return static_cast<uint16>(rand() & 0x7FFF);
+#else
     static_assert(RAND_MAX == 0x7FFF, "PC-generated random numbers should not exceed 32767");
 #ifdef BETTER_RNG
     static_assert(false, "PC-generated random numbers should not exceed 32767");
 #else
     return rand();
+#endif
 #endif
 }
 

@@ -9,6 +9,7 @@
 #include "PtrNodeSingleLink.h"
 #include "PtrList.h"
 #include <Pools/Pools.h>
+#include <Pools/PtrNodeSingleLinkPool.h> //!< `IsNodeValid` needs the complete pool type (clang checks it at definition time)
 
 namespace notsa {
 namespace details {

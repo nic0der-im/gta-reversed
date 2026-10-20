@@ -14,7 +14,12 @@ using json = nlohmann::json;
 
 #include <ranges>
 namespace rng = std::ranges;
-namespace rngv = std::views;
+#ifdef NOTSA_NATIVE
+    // libc++ has no `std::views::enumerate` yet, so `rngv` is a real namespace that adds it
+    #include <extensions/RangesEnumerate.hpp>
+#else
+    namespace rngv = std::views;
+#endif
 
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -167,7 +172,7 @@ template<typename... Ts>
 #endif
 
 // Macro for unused function arguments - Use it to avoid compiler warnings of unused arguments
-#define UNUSED(x) (void)(x);
+#define UNUSED(...) (void)(__VA_ARGS__);
 
 // Macro for unused function return values.
 // Eventually could instead verify the returned value? In case of `sscanf` etc...

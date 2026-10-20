@@ -637,6 +637,7 @@ float CalculateTotalBlendOfPartial(AnimBlendUpdateData* c, AnimBlendFrameData* f
 #endif
 
 #ifdef USE_COPY_PASTE_FRAME_UPDATE
+#ifndef NOTSA_NATIVE // The copy-pasted implementations below are x86 inline assembly calls into the exe
 #pragma region "R* Frame Update Functions"
 // 0x4D1DB0
 void FrameUpdateCallBackWithVelocityExtractionCompressedSkinned(AnimBlendUpdateData* c, AnimBlendFrameData* fd) {
@@ -1479,6 +1480,7 @@ void FrameUpdateCallBackNonSkinned(AnimBlendFrameData* fd, void* data) {
 }
 
 #pragma endregion
+#endif // !NOTSA_NATIVE
 #endif
 
 template<bool IsCompressed, bool IsSkinned, bool ExtractVelocity, bool Extract3DVelocity>
@@ -1929,7 +1931,9 @@ void RpAnimBlendPlugin::InjectHooks() {
 
     RH_ScopedGlobalInstall(RpAnimBlendClumpUpdateAnimations, 0x4D34F0, {.Reversed = false}); // TODO: Hook this again... Unhooked for testing.
 #ifdef USE_COPY_PASTE_FRAME_UPDATE
+#ifndef NOTSA_NATIVE // `HS` only exists when hooks are compiled in
     const auto state = (DISABLE_CUSTOM_FRAME_UPDATE_FUNCTIONS) ? HS::RedirectToGTA : HS::RedirectToOurs;
+#endif
     // Most of these functions aren't hookable (without effort) they take args in <eax> and whatnot, they aren't regular `__cdecl` calls
     //RH_ScopedGlobalInstall(FrameUpdateCallBackWithVelocityExtractionCompressedSkinned, 0x4D1DB0);
     RH_ScopedGlobalInstall(FrameUpdateCallBackCompressedSkinned, 0x4D2E40, { .State = state });

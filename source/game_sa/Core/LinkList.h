@@ -16,7 +16,7 @@ public:
     CLink<T>  freeListTail{};
     CLink<T>* links{};
 
-    void* operator new(unsigned size) {
+    void* operator new(size_t size) {
         return plugin::CallAndReturn<void*, 0x821195, uint32>(size);
     }
 

@@ -9,7 +9,7 @@
 
 class NOTSA_EXPORT_VTABLE CEventSeenCop : public CEventAcquaintancePed {
 public:
-    using CEventAcquaintancePed::CEventAcquaintancePed;
+    explicit CEventSeenCop(CPed* ped, eTaskType taskType = TASK_NONE) : CEventAcquaintancePed(ped, taskType) {}
 
     eEventType GetEventType() const override { return EVENT_SEEN_COP; }
     int32 GetEventPriority() const override { return 21; }

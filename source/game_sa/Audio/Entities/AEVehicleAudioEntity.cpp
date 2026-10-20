@@ -10,6 +10,9 @@
 #include <DamageManager.h> // tComponent
 #include <reversiblebugfixes/Bugs.hpp>
 
+CAEVehicleAudioEntity::Config CAEVehicleAudioEntity::s_Config{};
+CAEVehicleAudioEntity::Config CAEVehicleAudioEntity::s_DefaultConfig{};
+
 constexpr size_t HORN_NUM_PATTERNS = 8;
 constexpr size_t HORN_PATTERN_SIZE = 44;
 constexpr notsa::mdarray<bool, HORN_NUM_PATTERNS, HORN_PATTERN_SIZE> HornPattern = {{ // 0x862B9C
@@ -1970,9 +1973,9 @@ bool CAEVehicleAudioEntity::GetHornState(tVehicleParams& vp) const noexcept {
     if (vp.Vehicle->GetStatus() == STATUS_PLAYER) {
         return true;
     }
-    vp.Vehicle->m_HornCounter = std::min(HORN_PATTERN_SIZE, vp.Vehicle->m_HornCounter);
-    if (vp.Vehicle->m_HornCounter == HORN_PATTERN_SIZE) {
-        vp.Vehicle->m_HornPattern = (int8)(CGeneral::GetRandomNumberInRange(0u, HORN_NUM_PATTERNS));
+    vp.Vehicle->m_HornCounter = std::min<int32>((int32)HORN_PATTERN_SIZE, vp.Vehicle->m_HornCounter);
+    if (vp.Vehicle->m_HornCounter == (int32)HORN_PATTERN_SIZE) {
+        vp.Vehicle->m_HornPattern = (int8)(CGeneral::GetRandomNumberInRange<size_t>(0, HORN_NUM_PATTERNS));
     }
     return HornPattern[vp.Vehicle->m_HornPattern][HORN_PATTERN_SIZE - vp.Vehicle->m_HornCounter];
 }

@@ -37,7 +37,12 @@ void CAEStreamingDecoder::InjectHooks() {
 }
 
 CAEStreamingDecoder* CAEStreamingDecoder::Constructor(CAEDataStream* dataStream) {
+#ifdef NOTSA_NATIVE
+    // Abstract type - the wrapper is only used by the Windows hook installation.
+    UNUSED(dataStream);
+#else
     this->CAEStreamingDecoder::CAEStreamingDecoder(dataStream);
+#endif
     return this;
 }
 

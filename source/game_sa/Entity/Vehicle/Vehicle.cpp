@@ -407,7 +407,7 @@ CVehicle::~CVehicle() {
     }
 }
 
-void* CVehicle::operator new(unsigned size) {
+void* CVehicle::operator new(size_t size) {
     return GetVehiclePool()->New();
 }
 
@@ -415,7 +415,7 @@ void CVehicle::operator delete(void* data) {
     GetVehiclePool()->Delete(static_cast<CVehicle*>(data));
 }
 
-void* CVehicle::operator new(unsigned size, int32 poolRef) {
+void* CVehicle::operator new(size_t size, int32 poolRef) {
     return GetVehiclePool()->NewAt(poolRef);
 }
 
@@ -1893,7 +1893,7 @@ float CVehicle::HeightAboveCeiling(float height, eFlightModel flightModel) {
 RwObject* SetVehicleAtomicVisibilityCB(RwObject* object, void* data) {
     assert(RwObjectGetType(object) == rpATOMIC);
     const auto atomic      = reinterpret_cast<RpAtomic*>(object);
-    const auto toSet = std::bit_cast<eAtomicComponentFlag>(data);
+    const auto toSet = static_cast<eAtomicComponentFlag>(reinterpret_cast<uintptr_t>(data));
     if (const auto current = CVisibilityPlugins::GetUserValue(atomic) & ATOMIC_MASK; current != ATOMIC_NONE) {
         RpAtomicSetFlags(atomic, current != toSet ? 0 : rpATOMICRENDER);
     }
@@ -2011,7 +2011,7 @@ void CVehicle::UpdatePassengerList() {
 CPed* CVehicle::PickRandomPassenger() {
     // TODO: Add a function for this to random.hpp
 
-    const auto rnd = CGeneral::GetRandomNumberInRange(0u, std::size(m_apPassengers));
+    const auto rnd = CGeneral::GetRandomNumberInRange<size_t>(0, std::size(m_apPassengers));
     for (auto i = 0u; i < std::size(m_apPassengers); i++) {
         if (const auto psgr = m_apPassengers[(rnd + i) % std::size(m_apPassengers)]) {
             return psgr;

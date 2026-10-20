@@ -2,6 +2,7 @@
 #pragma message("Compiling precompiled header.\n")
 
 #include <cstdio>
+#include <cfloat>
 #include <cmath>
 #include <cinttypes>
 #include <algorithm>
@@ -20,6 +21,7 @@
 #include <vector>
 #include <cstring>
 #include <tuple>
+#include <memory>
 #include <initializer_list>
 #include <format>
 #ifdef NOTSA_NATIVE
@@ -426,11 +428,6 @@
 #include "Entity/Vehicle/Trailer.h"
 #include "Entity/Vehicle/Train.h"
 #include "Entity/Vehicle/Vehicle.h"
-
-#include "Fx\eFxInfoType.h"
-#include "Fx\FxManager.h"
-#include "Fx\FxPrtMult.h"
-#include "Fx\Fx.h"
 
 #include "Fx/eFxInfoType.h"
 #include "Fx/FxManager.h"

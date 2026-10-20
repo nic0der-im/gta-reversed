@@ -70,7 +70,7 @@ public:
         friend bool operator==(const BaseIterator<Y>& lhs, const BaseIterator<Y>& rhs) { return lhs.m_Link == rhs.m_Link; }
         friend bool operator!=(const BaseIterator<Y>& lhs, const BaseIterator<Y>& rhs) { return !(lhs == rhs); }
     private:
-        auto DeRefLink() const { return CAnimBlendAssociation::FromLink(m_Link); }
+        CAnimBlendAssociation* DeRefLink() const; //!< Defined after `CAnimBlendAssociation` (needs it to be complete)
     private:
         CAnimBlendLink* m_Link;
     };
@@ -217,7 +217,7 @@ public:
     void SetSpeed(float speed) { m_Speed = speed; }
 
     std::span<CAnimBlendNode> GetNodes();
-    CAnimBlendNode*           GetNode(int32 nodeIndex) { return &GetNodes()[nodeIndex]; } // 0x4CEB60
+    CAnimBlendNode*           GetNode(int32 nodeIndex); // 0x4CEB60
     CAnimBlendNode*           GetNodesPtr() { return m_BlendNodes; }
 
     auto& GetLink() { return m_Link; }
@@ -233,3 +233,8 @@ private:
     CAnimBlendAssociation* Constructor3(CAnimBlendStaticAssociation& assoc) { this->CAnimBlendAssociation::CAnimBlendAssociation(assoc); return this; }
 };
 VALIDATE_SIZE(CAnimBlendAssociation, 0x3C);
+
+template<typename Y>
+CAnimBlendAssociation* CAnimBlendLink::BaseIterator<Y>::DeRefLink() const {
+    return CAnimBlendAssociation::FromLink(m_Link);
+}

@@ -28,7 +28,14 @@ constexpr std::array<const char[26], eCoronaType::CORONATYPE_COUNT> aCoronaSprit
     ""
 }; // 0x8D4A58
 
-constexpr CFlareDefinition HeadLightsFlareDef[27]{
+#ifdef NOTSA_NATIVE
+// The fixed-point literals below are outside `int16`'s range; MSVC wraps them in a constant
+// expression, clang refuses to. Same wrapped values, computed at runtime instead.
+const
+#else
+constexpr
+#endif
+CFlareDefinition HeadLightsFlareDef[27]{
     {  4.00f, 5.0f, { 60,  60,  60  }, 200, 4 },
     {  3.00f, 7.0f, { 40,  40,  40  }, 200, 4 },
     {  2.00f, 5.0f, { 40,  40,  40  }, 200, 4 },
@@ -58,7 +65,13 @@ constexpr CFlareDefinition HeadLightsFlareDef[27]{
     {  0.00f, 0.0f, { 255, 255, 255 }, 255, 0 }
 }; // 0x8D4D88
 
-constexpr CFlareDefinition SunFlareDef[27]{
+#ifdef NOTSA_NATIVE
+// See the comment on `HeadLightsFlareDef`
+const
+#else
+constexpr
+#endif
+CFlareDefinition SunFlareDef[27]{
     {  4.00f, 8.00f, { 36,  30,  24  }, 200, 4 },
     {  3.00f, 11.2f, { 24,  18,  15  }, 200, 4 },
     {  2.00f, 8.00f, { 24,  12,  12  }, 200, 4 },

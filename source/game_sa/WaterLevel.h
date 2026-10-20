@@ -148,9 +148,12 @@ class CWaterLevel {
     static inline    auto& m_BlocksToBeRenderedOutsideWorldY = StaticRef<std::array<int16, 70>>(0xC214D0);
 
     // NOTSA: Color of wake segment parts (So we can make rainbows)
-    static inline struct {
+    struct WakeSegmentColor {
         float r{ 1.f }, g{ 1.f }, b{ 1.f };
-    } WakeSegmentPartColors[4]{};
+
+        WakeSegmentColor() {} //!< User provided - clang can't evaluate the NSDMIs while the enclosing class is incomplete
+    };
+    static inline WakeSegmentColor WakeSegmentPartColors[4]{};
 
     //! Used to describe a block/combo's content
     struct PolyInfo {
@@ -198,6 +201,8 @@ class CWaterLevel {
 
         bool  active{};
         CRGBA color{};
+
+        DebugWaterColor() {} //!< User provided - clang can't evaluate the NSDMIs while the enclosing class is incomplete
     } DebugWaterColors[2];
 
     static inline bool DontRenderYSplitTri = false;

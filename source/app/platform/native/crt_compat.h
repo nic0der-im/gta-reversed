@@ -11,10 +11,12 @@
  */
 
 #include <cerrno>
+#include <cctype>
 #include <cstdarg>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <strings.h>
 #include <unistd.h>
 
@@ -30,6 +32,64 @@ using errno_t = int;
 //! `sscanf_s` is plain `sscanf` - MSVC's size arguments for `%s` are dropped with
 //! `SCANF_S_STR` (See `Base.h`)
 #define sscanf_s sscanf
+#define fscanf_s fscanf
+
+//! `fprintf_s` is plain `fprintf` (POSIX' version is already "safe" for our uses)
+inline int fprintf_s(FILE* file, const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    const auto result = std::vfprintf(file, fmt, args);
+    va_end(args);
+    return result;
+}
+
+//! `memcpy_s` copies at most `dstSize` bytes into `dst`, zeroing `dst` on error.
+inline errno_t memcpy_s(void* dst, size_t dstSize, const void* src, size_t count) {
+    if (!dst || (!src && count)) {
+        return EINVAL;
+    }
+    if (count > dstSize) {
+        std::memset(dst, 0, dstSize);
+        return ERANGE;
+    }
+    std::memcpy(dst, src, count);
+    return 0;
+}
+
+//! MSVC's in-place case conversion (`_strlwr_s`/`_strupr_s`).
+inline char* _strlwr_s(char* str) {
+    for (char* p = str; *p; p++) {
+        *p = static_cast<char>(std::tolower(static_cast<unsigned char>(*p)));
+    }
+    return str;
+}
+
+inline char* _strupr_s(char* str) {
+    for (char* p = str; *p; p++) {
+        *p = static_cast<char>(std::toupper(static_cast<unsigned char>(*p)));
+    }
+    return str;
+}
+
+//! MSVC's `_strdate_s` writes the current date as `MM/DD/YY`.
+inline errno_t _strdate_s(char* buf, size_t size) {
+    if (!buf || size < 9) {
+        return EINVAL;
+    }
+    const std::time_t now = std::time(nullptr);
+    const std::tm* tm = std::localtime(&now);
+    if (!tm) {
+        buf[0] = '\0';
+        return EINVAL;
+    }
+    std::strftime(buf, size, "%m/%d/%y", tm);
+    return 0;
+}
+
+template<size_t N>
+inline errno_t _strdate_s(char (&buf)[N]) {
+    return _strdate_s(buf, N);
+}
 
 //! `_chdir`/`_getcwd` are the POSIX ones with an underscore prefix
 #define _chdir  chdir
@@ -155,3 +215,17 @@ inline int sprintf_s(char* dst, size_t dstSize, const char* fmt, ...) {
 inline errno_t fopen_s(FILE** file, const char* path, const char* mode) {
     return notsa::native::crt::Open(file, path, mode);
 }
+
+//! MSVC's `strtok_s` is POSIX' `strtok_r` with the same argument order.
+inline char* strtok_s(char* str, const char* delimiters, char** context) {
+    return strtok_r(str, delimiters, context);
+}
+
+//! Case insensitive comparison of the first `count` bytes (MSVC's `_memicmp`).
+inline int _memicmp(const void* lhs, const void* rhs, size_t count) {
+    return strncasecmp(static_cast<const char*>(lhs), static_cast<const char*>(rhs), count);
+}
+
+//! The non-underscore spellings are valid MSVC CRT names too.
+#define stricmp  strcasecmp
+#define strnicmp strncasecmp

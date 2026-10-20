@@ -36,6 +36,8 @@ using notsa::native::IDirectSound3DListener;
 #endif
 
 //! Equivalent of the Windows SDK's `WAVEFORMATEX` (18 bytes).
+//! `mmreg.h` includes `pshpack1.h`, so the struct has alignment 1 (18, not 20 bytes).
+#pragma pack(push, 1)
 struct WAVEFORMATEX {
     uint16 wFormatTag;
     uint16 nChannels;
@@ -57,6 +59,7 @@ struct WAVEFORMAT {
     uint16 wBitsPerSample;
 };
 static_assert(sizeof(WAVEFORMAT) == 16);
+#pragma pack(pop)
 
 //! Equivalent of the Windows SDK's `DSCAPS` (96 bytes). Only used as storage by the silent backend.
 struct DSCAPS {

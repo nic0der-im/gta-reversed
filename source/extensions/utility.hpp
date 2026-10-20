@@ -22,6 +22,18 @@ namespace notsa {
 
 namespace rng = std::ranges;
 
+//! Stable 32-bit id for a pointer. On 32-bit builds this is the pointer's value (So it
+//! behaves exactly like the old `bit_cast<uint32>(ptr)`); on 64-bit the upper half is
+//! folded into the lower one with XOR.
+inline uint32 PtrToId(const void* p) {
+    const auto v = reinterpret_cast<uintptr_t>(p);
+    if constexpr (sizeof(uintptr_t) > sizeof(uint32)) {
+        return static_cast<uint32>(v) ^ static_cast<uint32>(v >> 32);
+    } else {
+        return static_cast<uint32>(v);
+    }
+}
+
 namespace detail {
 template<typename K, typename V, size_t N>
 struct Mapping {

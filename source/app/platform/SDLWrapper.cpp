@@ -33,10 +33,10 @@ void ProcessEvents() {
     ZoneScoped;
 
     // Now process events
-    const auto* const imCtx = ImGui::GetCurrentContext();
-    const auto* const imIO  = imCtx ? &imCtx->IO : nullptr;
     for (SDL_Event e; SDL_PollEvent(&e);) {
 #ifndef NOTSA_NATIVE
+        const auto* const imCtx = ImGui::GetCurrentContext();
+        const auto* const imIO  = imCtx ? &imCtx->IO : nullptr;
         if (imIO) {
             ImGui_ImplSDL3_ProcessEvent(&e);
         }
@@ -80,9 +80,16 @@ void ProcessEvents() {
         }
         }
 
+#ifndef NOTSA_NATIVE
         if (CPad::ProcessEvent(e, imIO && imIO->WantCaptureMouse, imIO && imIO->WantCaptureKeyboard)) {
             continue;
         }
+#else
+        // No ImGui-based tools menu in the native build, so no capture flags
+        if (CPad::ProcessEvent(e, false, false)) {
+            continue;
+        }
+#endif
 
         //NOTSA_LOG_DEBUG("SDL: Unprocessed event: {}", e.type);
     }

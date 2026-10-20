@@ -100,7 +100,7 @@ public:
         swap(a.m_Storage, b.m_Storage);
         swap(a.m_SlotState, b.m_SlotState);
         swap(a.m_Capacity, b.m_Capacity);
-        swap(a.m_FirstFreeSlot, b.m_FirstFreeSlot);
+        swap(a.m_LastFreeSlot, b.m_LastFreeSlot);
         swap(a.m_OwnsAllocations, b.m_OwnsAllocations);
         swap(a.m_DealWithNoMemory, b.m_DealWithNoMemory);
     }
@@ -269,7 +269,7 @@ public:
 
         const auto idx = GetIndex(obj);
         m_SlotState[idx].IsEmpty = true;
-        m_LastFreeSlot          = std::min(m_LastFreeSlot, idx);
+        m_LastFreeSlot          = std::min(m_LastFreeSlot, static_cast<int32>(idx));
         DoFill(DEADLAND_FILL, (StorageType*)(obj));
     }
 

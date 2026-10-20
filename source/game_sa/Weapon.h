@@ -13,7 +13,7 @@
 class FxSystem_c;
 class CColPoint;
 
-enum ePedPieceTypes;
+enum ePedPieceTypes : int; //!< Fixed base: clang requires it for opaque declarations
 
 enum eWeaponState : uint32 {
     WEAPONSTATE_READY = 0,

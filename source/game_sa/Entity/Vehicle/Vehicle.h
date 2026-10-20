@@ -97,7 +97,7 @@ enum eVehicleOverrideLightsState {
     FORCE_CAR_LIGHTS_ON = 2
 };
 
-enum eCarPiece {
+enum eCarPiece : int {
     CAR_PIECE_DEFAULT     = 0,
     CAR_PIECE_BONNET      = 1,
     CAR_PIECE_BOOT        = 2,
@@ -453,10 +453,10 @@ public:
     CVehicle(eVehicleCreatedBy createdBy);
     ~CVehicle() override;
 
-    static void* operator new(unsigned size);
+    static void* operator new(size_t size);
     static void operator delete(void* data);
 
-    static void* operator new(unsigned size, int32 poolRef);
+    static void* operator new(size_t size, int32 poolRef);
     static void operator delete(void* data, int32 poolRef);
 
     void SetModelIndex(uint32 index) override;

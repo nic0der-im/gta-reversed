@@ -153,7 +153,7 @@ void WaterCreatureManager_c::Update(float deltaTime) {
                     const auto& creatureInfo = GetCreatureInfo(id);
 
                     uint32 randNumToCreate = CGeneral::GetRandomNumberInRange(creatureInfo.m_nMinCreated, creatureInfo.m_nMaxCreated);
-                    uint32 numToCreate = std::min(randNumToCreate, m_waterCreaturePool.GetNumItems());
+                    uint32 numToCreate = std::min<uint32>(randNumToCreate, (uint32)m_waterCreaturePool.GetNumItems());
 
                     WaterCreature_c* leader = nullptr;
 

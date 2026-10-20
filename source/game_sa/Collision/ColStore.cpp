@@ -6,9 +6,10 @@
 auto& ms_pColPool = StaticRef<CColPool*>(0x965560);
 
 using ColTreeNode  = CQuadTreeNode<ColDef*>;
-auto& ms_pQuadTree = StaticRef<ColTreeNode*>(0x96555C);
+//! File-local (the same name is used for the IPL quad tree in `IplStore.cpp`)
+static auto& ms_pQuadTree = StaticRef<ColTreeNode*>(0x96555C);
 
-void* ColDef::operator new(unsigned size) {
+void* ColDef::operator new(size_t size) {
     return ms_pColPool->New();
 }
 

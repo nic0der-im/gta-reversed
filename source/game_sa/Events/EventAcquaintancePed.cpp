@@ -29,7 +29,12 @@ CEventAcquaintancePed::~CEventAcquaintancePed()
 // 0x4AF820
 CEventAcquaintancePed* CEventAcquaintancePed::Constructor(CPed* ped)
 {
+#ifdef NOTSA_NATIVE
+    // Abstract type - the wrapper is only used by the Windows hook installation.
+    UNUSED(ped);
+#else
     this->CEventAcquaintancePed::CEventAcquaintancePed(ped);
+#endif
     return this;
 }
 

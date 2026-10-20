@@ -93,6 +93,9 @@ void CGame::InjectHooks() {
 }
 
 // 0x72FD90
+#ifndef NOTSA_NATIVE
+//! Windows-only file-local copy (It's hooked below). Natively `app/app_camera.cpp` provides
+//! the same function, so compiling both would define `CameraDestroy` twice.
 static void CameraDestroy(RwCamera* rwCamera) {
     if (!rwCamera)
         return;
@@ -116,6 +119,7 @@ static void CameraDestroy(RwCamera* rwCamera) {
     DestroyIncludingParent(rwCamera->zBuffer);
     RwCameraDestroy(rwCamera);
 }
+#endif // !NOTSA_NATIVE
 
 // 0x5BA060
 void ValidateVersion() {

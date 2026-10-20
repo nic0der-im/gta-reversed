@@ -27,7 +27,11 @@ CTaskComplexFollowLeaderAnyMeans::CTaskComplexFollowLeaderAnyMeans(CPedGroup* pe
     m_ped{ped},
     m_pos{pos}
 {
+#ifdef NOTSA_NATIVE
+    OS_DebugBreak(); // Pirulax: Let me know if this is ever hit, cause this task is seemingly unused.
+#else
     DebugBreak(); // Pirulax: Let me know if this is ever hit, cause this task is seemingly unused.
+#endif
     CEntity::SafeRegisterRef(m_ped);
 }
 

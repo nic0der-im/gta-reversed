@@ -134,11 +134,17 @@ bool rsCommandLine(void* param) {
 
 // 0x619530
 bool rsPreInitCommandLine(RwChar* arg) {
+#ifdef NOTSA_NATIVE
+    // There's no DirectShow video backend natively, so `-vms` has no meaning.
+    UNUSED(arg);
+    return false;
+#else
     if (strcmp(arg, RWSTRING("-vms")) == 0) {
         DefaultVM = FALSE;
         return true;
     }
     return false;
+#endif
 }
 
 // 0x619560

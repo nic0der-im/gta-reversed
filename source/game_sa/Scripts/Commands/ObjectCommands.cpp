@@ -50,7 +50,7 @@ void RemoveObject(CRunningScript& S, CObject* object) {
     }
 
     if (S.m_UsesMissionCleanup) {
-        CTheScripts::MissionCleanUp.RemoveEntityFromList(std::bit_cast<int32>(object), MISSION_CLEANUP_ENTITY_TYPE_OBJECT);
+        CTheScripts::MissionCleanUp.RemoveEntityFromList(static_cast<int32>(notsa::PtrToId(object)), MISSION_CLEANUP_ENTITY_TYPE_OBJECT);
     }
 }
 

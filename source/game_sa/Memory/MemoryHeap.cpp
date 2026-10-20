@@ -5,7 +5,11 @@
 
 #define CORE_COMMON_SIZE_COUNT 64
 
+#ifndef NOTSA_NATIVE
+// The heap descriptors are 16 bytes on 32-bit; on 64-bit the pointers inside grow them.
+// The heap's own arithmetic uses `sizeof(HeapBlockDesc)`, so only the alignment assumption is lost.
 static_assert(sizeof(HeapBlockDesc) <= MEMORY_HEAP_ALIGN, "HeapBlockDesc is too big");
+#endif
 
 uint32 memMoved = 0;
 
