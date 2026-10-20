@@ -6,6 +6,8 @@
 #include "debug.hpp"
 
 #ifndef NOTSA_NATIVE // Native builds have no DbgHelp symbol engine (See `debug.hpp`)
+#include <windows.h>
+#include <DbgHelp.h>
 
 namespace notsa {
 namespace debug {
