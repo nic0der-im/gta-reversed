@@ -5,7 +5,6 @@
 #include <windows.h>
 #include <DbgHelp.h>
 #endif
-#include <spdlog/async.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <extensions/debug.hpp>
@@ -175,8 +174,6 @@ notsa::Logging::Logging() {
         Sleep(1);
     }
 #endif
-    spdlog::init_thread_pool(1 << 16, 4);
-
     // See https://github.com/gabime/spdlog/wiki/3.-Custom-formatting#pattern-flags
     spdlog::set_pattern("%^[%l][%H:%M:%S.%e][%s:%#]: %v%$");
     spdlog::enable_backtrace(128);
@@ -186,9 +183,15 @@ notsa::Logging::Logging() {
     m_sinks.emplace_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
 
     spdlog::set_default_logger(Create("default"));
+#ifdef NOTSA_NATIVE
     spdlog::flush_every(100ms);
-
-#ifndef NOTSA_NATIVE
+#else
+    // Wine deadlocks if DllMain spawns threads, so don't use flush_every (thread) there: flush each message synchronously instead.
+    if (GetProcAddress(GetModuleHandleA("ntdll.dll"), "wine_get_version")) {
+        spdlog::flush_on(spdlog::level::trace);
+    } else {
+        spdlog::flush_every(100ms);
+    }
     SetUnhandledExceptionFilter(WindowsExceptionHandler);
 #endif
 }
