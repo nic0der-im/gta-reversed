@@ -28,7 +28,11 @@ void CAEStreamThread::InjectHooks() {
 
 // 0x4F11E0
 CAEStreamThread::~CAEStreamThread() {
+#ifdef NOTSA_NATIVE
+    Stop();
+#else
     OS_MutexRelease(&m_criticalSection);
+#endif
 }
 
 // 0x4F1680
@@ -43,12 +47,15 @@ bool CAEStreamThread::Initialise(CAEStreamingChannel* streamingChannel) {
     m_nActiveTrackId   = streamingChannel->GetActiveTrackID();
     m_nTrackLengthMs   = streamingChannel->GetLength();
 
+#ifdef NOTSA_NATIVE
+    // Silent backend: no streaming thread is started (see `Start`).
+#else
     m_nHandle = CreateThread(nullptr, 0, &CAEStreamThread::MainLoop, this, CREATE_SUSPENDED, (LPDWORD)(&m_lpThreadId));
     assert(m_nHandle);
     SetThreadPriority(m_nHandle, THREAD_PRIORITY_NORMAL);
     InitializeCriticalSection(&m_criticalSection);
     //TODO: NOTSA: Replace CriticalSection usages in this class with platform independant mutex from oswrapper
-
+#endif
     m_pStreamingChannel = streamingChannel;
 
     m_pMp3TrackLoader = new CAEMP3TrackLoader();
@@ -60,7 +67,9 @@ bool CAEStreamThread::Initialise(CAEStreamingChannel* streamingChannel) {
 // 0x4F11F0
 void CAEStreamThread::Start() {
     m_bThreadActive = true;
+#ifndef NOTSA_NATIVE
     ResumeThread(m_nHandle);
+#endif
 }
 
 // 0x4F1590
@@ -73,17 +82,23 @@ void CAEStreamThread::Stop() {
 
 // 0x4F1200
 void CAEStreamThread::Pause() const {
+#ifndef NOTSA_NATIVE
     SuspendThread(m_nHandle);
+#endif
 }
 
 // 0x4F1210
 void CAEStreamThread::Resume() const {
+#ifndef NOTSA_NATIVE
     ResumeThread(m_nHandle);
+#endif
 }
 
 // 0x4F1220
 void CAEStreamThread::WaitForExit() const {
+#ifndef NOTSA_NATIVE
     WaitForSingleObject(m_nHandle, INFINITE);
+#endif
 }
 
 // 0x4F1530
@@ -111,7 +126,11 @@ int32 CAEStreamThread::GetPlayingTrackID() const {
 
 // 0x4F1230
 void CAEStreamThread::PlayTrack(uint32 iTrackId, int32 iNextTrackId, uint32 a3, int32 a4, bool bIsUserTrack, bool bNextIsUserTrack) {
+#ifdef NOTSA_NATIVE
+    std::lock_guard lock{ m_mutex };
+#else
     EnterCriticalSection(&m_criticalSection);
+#endif
 
     if (m_pStreamingChannel->GetPlayTime() == -2) {
         m_pStreamingChannel->Stop();
@@ -125,7 +144,9 @@ void CAEStreamThread::PlayTrack(uint32 iTrackId, int32 iNextTrackId, uint32 a3, 
     m_bNextIsUserTrack = bNextIsUserTrack;
     m_bNeedsService = 1;
 
+#ifndef NOTSA_NATIVE
     LeaveCriticalSection(&m_criticalSection);
+#endif
 }
 
 // 0x4F1580
@@ -134,12 +155,18 @@ void CAEStreamThread::StopTrack() {
 }
 
 // 0x4F15C0
+#ifdef NOTSA_NATIVE
+void CAEStreamThread::MainLoop(CAEStreamThread* self) {
+#else
 DWORD WINAPI CAEStreamThread::MainLoop(LPVOID data) {
+#endif
 #ifdef TRACY_ENABLE
     tracy::SetThreadName("AEStreamThread");
 #endif
 
+#ifndef NOTSA_NATIVE
     const auto self = reinterpret_cast<CAEStreamThread*>(data);
+#endif
 
     bool wasForeground = true;
     bool play = false;
@@ -172,7 +199,9 @@ DWORD WINAPI CAEStreamThread::MainLoop(LPVOID data) {
         OS_ThreadSleep(100);
     }
 
+#ifndef NOTSA_NATIVE
     return 0;
+#endif
 }
 
 // 0x4F1290
@@ -198,7 +227,11 @@ void CAEStreamThread::Service() {
         return;
     }
 
+#ifdef NOTSA_NATIVE
+    std::lock_guard lock{ m_mutex };
+#else
     EnterCriticalSection(&m_criticalSection);
+#endif
     m_bNeedsService = false;
 
     const auto LoadDecoder = [&](bool userTrackCheck, uint32 trackId) {
@@ -252,5 +285,7 @@ void CAEStreamThread::Service() {
         SaveStreamingState();
     }
 
+#ifndef NOTSA_NATIVE
     LeaveCriticalSection(&m_criticalSection);
+#endif
 }

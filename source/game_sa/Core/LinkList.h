@@ -17,11 +17,11 @@ public:
     CLink<T>* links{};
 
     void* operator new(unsigned size) {
-        return ((void*(__cdecl*)(uint32))0x821195)(size);
+        return plugin::CallAndReturn<void*, 0x821195, uint32>(size);
     }
 
     void operator delete(void* object) {
-        ((void(__cdecl*)(void*))0x8213AE)(object);
+        plugin::Call<0x8213AE, void*>(object);
     }
 
     void Init(int32 count) {

@@ -3,9 +3,9 @@
 #include "rtpng.h"
 
 RwImage *RtPNGImageWrite(RwImage *image, const RwChar *imageName) {
-    return ((RwImage *(__cdecl *)(RwImage *, const RwChar *)) 0x7CF600)(image, imageName);
+    return plugin::CallAndReturn<RwImage *, 0x7CF600, RwImage *, const RwChar *>(image, imageName);
 }
 
 RwImage *RtPNGImageRead(const RwChar *imageName) {
-    return ((RwImage *(__cdecl *)(const RwChar *)) 0x7CF9B0)(imageName);
+    return plugin::CallAndReturn<RwImage *, 0x7CF9B0, const RwChar *>(imageName);
 }

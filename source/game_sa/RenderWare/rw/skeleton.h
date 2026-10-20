@@ -24,7 +24,9 @@
  *
  */
 #include "rwcore.h"
+#ifndef NOTSA_NATIVE // The native build has no Win32 window (See `psGlobalType::sdlWindow`)
 #include <Windows.h>
+#endif
 
 /* Default arena size depending on platform. */
 

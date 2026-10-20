@@ -6,6 +6,10 @@
 */
 
 #include "StdInc.h"
+
+#ifdef NOTSA_NATIVE
+#include <chrono>
+#endif
 #include "platform.h"
 #include "LoadingScreen.h"
 
@@ -120,9 +124,13 @@ void CLoadingScreen::LoadSplashes(bool useSplashId, eLoadingLogo id) {
     CTxdStore::SetCurrentTxd(slot);
 
     // Initialize RNG -- affects the global state, can not be omitted.
+#ifdef NOTSA_NATIVE
+    srand(static_cast<unsigned>(std::chrono::steady_clock::now().time_since_epoch().count()));
+#else
     LARGE_INTEGER pc;
     QueryPerformanceCounter(&pc);
     srand(pc.u.LowPart);
+#endif
 
     // NOTSA
     // Generate random splash order

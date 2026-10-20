@@ -1,6 +1,10 @@
 #pragma once
 
+#ifdef NOTSA_NATIVE
+#include "app/platform/native/audio_types.h"
+#else
 #include "dsound.h"
+#endif
 
 enum eSmoothFadeEntryStatus : uint32 {
     STATE_IDLE = 0,
@@ -26,8 +30,13 @@ class CAESmoothFadeThread {
 public:
     static constexpr int32 NUM_SMOOTHFADE_ENTRIES = 64;
 
+#ifdef NOTSA_NATIVE
+    void*            m_threadHandle{};
+    uint32           m_dwThreadId{};
+#else
     HANDLE           m_threadHandle;
     DWORD            m_dwThreadId;
+#endif
     std::array<tSmoothFadeEntry, NUM_SMOOTHFADE_ENTRIES> m_aEntries;
     bool             m_bInitialized;
     bool             m_bActive;
@@ -54,7 +63,11 @@ public:
     bool RequestFade(IDirectSoundBuffer* buffer, float fTargetVolume, int16 fadeTime, bool bStopBufferAfterFade);
     void SetBufferVolume(IDirectSoundBuffer* buffer, float volume);
 
+#ifdef NOTSA_NATIVE
+    static void SmoothFadeProc(void* smoothFade);
+#else
     static DWORD WINAPI SmoothFadeProc(void* smoothFade);
+#endif
 };
 VALIDATE_SIZE(CAESmoothFadeThread, 0x81C);
 

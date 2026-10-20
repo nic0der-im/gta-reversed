@@ -153,6 +153,7 @@ void ApplyHookSettings() {
 }
 
 void DumpHooks() {
+#ifndef NOTSA_NATIVE // Native builds have no hook manager to dump
     if (const auto& path = CommandLine::s_DumpHooksPath; !path.empty()) {
         ReversibleHooks::RHManager::GetInstance().WriteHooksToFile(path);
     } else {
@@ -161,6 +162,7 @@ void DumpHooks() {
         exit(1);
 #endif
     }
+#endif
 }
 
 void PostHooksInjected() {

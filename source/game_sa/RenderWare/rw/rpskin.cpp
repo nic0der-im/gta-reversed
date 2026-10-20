@@ -3,93 +3,93 @@
 #include "rpskin.h"
 
 void RpSkinSetFreeListCreateParams(RwInt32 blockSize, RwInt32 numBlocksToPrealloc) {
-    ((void(__cdecl *)(RwInt32, RwInt32))0x7C67F0)(blockSize, numBlocksToPrealloc);
+    plugin::Call<0x7C67F0, RwInt32, RwInt32>(blockSize, numBlocksToPrealloc);
 }
 
 RwBool RpSkinPluginAttach() {
-    return ((RwBool(__cdecl *)(void))0x7C6820)();
+    return plugin::CallAndReturn<RwBool, 0x7C6820>();
 }
 
 RpAtomic* RpSkinAtomicSetHAnimHierarchy(RpAtomic* atomic, RpHAnimHierarchy* hierarchy) {
-    return ((RpAtomic*(__cdecl *)(RpAtomic*, RpHAnimHierarchy*))0x7C7520)(atomic, hierarchy);
+    return plugin::CallAndReturn<RpAtomic*, 0x7C7520, RpAtomic*, RpHAnimHierarchy*>(atomic, hierarchy);
 }
 
 RpHAnimHierarchy* RpSkinAtomicGetHAnimHierarchy(const RpAtomic* atomic) {
-    return ((RpHAnimHierarchy*(__cdecl *)(const RpAtomic*))0x7C7540)(atomic);
+    return plugin::CallAndReturn<RpHAnimHierarchy*, 0x7C7540, const RpAtomic*>(atomic);
 }
 
 RpGeometry* RpSkinGeometrySetSkin(RpGeometry* geometry, RpSkin* skin) {
-    return ((RpGeometry*(__cdecl *)(RpGeometry*, RpSkin*))0x7C7560)(geometry, skin);
+    return plugin::CallAndReturn<RpGeometry*, 0x7C7560, RpGeometry*, RpSkin*>(geometry, skin);
 }
 
 RpSkin* RpSkinGeometryGetSkin(RpGeometry* geometry) {
-    return ((RpSkin*(__cdecl *)(RpGeometry*))0x7C7550)(geometry);
+    return plugin::CallAndReturn<RpSkin*, 0x7C7550, RpGeometry*>(geometry);
 }
 
 RpSkin* RpSkinCreate(RwUInt32 numVertices, RwUInt32 numBones, RwMatrixWeights* vertexWeights, RwUInt32* vertexIndices, RwMatrix* inverseMatrices) {
-    return ((RpSkin*(__cdecl *)(RwUInt32, RwUInt32, RwMatrixWeights*, RwUInt32*, RwMatrix*))0x7C75B0)(numVertices, numBones, vertexWeights, vertexIndices, inverseMatrices);
+    return plugin::CallAndReturn<RpSkin*, 0x7C75B0, RwUInt32, RwUInt32, RwMatrixWeights*, RwUInt32*, RwMatrix*>(numVertices, numBones, vertexWeights, vertexIndices, inverseMatrices);
 }
 
 RpSkin* RpSkinDestroy(RpSkin* skin) {
-    return ((RpSkin*(__cdecl *)(RpSkin*))0x7C77A0)(skin);
+    return plugin::CallAndReturn<RpSkin*, 0x7C77A0, RpSkin*>(skin);
 }
 
 RwUInt32 RpSkinGetNumBones(RpSkin* skin) {
-    return ((RwUInt32(__cdecl *)(RpSkin*))0x7C77E0)(skin);
+    return plugin::CallAndReturn<RwUInt32, 0x7C77E0, RpSkin*>(skin);
 }
 
 /*const*/ RwMatrixWeights* RpSkinGetVertexBoneWeights(RpSkin* skin) {
-    return ((RwMatrixWeights*(__cdecl *)(RpSkin*))0x7C77F0)(skin);
+    return plugin::CallAndReturn<RwMatrixWeights*, 0x7C77F0, RpSkin*>(skin);
 }
 
 const RwUInt32* RpSkinGetVertexBoneIndices(RpSkin* skin) {
-    return ((const RwUInt32*(__cdecl *)(RpSkin*))0x7C7800)(skin);
+    return plugin::CallAndReturn<const RwUInt32*, 0x7C7800, RpSkin*>(skin);
 }
 
 const RwMatrix* RpSkinGetSkinToBoneMatrices(RpSkin* skin) {
-    return ((const RwMatrix*(__cdecl *)(RpSkin*))0x7C7810)(skin);
+    return plugin::CallAndReturn<const RwMatrix*, 0x7C7810, RpSkin*>(skin);
 }
 
 RwBool RpSkinIsSplit(RpSkin* skin) {
-    return ((RwBool(__cdecl *)(RpSkin*))0x7C7820)(skin);
+    return plugin::CallAndReturn<RwBool, 0x7C7820, RpSkin*>(skin);
 }
 
 RpAtomic* RpSkinAtomicSetType(RpAtomic* atomic, RpSkinType type) {
-    return ((RpAtomic*(__cdecl *)(RpAtomic*, RpSkinType))0x7C7830)(atomic, type);
+    return plugin::CallAndReturn<RpAtomic*, 0x7C7830, RpAtomic*, RpSkinType>(atomic, type);
 }
 
 RpSkinType RpSkinAtomicGetType(RpAtomic* atomic) {
-    return ((RpSkinType(__cdecl *)(RpAtomic*))0x7C7880)(atomic);
+    return plugin::CallAndReturn<RpSkinType, 0x7C7880, RpAtomic*>(atomic);
 }
 
 RpGeometry* _rpSkinInitialize(RpGeometry* geometry) {
-    return ((RpGeometry*(__cdecl *)(RpGeometry*))0x7C8740)(geometry);
+    return plugin::CallAndReturn<RpGeometry*, 0x7C8740, RpGeometry*>(geometry);
 }
 
 RpGeometry* _rpSkinDeinitialize(RpGeometry* geometry) {
-    return ((RpGeometry*(__cdecl *)(RpGeometry*))0x7C8820)(geometry);
+    return plugin::CallAndReturn<RpGeometry*, 0x7C8820, RpGeometry*>(geometry);
 }
 
 RwUInt8* _rpSkinGetMeshBoneRemapIndices(RpSkin* skin) {
-    return ((RwUInt8*(__cdecl *)(RpSkin*))0x7C8A40)(skin);
+    return plugin::CallAndReturn<RwUInt8*, 0x7C8A40, RpSkin*>(skin);
 }
 
 RwUInt8* _rpSkinGetMeshBoneRLECount(RpSkin* skin) {
-    return ((RwUInt8*(__cdecl *)(RpSkin*))0x7C8A50)(skin);
+    return plugin::CallAndReturn<RwUInt8*, 0x7C8A50, RpSkin*>(skin);
 }
 
 RwUInt8* _rpSkinGetMeshBoneRLE(RpSkin* skin) {
-    return ((RwUInt8*(__cdecl *)(RpSkin*))0x7C8A60)(skin);
+    return plugin::CallAndReturn<RwUInt8*, 0x7C8A60, RpSkin*>(skin);
 }
 
 RpSkin* _rpSkinSplitDataCreate(RpSkin* skin, RwUInt32 boneLimit, RwUInt32 numMatrices, RwUInt32 numMeshes, RwUInt32 numRLE) {
-    return ((RpSkin*(__cdecl *)(RpSkin*, RwUInt32, RwUInt32, RwUInt32, RwUInt32))0x7C8A70)(skin, boneLimit, numMatrices, numMeshes, numRLE);
+    return plugin::CallAndReturn<RpSkin*, 0x7C8A70, RpSkin*, RwUInt32, RwUInt32, RwUInt32, RwUInt32>(skin, boneLimit, numMatrices, numMeshes, numRLE);
 }
 
 RwBool _rpSkinSplitDataDestroy(RpSkin* skin) {
-    return ((RwBool(__cdecl *)(RpSkin*))0x7C8B10)(skin);
+    return plugin::CallAndReturn<RwBool, 0x7C8B10, RpSkin*>(skin);
 }
 
 RxNodeDefinition* RxNodeDefinitionGetD3D9SkinAtomicAllInOne() {
-    return ((RxNodeDefinition*(__cdecl *)(void))0x7CB2A0)();
+    return plugin::CallAndReturn<RxNodeDefinition*, 0x7CB2A0>();
 }

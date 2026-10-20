@@ -1,7 +1,9 @@
 #include "StdInc.h"
 
 #include "platform.h"
+#ifndef NOTSA_NATIVE // Video modes are a renderer concern (See B3)
 #include "VideoMode.h"
+#endif
 #include "app/app.h"
 
 void RsInjectHooks() {

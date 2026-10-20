@@ -5542,7 +5542,7 @@ CObject* CAutomobile::RemoveBonnetInPedCollision() {
 
 // 0x6AA290
 void CAutomobile::UpdateWheelMatrix(int32 nodeIndex, int32 flags) {
-    ((void(__thiscall*)(CAutomobile*, int32, int32))0x6AA290)(this, nodeIndex, flags); // TODO: Reverse
+    plugin::CallMethod<0x6AA290, CAutomobile*, int32, int32>(this, nodeIndex, flags); // TODO: Reverse
 }
 
 // 0x6ADEF0
@@ -6404,7 +6404,7 @@ void CAutomobile::FireTruckControl(CFire* fire) {
 
 // 0x44D520
 bool CAutomobile::HasCarStoppedBecauseOfLight() {
-    return ((bool(__thiscall*)(CAutomobile*))0x44D520)(this); // TODO: Reverse
+    return plugin::CallMethodAndReturn<bool, 0x44D520, CAutomobile*>(this); // TODO: Reverse
 }
 
 /*!

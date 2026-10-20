@@ -335,7 +335,7 @@ CBaseModelInfo* CModelInfo::GetModelInfo(const char* name, int32 minIndex, int32
 // 0x4C5A60
 CStore<C2dEffect, CModelInfo::NUM_2DFX_INFOS>* CModelInfo::Get2dEffectStore()
 {
-    return ((CStore<C2dEffect, NUM_2DFX_INFOS>* (__cdecl *)())0x4C5A60)();
+    return plugin::CallAndReturn<CStore<C2dEffect, NUM_2DFX_INFOS>*, 0x4C5A60>();
 }
 
 // 0x4C5A70

@@ -1,6 +1,10 @@
 #pragma once
 
+#ifdef NOTSA_NATIVE
+#include "app/platform/native/audio_types.h"
+#else
 #include "dsound.h"
+#endif
 
 #include "Vector.h"
 

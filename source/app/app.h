@@ -53,7 +53,13 @@ extern void Render2dStuff();
 extern void RenderDebugShit();
 extern void TheGame();
 extern bool WasForegroundAppLastFrame();
+#ifdef NOTSA_NATIVE
+//! The implementation lives in `WinMain.cpp` (Win32 only) - Natively there's a single
+//! window that always has focus.
+inline bool IsForegroundApp() { return true; }
+#else
 extern bool IsForegroundApp();
+#endif
 extern void CheckAniso();
 extern void RenderEffects();
 
@@ -125,4 +131,9 @@ float GetDayNightBalance();
 
 // 0x746870
 void MessageLoop();
+#ifdef NOTSA_NATIVE
+//! The implementation lives in `WinMain.cpp` (Win32 only) - There's no DVD drive natively
+inline char* getDvdGamePath() { return nullptr; }
+#else
 char* getDvdGamePath();
+#endif

@@ -7,12 +7,20 @@
 #include "StdInc.h"
 
 #include "Pad.h"
+#ifndef NOTSA_NATIVE
 #include "platform/win/WinInput.h"
+#endif
+#ifndef NOTSA_NATIVE
 #include "UIRenderer.h"
+#endif
 #include "ControllerConfigManager.h"
 #include "app.h"
+#ifndef NOTSA_NATIVE
 #include "platform/win/WinPlatform.h"
+#endif
+#ifndef NOTSA_NATIVE
 #include "platform/win/VideoMode.h"
+#endif
 
 #ifdef NOTSA_USE_SDL3
 #include <SDL3/SDL.h>
@@ -216,7 +224,11 @@ void CPad::Update(int32 pad) {
 void CPad::UpdatePads() {
     ZoneScoped;
 
+#ifndef NOTSA_NATIVE
     const auto& isDebugUIActive = notsa::ui::UIRenderer::GetInstance().IsActive();
+#else
+    constexpr bool isDebugUIActive = false; // No debug UI in native builds yet
+#endif
 
     if (!isDebugUIActive) {
         GetPad(0)->UpdateMouse();

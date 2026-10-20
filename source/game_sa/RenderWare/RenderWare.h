@@ -15,8 +15,12 @@
 #include "rw/rwplcore.h"
 #include <type_traits>
 
+#ifdef NOTSA_NATIVE
+#include "app/platform/native/Unreversed.h"
+#else
 #ifdef _DX9_SDK_INSTALLED
 #include "d3d9.h"
+#endif
 #endif
 
 static inline auto& RwInitialized = StaticRef<bool>(0xC920E8);
@@ -27,7 +31,12 @@ static inline auto& RpUVAnimDictSchema =  StaticRef<RtDictSchema>(0x8DED50);
 static inline auto& AmbientSaturated = StaticRef<RwRGBAReal>(0x8E2418);
 
 inline IDirect3DDevice9 *GetD3D9Device() {
+#ifdef NOTSA_NATIVE
+    // No D3D9 device in the native build - librw takes over in B3
+    return nullptr;
+#else
     return *reinterpret_cast<IDirect3DDevice9 **>(0xC97C28);
+#endif
 }
 
 #ifndef D3DMATRIX_DEFINED
@@ -42,7 +51,11 @@ inline _D3DMATRIX *GetD3DProjTransform() {
 }
 
 inline void _rpMaterialSetDefaultSurfaceProperties(RwSurfaceProperties *surfProps) {
+#ifndef NOTSA_NATIVE
     ((void(__cdecl *)(RwSurfaceProperties*))0x74D870)(surfProps);
+#else
+    notsa::native::UnreversedCall(0x74D870);
+#endif
 }
 
 #define RWRSTATE(a) (reinterpret_cast<void *>(a))

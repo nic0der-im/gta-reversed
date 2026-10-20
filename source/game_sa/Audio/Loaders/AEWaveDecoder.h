@@ -1,9 +1,14 @@
 #pragma once
 
+#ifdef NOTSA_NATIVE
+#include "nativeincl.h"
+#include "app/platform/native/audio_types.h" // WAVEFORMAT
+#else
 #define WIN32_LEAN_AND_MEAN
 
 #include "winincl.h"
 #include <mmreg.h> // WAVEFORMAT
+#endif
 
 #include "AEStreamingDecoder.h"
 

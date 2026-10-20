@@ -1954,7 +1954,7 @@ void CVehicle::ApplyBoatWaterResistance(tBoatHandlingData* boatHandling, float f
 
 // 0x6D2950
 RpMaterial* SetCompAlphaCB(RpMaterial* material, void* data) {
-    return ((RpMaterial * (__cdecl*)(RpMaterial*, void*))0x6D2950)(material, data);
+    return plugin::CallAndReturn<RpMaterial *, 0x6D2950, RpMaterial*, void*>(material, data);
 }
 
 // 0x6D2960
@@ -2275,17 +2275,17 @@ bool CVehicle::ClearVehicleUpgradeFlags(int32 arg0, int32 modId) {
 
 // 0x6D3300
 RpAtomic* RemoveUpgradeCB(RpAtomic* atomic, void* data) {
-    return ((RpAtomic * (__cdecl*)(RpAtomic*, void*))0x6D3300)(atomic, data);
+    return plugin::CallAndReturn<RpAtomic *, 0x6D3300, RpAtomic*, void*>(atomic, data);
 }
 
 // 0x6D3370
 RpAtomic* FindUpgradeCB(RpAtomic* atomic, void* data) {
-    return ((RpAtomic * (__cdecl*)(RpAtomic*, void*))0x6D3370)(atomic, data);
+    return plugin::CallAndReturn<RpAtomic *, 0x6D3370, RpAtomic*, void*>(atomic, data);
 }
 
 // 0x6D33B0
 RwObject* RemoveObjectsCB(RwObject* object, void* data) {
-    return ((RwObject * (__cdecl*)(RwObject*, void*))0x6D33B0)(object, data);
+    return plugin::CallAndReturn<RwObject *, 0x6D33B0, RwObject*, void*>(object, data);
 }
 
 // 0x6D3420
@@ -2312,7 +2312,7 @@ RwObject* CopyObjectsCB(RwObject* object, void* data) {
 
 // 0x6D3490
 RwObject* FindReplacementUpgradeCB(RwObject* object, void* data) {
-    return ((RwObject * (__cdecl*)(RwObject*, void*))0x6D3490)(object, data);
+    return plugin::CallAndReturn<RwObject *, 0x6D3490, RwObject*, void*>(object, data);
 }
 
 // 0x6D34D0
@@ -2444,7 +2444,7 @@ RpAtomic* CVehicle::CreateReplacementAtomic(CBaseModelInfo* mi, RwFrame* parentF
 void CVehicle::AddReplacementUpgrade(int32 modelIndex, int32 nodeId) {
     // NOTE: 0x6D38D5 - 0x6D390B => `SetupUpgradeAtomicRendering`
 
-    ((void(__thiscall*)(CVehicle*, int32, int32))0x6D3830)(this, modelIndex, nodeId);
+    plugin::CallMethod<0x6D3830, CVehicle*, int32, int32>(this, modelIndex, nodeId);
 }
 
 // 0x6D39E0
@@ -2755,7 +2755,7 @@ uint32 CVehicle::GetPlaneOrdnanceRateOfFire(eOrdnanceType type) {
 // 0x6D46E0
 CVector CVehicle::GetPlaneOrdnancePosition(eOrdnanceType type) {
     // CVector result;
-    // ((void(__thiscall*)(CVehicle*, CVector*, eOrdnanceType))0x6D46E0)(this, &result, type);
+    // plugin::CallMethod<0x6D46E0, CVehicle*, CVector*, eOrdnanceType>(this, &result, type);
     // return result;
 
     const auto pos = GetVehicleModelInfo()->GetModelDummyPosition(DUMMY_VEHICLE_GUN);
@@ -4649,7 +4649,7 @@ void CVehicle::DoBoatSplashes(float fWaterDamping) {
 
 // 0x6DD6F0
 void CVehicle::DoSunGlare() {
-    return ((void(__thiscall*)(CVehicle*))0x6DD6F0)(this);
+    return plugin::CallMethod<0x6DD6F0, CVehicle*>(this);
 
     /*
     * Below code should be good so far, I'm lazy to finish it, srry.
@@ -4808,7 +4808,7 @@ void CVehicle::AddExhaustParticles() {
 // always return false?
 // 0x6DE880
 bool CVehicle::AddSingleWheelParticles(tWheelState wheelState, uint32 arg1, float arg2, float arg3, CColPoint* arg4, CVector* arg5, float arg6, int32 arg7, uint32 surfaceType, bool* bloodState, uint32 arg10) {
-    return ((bool(__thiscall*)(CVehicle*, tWheelState, uint32, float, float, CColPoint*, CVector*, float, int32, uint32, bool*, uint32))0x6DE880)(this, wheelState, arg1, arg2, arg3, arg4, arg5, arg6, arg7, surfaceType, bloodState, arg10);
+    return plugin::CallMethodAndReturn<bool, 0x6DE880, CVehicle*, tWheelState, uint32, float, float, CColPoint*, CVector*, float, int32, uint32, bool*, uint32>(this, wheelState, arg1, arg2, arg3, arg4, arg5, arg6, arg7, surfaceType, bloodState, arg10);
 }
 
 // 0x6DF3D0
@@ -4842,12 +4842,12 @@ bool CVehicle::GetSpecialColModel() {
 
 // 0x6DF930
 void CVehicle::RemoveVehicleUpgrade(int32 upgradeModelIndex) {
-    ((void(__thiscall*)(CVehicle*, int32))0x6DF930)(this, upgradeModelIndex);
+    plugin::CallMethod<0x6DF930, CVehicle*, int32>(this, upgradeModelIndex);
 }
 
 // 0x6DFA20
 void CVehicle::AddUpgrade(int32 modelIndex, int32 upgradeIndex) {
-    ((void(__thiscall*)(CVehicle*, int32, int32))0x6DFA20)(this, modelIndex, upgradeIndex);
+    plugin::CallMethod<0x6DFA20, CVehicle*, int32, int32>(this, modelIndex, upgradeIndex);
 }
 
 // NOTSA
@@ -4917,17 +4917,17 @@ void CVehicle::UpdateTractorLink(bool applyFullVelocityAtHookUp, bool applyDistT
 
 // 0x6E0400
 CEntity* CVehicle::ScanAndMarkTargetForHeatSeekingMissile(CEntity* entity) {
-    return ((CEntity * (__thiscall*)(CVehicle*, CEntity*))0x6E0400)(this, entity);
+    return plugin::CallMethodAndReturn<CEntity *, 0x6E0400, CVehicle*, CEntity*>(this, entity);
 }
 
 // 0x6E05C0
 void CVehicle::FireHeatSeakingMissile(CEntity* targetEntity, eOrdnanceType type, bool arg2) {
-    ((void(__thiscall*)(CVehicle*, CEntity*, eOrdnanceType, bool))0x6E05C0)(this, targetEntity, type, arg2);
+    plugin::CallMethod<0x6E05C0, CVehicle*, CEntity*, eOrdnanceType, bool>(this, targetEntity, type, arg2);
 }
 
 // 0x6E07E0
 void CVehicle::PossiblyDropFreeFallBombForPlayer(eOrdnanceType type, bool arg1) {
-    ((void(__thiscall*)(CVehicle*, eOrdnanceType, bool))0x6E07E0)(this, type, arg1);
+    plugin::CallMethod<0x6E07E0, CVehicle*, eOrdnanceType, bool>(this, type, arg1);
 }
 
 // 0x6E0950
@@ -5435,7 +5435,7 @@ bool CVehicle::DoBladeCollision(CVector pos, CMatrix& matrix, int16 rotorType, f
 
 // 0x6E3290
 void CVehicle::AddVehicleUpgrade(int32 modelId) {
-    ((void(__thiscall*)(CVehicle*, int32))0x6E3290)(this, modelId);
+    plugin::CallMethod<0x6E3290, CVehicle*, int32>(this, modelId);
 }
 
 // 0x6E3400
@@ -5449,7 +5449,7 @@ void CVehicle::SetupUpgradesAfterLoad() {
 
 // 0x6E3440
 void CVehicle::GetPlaneWeaponFiringStatus(bool& status, eOrdnanceType& ordnanceType) {
-    ((void(__thiscall*)(CVehicle*, bool&, eOrdnanceType&))0x6E3440)(this, status, ordnanceType);
+    plugin::CallMethod<0x6E3440, CVehicle*, bool&, eOrdnanceType&>(this, status, ordnanceType);
 }
 
 bool IsValidModForVehicle(uint32 modelId, CVehicle* vehicle) {
@@ -5465,7 +5465,7 @@ bool IsVehiclePointerValid(CVehicle* vehicle) {
 
 // 0x6E3950
 void CVehicle::ProcessWeapons() {
-    ((void(__thiscall*)(CVehicle*))0x6E3950)(this);
+    plugin::CallMethod<0x6E3950, CVehicle*>(this);
 }
 
 // 0x73F400

@@ -1070,7 +1070,9 @@ bool CPathFind::ThisNodeHasToBeSwitchedOff(CPathNode* node) {
 // If not just lock both :D
 size_t CPathFind::CountNeighboursToBeSwitchedOff(const CPathNode& node) {
     const auto ret = (size_t)rng::count_if(GetNodeLinkedNodes(node), &CPathNode::HasToBeSwitchedOff);
+#ifndef NOTSA_NATIVE // `eax` is only preserved because of the x86 calling convention of the exe
     __asm mov eax, this // It has to be `this`
+#endif
     return ret;
 }
 

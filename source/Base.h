@@ -21,9 +21,18 @@ namespace fs = std::filesystem;
 
 #define PLUGIN_API
 
-#define VALIDATE_SIZE(struc, size) static_assert(sizeof(struc) == size, "Invalid structure size of " #struc)
-#define VALIDATE_OFFSET(struc, member, offset) \
-	static_assert(offsetof(struc, member) == offset, "The offset of " #member " in " #struc " is not " #offset "...")
+#ifdef NOTSA_NATIVE
+//! Native builds are 64 bit, so the original 32 bit layouts don't hold anymore.
+//! Use `VALIDATE_SIZE_ALWAYS` for structures that must keep their PC layout in every
+//! build (i.e. the ones written verbatim into save games).
+    #define VALIDATE_SIZE(struc, size)
+    #define VALIDATE_OFFSET(struc, member, offset)
+#else
+    #define VALIDATE_SIZE(struc, size) static_assert(sizeof(struc) == size, "Invalid structure size of " #struc)
+    #define VALIDATE_OFFSET(struc, member, offset) \
+        static_assert(offsetof(struc, member) == offset, "The offset of " #member " in " #struc " is not " #offset "...")
+#endif
+#define VALIDATE_SIZE_ALWAYS(struc, size) static_assert(sizeof(struc) == size, "Invalid structure size of " #struc)
 
 VALIDATE_SIZE(bool, 1);
 VALIDATE_SIZE(char, 1);
@@ -66,13 +75,22 @@ namespace notsa {
 fs::path GetSourceCodeBasePath();
 };
 
+//! Cause a debug break. Native builds have no `__debugbreak`, but clang has a builtin.
+#ifdef NOTSA_NATIVE
+    #define NOTSA_DEBUG_BREAK_INTRINSIC() __builtin_debugtrap()
+#else
+    #define NOTSA_DEBUG_BREAK_INTRINSIC() __debugbreak()
+#endif
+
 // Use the `NOTSA_UNREACHABLE` macro for unreachable code paths.
 // In debug mode it will do a DebugBreak() and print a message to the console,
 // while in release code it'll be optimized away (by using special compiler directives)
 // Also serves as a way to supress compiler warnings (for example, when you don't have need a `default` case in a `switch`)
 #if _DEBUG
 #include <format>
-#include <winuser.h>
+#ifndef NOTSA_NATIVE
+    #include <winuser.h>
+#endif
 
 namespace notsa {
 template<typename... Ts>
@@ -91,6 +109,12 @@ template<typename... Ts>
         l->flush();
     });
 
+#ifdef NOTSA_NATIVE
+    // Native platforms have no message box here (`Base.h` must stay free of SDL):
+    // The message is already in the log, so just break/abort.
+    NOTSA_DEBUG_BREAK_INTRINSIC();
+    std::abort();
+#else
     const auto result = MessageBox(
         NULL,
         mbMsg.c_str(),
@@ -100,7 +124,7 @@ template<typename... Ts>
 
     switch (result) {
     case IDRETRY: 
-        __debugbreak();  // Cause a debug break 
+        NOTSA_DEBUG_BREAK_INTRINSIC();  // Cause a debug break 
         [[fallthrough]]; // If it's "Continue"'d fall to exit anyways, because function is no-return
     case IDIGNORE:
     case IDABORT:
@@ -111,6 +135,7 @@ template<typename... Ts>
         // - If this function is ever called we're supposed to abort
         exit(3);
     }
+#endif
 }
 };
 // TODO/NOTE: We might need to manually suppress warnings here?
@@ -125,7 +150,7 @@ template<typename... Ts>
 #define NOTSA_UNREACHABLE_CASE(val) NOTSA_UNREACHABLE("Unreachable switch case with value: {}", val)
 
 #ifdef _DEBUG
-#define NOTSA_DEBUG_BREAK() __debugbreak()
+#define NOTSA_DEBUG_BREAK() NOTSA_DEBUG_BREAK_INTRINSIC()
 #else
 #define NOTSA_DEBUG_BREAK()
 #endif
@@ -134,7 +159,12 @@ template<typename... Ts>
 // the whole class must be exported. (Along which the vtable is exported as well)
 // See `ReversibleHooks::detail::GetClassVTableAddress`
 // This should be added to every and all class with a vtable
-#define NOTSA_EXPORT_VTABLE __declspec(dllexport)
+// (Only meaningful for the Windows `.asi` build - Native builds don't export anything)
+#ifdef NOTSA_NATIVE
+    #define NOTSA_EXPORT_VTABLE
+#else
+    #define NOTSA_EXPORT_VTABLE __declspec(dllexport)
+#endif
 
 // Macro for unused function arguments - Use it to avoid compiler warnings of unused arguments
 #define UNUSED(x) (void)(x);
@@ -144,15 +174,29 @@ template<typename... Ts>
 #define RET_IGNORED(x) (void)(x);
 
 //! Cause a debug break
-#define NOTSA_DEBUGBREAK() __debugbreak()
+#define NOTSA_DEBUGBREAK() NOTSA_DEBUG_BREAK_INTRINSIC()
 
 //! switch case fallthru
 #define NOTSA_SWCFALLTHRU [[fallthrough]]
 
 //! Macro for passing a string var to *scanf_s function.
-#define SCANF_S_STR(s) s, std::size(s)
+//! The secure variant takes the buffer's size right after the buffer - Plain `sscanf`
+//! (`crt_compat.h`) doesn't.
+#ifdef NOTSA_NATIVE
+    #define SCANF_S_STR(s) s
+#else
+    #define SCANF_S_STR(s) s, std::size(s)
+#endif
 
-#define NOTSA_FORCEINLINE __forceinline
+#ifdef NOTSA_NATIVE
+    #define NOTSA_FORCEINLINE inline __attribute__((always_inline))
+#else
+    #define NOTSA_FORCEINLINE __forceinline
+#endif
+
+#ifdef NOTSA_NATIVE
+#include "app/platform/native/ExeGlobals.h"
+#endif
 
 /*!
 * @brief Used for static variable references
@@ -170,6 +214,9 @@ T& StaticRef(uintptr addr) {
     // It can be easily fixed by putting the address in the template too, but we're not doing that yet because I guess it would impact compile times + it'd be a big diff in terms of code for now
     alignas(alignof(T)) static uint8 buf[sizeof(T)]{};
     return *reinterpret_cast<T*>(buf);
+#elif defined(NOTSA_NATIVE)
+    // The executable's globals are emulated by zero-initialized storage (mimicking `.bss` before the exe's CRT init)
+    return *static_cast<T*>(notsa::native::ExeGlobals::Get(addr, sizeof(T), alignof(T)));
 #else
     return *reinterpret_cast<T*>(addr);
 #endif
@@ -231,9 +278,9 @@ struct std::formatter<Enum> : std::formatter<std::string> {
 #endif
 
 #if (defined(__GNUC__) || defined(__GNUG__) || defined(__clang__))
-#define PLUGIN_SOURCE_FILE
+#define PLUGIN_SOURCE_FILE // No `init_seg` equivalent - See `init_priority` on the variables that need it
 #define PLUGIN_VARIABLE
-#define _NOINLINE_
+#define _NOINLINE_ __attribute__((noinline))
 #elif (defined(_MSC_VER))
 #define PLUGIN_SOURCE_FILE  __pragma(init_seg(lib))
 #define PLUGIN_VARIABLE

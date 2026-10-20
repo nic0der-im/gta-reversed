@@ -6,6 +6,7 @@
 
 // Helper
 inline void SetTextureStagesForLighting(bool isGeoTextured, RwTexture* tex) {
+#ifndef NOTSA_NATIVE
     if (isGeoTextured) {
         //assert(tex);
         RwD3D9SetTexture(tex, 0); 
@@ -22,10 +23,16 @@ inline void SetTextureStagesForLighting(bool isGeoTextured, RwTexture* tex) {
         RwD3D9SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG2);
         RwD3D9SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
     }
+#else
+    // D3D9 specific - replaced by the librw backend in B3
+    UNUSED(isGeoTextured);
+    UNUSED(tex);
+#endif
 }
 
 // 0x5DA640 (Render::Obj)
 inline void RxD3D9InstanceDataRender(RxD3D9ResEntryHeader* header, RxD3D9InstanceData* mesh) {
+#ifndef NOTSA_NATIVE
     RwD3D9SetPixelShader(NULL);
     RwD3D9SetVertexShader(mesh->vertexShader);
 
@@ -34,6 +41,11 @@ inline void RxD3D9InstanceDataRender(RxD3D9ResEntryHeader* header, RxD3D9Instanc
     } else {
         RwD3D9DrawPrimitive(header->primType, mesh->baseIndex, mesh->numPrimitives);
     }
+#else
+    // D3D9 specific - replaced by the librw backend in B3
+    UNUSED(header);
+    UNUSED(mesh);
+#endif
 }
 
 // 0x5DA6A0 (Render::Obj::Lighting)

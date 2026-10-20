@@ -2,8 +2,11 @@
 
 class CGamma {
 public:
+#ifndef NOTSA_NATIVE
+    // D3DGAMMARAMP isn't available in the native build (no D3D9) - librw takes over in B3
     inline static auto& ms_SavedGamma = StaticRef<D3DGAMMARAMP>(0xC8D4C8);
     inline static auto& ms_GammaTable = StaticRef<D3DGAMMARAMP>(0xC8DAC8);
+#endif
 
 public:
     bool  m_IsEnabled;

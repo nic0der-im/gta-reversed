@@ -1,6 +1,8 @@
 #include "StdInc.h"
 
+#ifndef NOTSA_NATIVE
 #include "UIRenderer.h"
+#endif
 
 #include "DecisionMakers/DecisionMakerTypesFileLoader.h"
 #include "WaterCannons.h"

@@ -22,7 +22,11 @@
 #include <tuple>
 #include <initializer_list>
 #include <format>
-#include "app/platform/win/winincl.h"
+#ifdef NOTSA_NATIVE
+    #include "app/platform/native/nativeincl.h"
+#else
+    #include "app/platform/win/winincl.h"
+#endif
 
 #include "Base.h"
 #include "config.h"
@@ -466,6 +470,6 @@
 
 #include "RenderBuffer.hpp"
 
-#ifdef EXTRA_DEBUG_FEATURES
+#if defined(EXTRA_DEBUG_FEATURES) && !defined(NOTSA_NATIVE) // The debug UI is not built natively in B1
 #include "toolsmenu/DebugModules/COcclusionDebugModule.h"
 #endif

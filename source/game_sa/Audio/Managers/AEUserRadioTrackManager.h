@@ -4,12 +4,16 @@
 
 #include <string>
 
+#ifdef NOTSA_NATIVE
+#include "nativeincl.h"
+#else
 #include "winincl.h"
 
 // MF
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
+#endif
 
 #include "AEStreamingDecoder.h"
 

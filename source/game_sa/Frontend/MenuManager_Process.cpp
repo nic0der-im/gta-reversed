@@ -10,7 +10,9 @@
 #include "Replay.h"
 #include "MenuSystem.h"
 #include "PostEffects.h"
+#ifndef NOTSA_NATIVE // Video modes are a renderer concern (See B3)
 #include "VideoMode.h"
+#endif
 #include "C_PcSave.h"
 #include "Radar.h"
 #include "ControllerConfigManager.h"
@@ -426,15 +428,21 @@ bool CMenuManager::ProcessPCMenuOptions(int8 pressedLR, bool acceptPressed) {
         if (acceptPressed) {
             if (m_nDisplayAntialiasing != m_nPrefsAntialiasing) {
                 m_nPrefsAntialiasing = m_nDisplayAntialiasing;
+#ifndef NOTSA_NATIVE // Video modes are a renderer concern - See B3
                 RwD3D9ChangeMultiSamplingLevels(m_nDisplayAntialiasing);
                 SetVideoMode(m_nPrefsVideoMode);
+#endif
                 SaveSettings();
             }
             return true;
         }
 
         // scroll loop
+#ifndef NOTSA_NATIVE
         auto maxLevels = std::min(4u, RwD3D9EngineGetMaxMultiSamplingLevels());
+#else
+        constexpr auto maxLevels = 1u; // No multisampling until B3
+#endif
         if (pressedLR > 0) {
             m_nDisplayAntialiasing = std::cmp_greater(m_nDisplayAntialiasing + 1, maxLevels) ? 1 : m_nDisplayAntialiasing + 1;
         } else {
@@ -487,6 +495,10 @@ bool CMenuManager::ProcessPCMenuOptions(int8 pressedLR, bool acceptPressed) {
         SwitchToNewScreen(SCREEN_GO_BACK);
         return true;
     case MENU_ACTION_RESOLUTION: {
+#ifdef NOTSA_NATIVE
+        // There's no renderer video mode list yet (See B3)
+        return true;
+#else
         if (acceptPressed) {
             if (m_nDisplayVideoMode != m_nPrefsVideoMode) {
                 m_nPrefsVideoMode = m_nDisplayVideoMode;
@@ -537,13 +549,16 @@ bool CMenuManager::ProcessPCMenuOptions(int8 pressedLR, bool acceptPressed) {
             }
         }
         return true;
+#endif
     }
     case MENU_ACTION_RESET_CFG: {
         const auto targetMenu = aScreens[m_nCurrentScreen].m_aItems[2].m_nTargetMenu;
         SetDefaultPreferences(targetMenu);
         if (targetMenu == SCREEN_DISPLAY_ADVANCED) {
+#ifndef NOTSA_NATIVE // Video modes are a renderer concern - See B3
             RwD3D9ChangeMultiSamplingLevels(m_nPrefsAntialiasing);
             SetVideoMode(m_nPrefsVideoMode);
+#endif
         } else if (targetMenu == SCREEN_CONTROLLER_SETUP) {
             ControlsManager.ReinitControls();
         }

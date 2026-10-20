@@ -2,9 +2,17 @@
 
 #include <atomic>
 
+#ifndef NOTSA_NATIVE
 #include <objidl.h>
+#endif
 
+#ifdef NOTSA_NATIVE
+//! The native build has no COM. Only the file-backed part of the stream is used by the
+//! decoders, so the `IStream` interface isn't implemented (nothing calls it).
+class CAEDataStream {
+#else
 class CAEDataStream : public IStream {
+#endif
 public:
     FILESTREAM m_pFileHandle;
     char*      m_pszFilename;
@@ -20,6 +28,7 @@ public:
     CAEDataStream(int32 trackId, char* filename, uint32 startPosition, uint32 length, bool encrypted);
     ~CAEDataStream();
 
+#ifndef NOTSA_NATIVE
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** objout) override;
     ULONG STDMETHODCALLTYPE   AddRef() override;
     ULONG STDMETHODCALLTYPE   Release() override;
@@ -34,6 +43,7 @@ public:
     HRESULT STDMETHODCALLTYPE UnlockRegion(ULARGE_INTEGER libOffset, ULARGE_INTEGER cb, DWORD dwLockType) override;
     HRESULT STDMETHODCALLTYPE Stat(STATSTG* statout, DWORD flags) override;
     HRESULT STDMETHODCALLTYPE Clone(IStream** target) override;
+#endif
 
     bool   Initialise();
     size_t FillBuffer(void* dest, size_t size);

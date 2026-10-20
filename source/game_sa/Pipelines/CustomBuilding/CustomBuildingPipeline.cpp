@@ -92,6 +92,7 @@ RpMaterial* CCustomBuildingPipeline::CustomPipeMaterialSetup(RpMaterial* materia
 
 // 0x5D77D0
 void CCustomBuildingPipeline::CustomPipeRenderCB(RwResEntry* resEntry, void* object, RwUInt8 type, RwUInt32 rxGeoFlags) {
+#ifndef NOTSA_NATIVE
     const auto atomic = (RpAtomic*)(object);
 
     _rwD3D9EnableClippingIfNeeded(atomic, type);
@@ -168,6 +169,13 @@ void CCustomBuildingPipeline::CustomPipeRenderCB(RwResEntry* resEntry, void* obj
     RwD3D9SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
     RwD3D9SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 1);
     RwD3D9SetTextureStageState(1, D3DTSS_TEXTURETRANSFORMFLAGS, NULL);
+#else
+    // D3D9 specific - replaced by the librw backend in B3
+    UNUSED(resEntry);
+    UNUSED(object);
+    UNUSED(type);
+    UNUSED(rxGeoFlags);
+#endif
 }
 
 // 0x5D77A0

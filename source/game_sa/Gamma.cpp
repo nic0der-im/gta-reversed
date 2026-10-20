@@ -17,6 +17,10 @@ void CGamma::Init() {
     m_TargetLevel  = -1000.0f;
     m_PrevLevel    = 1000.0f;
 
+#ifdef NOTSA_NATIVE
+    // No D3D9 device to query gamma support from until B3
+    m_IsEnabled = false;
+#else
     auto* caps = (D3DCAPS9*)const_cast<void*>(RwD3D9GetCaps());
     auto* dev  = (IDirect3DDevice9*)RwD3D9GetCurrentD3DDevice();
     D3DCAPS9 devCaps{}; // TODO: what's the difference with `caps`?
@@ -29,6 +33,7 @@ void CGamma::Init() {
     if (!(devCaps.Caps2 & D3DCAPS2_FULLSCREENGAMMA) && !(devCaps.Caps2 & D3DCAPS2_CANCALIBRATEGAMMA)) {
         m_IsEnabled = false; // No gamma support
     }
+#endif
 }
 
 // 0x747200
@@ -36,6 +41,11 @@ void CGamma::SetGamma(float gammaLevel, bool fade) {
     if (!m_IsEnabled) {
         return;
     }
+#ifdef NOTSA_NATIVE
+    // No D3D9 device until B3 (and `m_IsEnabled` is always false natively)
+    UNUSED(gammaLevel);
+    UNUSED(fade);
+#else
     const auto level = gammaLevel * 0.7f;
     if (level != m_TargetLevel) {
         m_TargetLevel = level;
@@ -60,4 +70,5 @@ void CGamma::SetGamma(float gammaLevel, bool fade) {
         ms_GammaTable.red[i] = ms_GammaTable.green[i] = ms_GammaTable.blue[i] = gamma;
     }
     dev->SetGammaRamp(0, D3DSGR_CALIBRATE, &ms_GammaTable);
+#endif
 }

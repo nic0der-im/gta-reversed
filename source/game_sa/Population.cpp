@@ -1580,7 +1580,7 @@ void CPopulation::ConvertToDummyObject(CObject* object) {
 bool CPopulation::AddToPopulation(float arg0, float arg1, float arg2, float arg3) {
     ZoneScoped;
 
-    return ((bool(__cdecl*)(float, float, float, float))0x614720)(arg0, arg1, arg2, arg3);
+    return plugin::CallAndReturn<bool, 0x614720, float, float, float, float>(arg0, arg1, arg2, arg3);
 }
 
 // 0x615970
@@ -1711,7 +1711,7 @@ void CPopulation::GeneratePedsAtStartOfGame() {
 
 // 0x615DC0
 void CPopulation::ManageObject(CObject* object, const CVector& posn) {
-    ((void(__cdecl*)(CObject*, const CVector&))0x615DC0)(object, posn);
+    plugin::Call<0x615DC0, CObject*, const CVector&>(object, posn);
 }
 
 // 0x616000

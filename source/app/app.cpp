@@ -11,7 +11,9 @@
 #include "Plugins/BreakablePlugin/BreakablePlugin.h"
 #include "Pipelines/CustomBuilding/CustomBuildingRenderer.h"
 
+#ifndef NOTSA_NATIVE
 #include "platform/win/WinPlatform.h"
+#endif
 
 #include "Enums/eGameState.h"
 #include "Base.h"

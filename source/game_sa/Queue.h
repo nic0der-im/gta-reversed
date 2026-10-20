@@ -15,6 +15,10 @@
 */
 #pragma once
 
+#ifdef NOTSA_NATIVE
+#include <cstdlib>
+#endif
+
 struct Queue {
     int32* m_queue;
     int32  m_head;
@@ -24,14 +28,22 @@ struct Queue {
 VALIDATE_SIZE(Queue, 0x10);
 
 inline Queue* InitialiseQueue(Queue* q, int32 size) {
+#ifdef NOTSA_NATIVE
+    q->m_queue = (int32*)std::calloc(size, sizeof(int32));
+#else
     q->m_queue = (int32*)LocalAlloc(LPTR, sizeof(int32) * size);
+#endif
     q->m_size = size;
     q->m_head = q->m_tail = 0;
     return q;
 }
 
 inline void FinalizeQueue(Queue* q) {
+#ifdef NOTSA_NATIVE
+    std::free(q->m_queue);
+#else
     LocalFree(q->m_queue);
+#endif
     q->m_size = q->m_head = q->m_tail = 0;
 }
 

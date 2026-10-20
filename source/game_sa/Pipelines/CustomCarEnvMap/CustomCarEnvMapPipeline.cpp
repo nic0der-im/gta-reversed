@@ -88,12 +88,17 @@ bool CCustomCarEnvMapPipeline::RegisterPlugin() {
 
 // 0x5D8980
 bool IsEnvironmentMappingSupported() {
+#ifdef NOTSA_NATIVE
+    // No D3D9 device caps to query until B3
+    return false;
+#else
     const auto caps = (D3DCAPS9*)RwD3D9GetCaps();
     return caps->MaxTextureBlendStages > 1 &&
         caps->MaxSimultaneousTextures >= 2 &&
         (caps->TextureOpCaps & D3DTEXOPCAPS_BLENDFACTORALPHA) &&
         (caps->TextureOpCaps & D3DTEXOPCAPS_MULTIPLYADD) &&
         (caps->ShadeCaps & D3DPSHADECAPS_SPECULARGOURAUDRGB);
+#endif
 }
 
 // 0x5DA020
@@ -102,7 +107,9 @@ bool CCustomCarEnvMapPipeline::CreatePipe() {
     if (!ObjPipeline || !IsEnvironmentMappingSupported()) {
         return false;
     }
+#ifndef NOTSA_NATIVE
     std::memset(&g_GameLight, 0, sizeof(g_GameLight));
+#endif
     m_gEnvMapPipeMatDataPool = new CustomEnvMapPipeMaterialDataPool(4096, "CustomEnvMapPipeMatDataPool");
     m_gEnvMapPipeAtmDataPool = new CustomEnvMapPipeAtomicDataPool(1024, "CustomEnvMapPipeAtmDataPool");
     m_gSpecMapPipeMatDataPool = new CustomSpecMapPipeMaterialDataPool(4096, "CustomSpecMapPipeMaterialDataPool");
@@ -122,6 +129,7 @@ void CCustomCarEnvMapPipeline::DestroyPipe() {
 
 // 0x5D8870
 void CCustomCarEnvMapPipeline::PreRenderUpdate() {
+#ifndef NOTSA_NATIVE
     std::memset(&g_GameLight, 0, sizeof(g_GameLight));
     const auto dir = CVector{ *RwMatrixGetAt(RwFrameGetMatrix(RpLightGetFrame(pDirect))) }.Normalized();
     g_GameLight.Direction    = D3DVECTOR{ dir.x, dir.y, dir.z };
@@ -134,6 +142,8 @@ void CCustomCarEnvMapPipeline::PreRenderUpdate() {
     g_GameLight.Attenuation0 = 1.0f;
     g_GameLight.Attenuation1 = 0.0f;
     g_GameLight.Attenuation2 = 0.0f;
+#endif
+    // D3D9 specific - replaced by the librw backend in B3
 }
 
 // 0x5DA560
@@ -204,6 +214,7 @@ RwBool CCustomCarEnvMapPipeline::CustomPipeInstanceCB(void* object, RwResEntry* 
 
 // 0x5D9900
 void CCustomCarEnvMapPipeline::CustomPipeRenderCB(RwResEntry* resEntry, void* object, RwUInt8 type, RwUInt32 rxGeoFlags) {
+#ifndef NOTSA_NATIVE
     assert(type == rpATOMIC);
 
     const auto specIntensity = gSpecIntensity * 1.85f;
@@ -521,6 +532,13 @@ void CCustomCarEnvMapPipeline::CustomPipeRenderCB(RwResEntry* resEntry, void* ob
     RwD3D9SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
     RwD3D9SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_PASSTHRU | 1);
     RwD3D9SetTextureStageState(1, D3DTSS_TEXTURETRANSFORMFLAGS, NULL);
+#else
+    // D3D9 specific - replaced by the librw backend in B3
+    UNUSED(resEntry);
+    UNUSED(object);
+    UNUSED(type);
+    UNUSED(rxGeoFlags);
+#endif
 }
 
 // According to the docs, `specular` isn't used, so I guess that they've just reused it for the flags

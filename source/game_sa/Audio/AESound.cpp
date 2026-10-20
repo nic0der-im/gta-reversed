@@ -256,12 +256,17 @@ void CAESound::UpdateParameters(int16 curPlayPos) {
             // Reproduction (found with full-page-heap + minidumps): AV at
             // `m_PhysicalEntity->GetPosition()` with the stack
             // CAESoundManager::Service <- CAudioEngine::Service <- Idle.
+#ifdef NOTSA_NATIVE
+            // No SEH on native platforms - There's no way to catch the AV here yet
+            SetPosition(m_PhysicalEntity->GetPosition());
+#else
             __try {
                 SetPosition(m_PhysicalEntity->GetPosition());
             } __except (EXCEPTION_EXECUTE_HANDLER) {
                 // Release the stale reference and gracefully stop the sound
                 StopSound();
             }
+#endif
         } else {
             m_HasRequestedStopped = true;
         }

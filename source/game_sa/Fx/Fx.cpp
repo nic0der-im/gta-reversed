@@ -157,7 +157,7 @@ void Fx_c::Reset() {
 
 // 0x4A11E0
 void Fx_c::CreateEntityFx(CEntity* entity, const char* fxName, const CVector& pos, RwMatrix* transform) {
-    // ((void(__thiscall*)(Fx_c*, CEntity*, char*, RwV3d*, RwMatrix*))0x4A11E0)(this, entity, fxName, pos transform);
+    // plugin::CallMethod<0x4A11E0, Fx_c*, CEntity*, char*, RwV3d*, RwMatrix*>(this, entity, fxName, pos transform);
 
     auto* particle = g_fxMan.CreateFxSystem(fxName, pos, transform, true);
     if (particle) {
@@ -171,7 +171,7 @@ void Fx_c::CreateEntityFx(CEntity* entity, const char* fxName, const CVector& po
 
 // 0x4A1280
 void Fx_c::DestroyEntityFx(CEntity* entity) {
-    // ((void(__thiscall*)(Fx_c*, CEntity*))0x4A1280)(this, entity);
+    // plugin::CallMethod<0x4A1280, Fx_c*, CEntity*>(this, entity);
 
     for (auto it = m_FxEntities.GetHead(); it; it = m_FxEntities.GetNext(it)) {
         if (it->m_Entity == entity) {
@@ -198,7 +198,7 @@ void Fx_c::Render(RwCamera* camera, bool heatHaze) {
 
 // 0x49E950
 void Fx_c::CreateMatFromVec(RwMatrix* out, const CVector* origin, const CVector* direction) {
-    ((void(__thiscall*)(Fx_c*, RwMatrix*, const CVector*, const CVector*))0x49E950)(this, out, origin, direction);
+    plugin::CallMethod<0x49E950, Fx_c*, RwMatrix*, const CVector*, const CVector*>(this, out, origin, direction);
     return;
 
     /*
@@ -230,87 +230,87 @@ FxQuality_e Fx_c::GetFxQuality() const {
 
 // 0x49EB00
 void Fx_c::AddBlood(const CVector& pos, const CVector& direction, int32 amount, float lightMult) {
-    ((void(__thiscall*)(Fx_c*, const CVector&, const CVector&, int32, float))0x49EB00)(this, pos, direction, amount, lightMult);
+    plugin::CallMethod<0x49EB00, Fx_c*, const CVector&, const CVector&, int32, float>(this, pos, direction, amount, lightMult);
 }
 
 // 0x49EE10
 void Fx_c::AddWood(const CVector& pos, const CVector& direction, int32 amount, float lightMult) {
-    ((void(__thiscall*)(Fx_c*, const CVector&, const CVector&, int32, float))0x49EE10)(this, pos, direction, amount, lightMult);
+    plugin::CallMethod<0x49EE10, Fx_c*, const CVector&, const CVector&, int32, float>(this, pos, direction, amount, lightMult);
 }
 
 // 0x49F040
 void Fx_c::AddSparks(const CVector& origin, const CVector& direction, float force, int32 amount, CVector across, eSparkType sparksType, float spread, float life) {
-    ((void(__thiscall*)(Fx_c*, const CVector&, const CVector&, float, int32, CVector, uint8, float, float))0x49F040)(this, origin, direction, force, amount, across, sparksType, spread, life);
+    plugin::CallMethod<0x49F040, Fx_c*, const CVector&, const CVector&, float, int32, CVector, uint8, float, float>(this, origin, direction, force, amount, across, sparksType, spread, life);
 }
 
 // 0x49F300
 void Fx_c::AddTyreBurst(const CVector& posn, const CVector& velocity) {
-    ((void(__thiscall*)(Fx_c*, const CVector&, const CVector&))0x49F300)(this, posn, velocity);
+    plugin::CallMethod<0x49F300, Fx_c*, const CVector&, const CVector&>(this, posn, velocity);
 }
 
 // 0x49F3D0
 void Fx_c::AddBulletImpact(const CVector& posn, const CVector& direction, int32 bulletFxType, int32 amount, float arg4) {
-    ((void(__thiscall*)(Fx_c*, const CVector&, const CVector&, int32, int32, float))0x49F3D0)(this, posn, direction, bulletFxType, amount, arg4);
+    plugin::CallMethod<0x49F3D0, Fx_c*, const CVector&, const CVector&, int32, int32, float>(this, posn, direction, bulletFxType, amount, arg4);
 }
 
 // 0x49F670
 void Fx_c::AddPunchImpact(const CVector& pos, const CVector& velocity, int32 num) {
-    ((void(__thiscall*)(Fx_c*, const CVector&, const CVector&, int32))0x49F670)(this, pos, velocity, num);
+    plugin::CallMethod<0x49F670, Fx_c*, const CVector&, const CVector&, int32>(this, pos, velocity, num);
 }
 
 // 0x49F750
 void Fx_c::AddDebris(const CVector& pos, const RwRGBA& color, float scale, int32 amount) {
-    ((void(__thiscall*)(Fx_c*, const CVector&, const RwRGBA&, float, int32))0x49F750)(this, pos, color, scale, amount);
+    plugin::CallMethod<0x49F750, Fx_c*, const CVector&, const RwRGBA&, float, int32>(this, pos, color, scale, amount);
 }
 
 // 0x49F970
 void Fx_c::AddGlass(const CVector& pos, const RwRGBA& color, float scale, int32 amount) {
-    ((void(__thiscall*)(Fx_c*, const CVector&, const RwRGBA&, float, int32))0x49F970)(this, pos, color, scale, amount);
+    plugin::CallMethod<0x49F970, Fx_c*, const CVector&, const RwRGBA&, float, int32>(this, pos, color, scale, amount);
 }
 
 // 0x49FB30
 void Fx_c::AddWheelSpray(CVehicle* vehicle, CVector pos, bool bWheelsSpinning, bool bInWater, float lightMult) {
-    ((void(__thiscall*)(Fx_c*, CVehicle*, CVector, uint8, uint8, float))0x49FB30)(this, vehicle, pos, bWheelsSpinning, bInWater, lightMult);
+    plugin::CallMethod<0x49FB30, Fx_c*, CVehicle*, CVector, uint8, uint8, float>(this, vehicle, pos, bWheelsSpinning, bInWater, lightMult);
 }
 
 // 0x49FF20
 void Fx_c::AddWheelGrass(CVehicle* vehicle, CVector pos, bool bWheelsSpinning, float lightMult) {
-    ((void(__thiscall*)(Fx_c*, CVehicle*, CVector, uint8, float))0x49FF20)(this, vehicle, pos, bWheelsSpinning, lightMult);
+    plugin::CallMethod<0x49FF20, Fx_c*, CVehicle*, CVector, uint8, float>(this, vehicle, pos, bWheelsSpinning, lightMult);
 }
 
 // 0x4A0170
 void Fx_c::AddWheelGravel(CVehicle* vehicle, CVector pos, bool bWheelsSpinning, float lightMult) {
-    ((void(__thiscall*)(Fx_c*, CVehicle*, CVector, uint8, float))0x4A0170)(this, vehicle, pos, bWheelsSpinning, lightMult);
+    plugin::CallMethod<0x4A0170, Fx_c*, CVehicle*, CVector, uint8, float>(this, vehicle, pos, bWheelsSpinning, lightMult);
 }
 
 // 0x4A03C0
 void Fx_c::AddWheelMud(CVehicle* vehicle, CVector pos, bool bWheelsSpinning, float lightMult) {
-    ((void(__thiscall*)(Fx_c*, CVehicle*, CVector, uint8, float))0x4A03C0)(this, vehicle, pos, bWheelsSpinning, lightMult);
+    plugin::CallMethod<0x4A03C0, Fx_c*, CVehicle*, CVector, uint8, float>(this, vehicle, pos, bWheelsSpinning, lightMult);
 }
 
 // 0x4A0610
 void Fx_c::AddWheelSand(CVehicle* vehicle, CVector pos, bool bWheelsSpinning, float lightMult) {
-    ((void(__thiscall*)(Fx_c*, CVehicle*, CVector, uint8, float))0x4A0610)(this, vehicle, pos, bWheelsSpinning, lightMult);
+    plugin::CallMethod<0x4A0610, Fx_c*, CVehicle*, CVector, uint8, float>(this, vehicle, pos, bWheelsSpinning, lightMult);
 }
 
 // 0x4A09C0
 void Fx_c::AddWheelDust(CVehicle* vehicle, CVector pos, bool bWheelsSpinning, float lightMult) {
-    ((void(__thiscall*)(Fx_c*, CVehicle*, CVector, uint8, float))0x4A09C0)(this, vehicle, pos, bWheelsSpinning, lightMult);
+    plugin::CallMethod<0x4A09C0, Fx_c*, CVehicle*, CVector, uint8, float>(this, vehicle, pos, bWheelsSpinning, lightMult);
 }
 
 // 0x4A0D70
 void Fx_c::TriggerWaterHydrant(const CVector& pos) {
-    ((void(__thiscall*)(Fx_c*, const CVector&))0x4A0D70)(this, pos);
+    plugin::CallMethod<0x4A0D70, Fx_c*, const CVector&>(this, pos);
 }
 
 // 0x4A0DE0
 void Fx_c::TriggerGunshot(CEntity* entity, const CVector& origin, const CVector& target, bool doGunflash) {
-    ((void(__thiscall*)(Fx_c*, CEntity*, const CVector&, const CVector&, bool))0x4A0DE0)(this, entity, origin, target, doGunflash);
+    plugin::CallMethod<0x4A0DE0, Fx_c*, CEntity*, const CVector&, const CVector&, bool>(this, entity, origin, target, doGunflash);
 }
 
 // 0x4A0FA0
 void Fx_c::TriggerTankFire(const CVector& pos, const CVector& dir) {
-    ((void(__thiscall*)(Fx_c*, const CVector&, const CVector&))0x4A0FA0)(this, pos, dir);
+    plugin::CallMethod<0x4A0FA0, Fx_c*, const CVector&, const CVector&>(this, pos, dir);
 }
 
 // 0x4A1070

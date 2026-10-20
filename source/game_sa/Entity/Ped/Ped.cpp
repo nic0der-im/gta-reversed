@@ -1360,7 +1360,7 @@ void CPed::SetRadioStation()
 */
 void CPed::PositionAttachedPed()
 {
-    ((void(__thiscall *)(CPed*))0x5DFDF0)(this);
+    plugin::CallMethod<0x5DFDF0, CPed*>(this);
 }
 
 /*!
@@ -1571,7 +1571,7 @@ bool CPed::CanSeeEntity(CEntity* entity, float limitAngle) {
 */
 bool CPed::PositionPedOutOfCollision(int32 exitDoor, CVehicle* vehicle, bool findClosestNode)
 {
-    return ((bool(__thiscall *)(CPed*, int32, CVehicle*, bool))0x5E0820)(this, exitDoor, vehicle, findClosestNode);
+    return plugin::CallMethodAndReturn<bool, 0x5E0820, CPed*, int32, CVehicle*, bool>(this, exitDoor, vehicle, findClosestNode);
 }
 
 /*!
@@ -1672,7 +1672,7 @@ bool CPed::OurPedCanSeeThisEntity(CEntity* entity, bool isSpotted) {
 */
 void CPed::SortPeds(CPed** pedList, int32 arg1, int32 arg2)
 {
-    ((void(__thiscall *)(CPed*, CPed**, int32, int32))0x5E17E0)(this, pedList, arg1, arg2);
+    plugin::CallMethod<0x5E17E0, CPed*, CPed**, int32, int32>(this, pedList, arg1, arg2);
 }
 
 /*!
@@ -1702,7 +1702,7 @@ float CPed::WorkOutHeadingForMovingFirstPerson(float heading) {
 */
 void CPed::UpdatePosition()
 {
-    ((void(__thiscall *)(CPed*))0x5E1B10)(this);
+    plugin::CallMethod<0x5E1B10, CPed*>(this);
 }
 
 /*!
@@ -2191,7 +2191,7 @@ void CPed::SetCharCreatedBy(ePedCreatedBy createdBy) {
  * @addr 0x5E4C50
  */
 void CPed::CalculateNewVelocity() {
-    ((void(__thiscall*)(CPed*))0x5E4C50)(this);
+    plugin::CallMethod<0x5E4C50, CPed*>(this);
 }
 
 /*!
@@ -2221,7 +2221,7 @@ void CPed::ClearAll() {
  * @addr 0x5E5380
  */
 void CPed::DoFootLanded(bool leftFoot, uint8 arg1) {
-    ((void(__thiscall*)(CPed*, bool, uint8))0x5E5380)(this, leftFoot, arg1);
+    plugin::CallMethod<0x5E5380, CPed*, bool, uint8>(this, leftFoot, arg1);
 }
 
 /*!
@@ -3570,7 +3570,7 @@ bool CPed::IsPedHeadAbovePos(float zPos) {
 */
 void CPed::KillPedWithCar(CVehicle* car, float fDamageIntensity, bool bPlayDeadAnimation)
 {
-    ((void(__thiscall *)(CPed*, CVehicle*, float, bool))0x5F0360)(this, car, fDamageIntensity, bPlayDeadAnimation);
+    plugin::CallMethod<0x5F0360, CPed*, CVehicle*, float, bool>(this, car, fDamageIntensity, bPlayDeadAnimation);
 }
 
 /*!
@@ -3579,7 +3579,7 @@ void CPed::KillPedWithCar(CVehicle* car, float fDamageIntensity, bool bPlayDeadA
 template<typename PtrListType>
 void CPed::MakeTyresMuddySectorList(PtrListType& ptrList)
 {
-    ((void(__thiscall *)(CPed*, PtrListType&))0x6AE0D0)(this, ptrList);
+    plugin::CallMethod<0x6AE0D0, CPed*, PtrListType&>(this, ptrList);
 }
 
 /*!

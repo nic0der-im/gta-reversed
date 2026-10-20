@@ -3597,7 +3597,12 @@ void CCollision::Tests(int32 i) {
     // PointInTriangle
     {
         const CVector tri[3]{ RandomVector(), RandomVector(), RandomVector() };
+#ifdef NOTSA_NATIVE
+        // `__stdcall` has no `plugin::Call*` equivalent
+        const auto Org = [](CVector const&, CVector const*) -> bool { notsa::native::UnreversedCall(0x412700); };
+#else
         const auto Org = (bool(__stdcall*)(CVector const&, CVector const*))0x412700;
+#endif
         Test("PointInTriangle", Org, PointInTriangle, std::equal_to{}, RandomVector(), tri);
     }
 

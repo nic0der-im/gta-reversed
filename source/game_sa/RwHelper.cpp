@@ -88,7 +88,7 @@ RpAtomic* GetFirstAtomic(RpClump* clump) {
 
 // 0x734850
 RpAtomic* Get2DEffectAtomicCallback(RpAtomic* atomic, void* data) {
-    return ((RpAtomic * (__cdecl*)(RpAtomic*, void*))0x734850)(atomic, data);
+    return plugin::CallAndReturn<RpAtomic *, 0x734850, RpAtomic*, void*>(atomic, data);
 }
 
 // 0x734880
@@ -127,7 +127,7 @@ RwFrame* GetFirstChild(RwFrame* frame) {
 // 0x734AB0
 RpHAnimHierarchy* GetAnimHierarchyFromFrame(RwFrame* frame) {
     assert(frame);
-    return ((RpHAnimHierarchy * (__cdecl*)(RwFrame*))0x734AB0)(frame);
+    return plugin::CallAndReturn<RpHAnimHierarchy *, 0x734AB0, RwFrame*>(frame);
 }
 
 // 0x734B10
@@ -252,32 +252,32 @@ bool SetFilterModeOnClumpsTextures(RpClump* clump, RwTextureFilterMode filtering
 
 // 0x734DE0
 bool RpGeometryReplaceOldMaterialWithNewMaterial(RpGeometry* geometry, RpMaterial* oldMaterial, RpMaterial* newMaterial) {
-    return ((bool(__cdecl*)(RpGeometry*, RpMaterial*, RpMaterial*))0x734DE0)(geometry, oldMaterial, newMaterial);
+    return plugin::CallAndReturn<bool, 0x734DE0, RpGeometry*, RpMaterial*, RpMaterial*>(geometry, oldMaterial, newMaterial);
 }
 
 // 0x734E50
 RwTexture* RwTexDictionaryFindHashNamedTexture(RwTexDictionary* txd, uint32 hash) {
-    return ((RwTexture * (__cdecl*)(RwTexDictionary*, uint32))0x734E50)(txd, hash);
+    return plugin::CallAndReturn<RwTexture *, 0x734E50, RwTexDictionary*, uint32>(txd, hash);
 }
 
 // 0x734FC0
 RpClump* RpClumpGetBoundingSphere(RpClump* clump, RwSphere* sphere, bool bUseLTM) {
-    return ((RpClump * (__cdecl*)(RpClump*, RwSphere*, bool))0x734FC0)(clump, sphere, bUseLTM);
+    return plugin::CallAndReturn<RpClump *, 0x734FC0, RpClump*, RwSphere*, bool>(clump, sphere, bUseLTM);
 }
 
 // 0x735140
 void SkinGetBonePositions(RpClump* clump) {
-    ((void(__cdecl*)(RpClump*))0x735140)(clump);
+    plugin::Call<0x735140, RpClump*>(clump);
 }
 
 // 0x7352D0
 void SkinSetBonePositions(RpClump* clump) {
-    ((void(__cdecl*)(RpClump*))0x7352D0)(clump);
+    plugin::Call<0x7352D0, RpClump*>(clump);
 }
 
 // 0x735360
 void SkinGetBonePositionsToTable(RpClump* clump, RwV3d* table) {
-    ((void(__cdecl*)(RpClump*, RwV3d*))0x735360)(clump, table);
+    plugin::Call<0x735360, RpClump*, RwV3d*>(clump, table);
 }
 
 // 0x7226D0

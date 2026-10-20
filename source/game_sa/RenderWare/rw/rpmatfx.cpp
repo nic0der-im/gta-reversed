@@ -3,133 +3,133 @@
 #include "rpmatfx.h"
 
 void RpMatFXMaterialDataSetFreeListCreateParams(RwInt32 blockSize, RwInt32 numBlocksToPrealloc) {
-    ((void(__cdecl *)(RwInt32, RwInt32))0x810700)(blockSize, numBlocksToPrealloc);
+    plugin::Call<0x810700, RwInt32, RwInt32>(blockSize, numBlocksToPrealloc);
 }
 
 RwBool RpMatFXPluginAttach() {
-    return ((RwBool(__cdecl *)(void))0x810AA0)();
+    return plugin::CallAndReturn<RwBool, 0x810AA0>();
 }
 
 RpAtomic* RpMatFXAtomicEnableEffects(RpAtomic* atomic) {
-    return ((RpAtomic*(__cdecl *)(RpAtomic*))0x811C00)(atomic);
+    return plugin::CallAndReturn<RpAtomic*, 0x811C00, RpAtomic*>(atomic);
 }
 
 RwBool RpMatFXAtomicQueryEffects(RpAtomic* atomic) {
-    return ((RwBool(__cdecl *)(RpAtomic*))0x811C30)(atomic);
+    return plugin::CallAndReturn<RwBool, 0x811C30, RpAtomic*>(atomic);
 }
 
 RpWorldSector* RpMatFXWorldSectorEnableEffects(RpWorldSector* worldSector) {
-    return ((RpWorldSector*(__cdecl *)(RpWorldSector*))0x811C40)(worldSector);
+    return plugin::CallAndReturn<RpWorldSector*, 0x811C40, RpWorldSector*>(worldSector);
 }
 
 RwBool RpMatFXWorldSectorQueryEffects(RpWorldSector* worldSector) {
-    return ((RwBool(__cdecl *)(RpWorldSector*))0x811C70)(worldSector);
+    return plugin::CallAndReturn<RwBool, 0x811C70, RpWorldSector*>(worldSector);
 }
 
 RpMaterial* RpMatFXMaterialSetEffects(RpMaterial* material, RpMatFXMaterialFlags flags) {
-    return ((RpMaterial*(__cdecl *)(RpMaterial*, RpMatFXMaterialFlags))0x811C80)(material, flags);
+    return plugin::CallAndReturn<RpMaterial*, 0x811C80, RpMaterial*, RpMatFXMaterialFlags>(material, flags);
 }
 
 RpMaterial* RpMatFXMaterialSetupBumpMap(RpMaterial* material, RwTexture* texture, RwFrame* frame, RwReal coef) {
-    return ((RpMaterial*(__cdecl *)(RpMaterial*, RwTexture*, RwFrame*, RwReal))0x811E00)(material, texture, frame, coef);
+    return plugin::CallAndReturn<RpMaterial*, 0x811E00, RpMaterial*, RwTexture*, RwFrame*, RwReal>(material, texture, frame, coef);
 }
 
 RpMaterial* RpMatFXMaterialSetupEnvMap(RpMaterial* material, RwTexture* texture, RwFrame* frame, RwBool useFrameBufferAlpha, RwReal coef) {
-    return ((RpMaterial*(__cdecl *)(RpMaterial*, RwTexture*, RwFrame*, RwBool, RwReal))0x811ED0)(material, texture, frame, useFrameBufferAlpha, coef);
+    return plugin::CallAndReturn<RpMaterial*, 0x811ED0, RpMaterial*, RwTexture*, RwFrame*, RwBool, RwReal>(material, texture, frame, useFrameBufferAlpha, coef);
 }
 
 RpMaterial* RpMatFXMaterialSetupDualTexture(RpMaterial* material, RwTexture* texture, RwBlendFunction srcBlendMode, RwBlendFunction dstBlendMode) {
-    return ((RpMaterial*(__cdecl *)(RpMaterial*, RwTexture*, RwBlendFunction, RwBlendFunction))0x812040)(material, texture, srcBlendMode, dstBlendMode);
+    return plugin::CallAndReturn<RpMaterial*, 0x812040, RpMaterial*, RwTexture*, RwBlendFunction, RwBlendFunction>(material, texture, srcBlendMode, dstBlendMode);
 }
 
 RpMatFXMaterialFlags RpMatFXMaterialGetEffects(const RpMaterial* material) {
-    return ((RpMatFXMaterialFlags(__cdecl *)(const RpMaterial*))0x812140)(material);
+    return plugin::CallAndReturn<RpMatFXMaterialFlags, 0x812140, const RpMaterial*>(material);
 }
 
 RpMaterial* RpMatFXMaterialSetBumpMapTexture(RpMaterial* material, RwTexture* texture) {
-    return ((RpMaterial*(__cdecl *)(RpMaterial*, RwTexture*))0x812160)(material, texture);
+    return plugin::CallAndReturn<RpMaterial*, 0x812160, RpMaterial*, RwTexture*>(material, texture);
 }
 
 RpMaterial* RpMatFXMaterialSetBumpMapFrame(RpMaterial* material, RwFrame* frame) {
-    return ((RpMaterial*(__cdecl *)(RpMaterial*, RwFrame*))0x812320)(material, frame);
+    return plugin::CallAndReturn<RpMaterial*, 0x812320, RpMaterial*, RwFrame*>(material, frame);
 }
 
 RpMaterial* RpMatFXMaterialSetBumpMapCoefficient(RpMaterial* material, RwReal coef) {
-    return ((RpMaterial*(__cdecl *)(RpMaterial*, RwReal))0x812380)(material, coef);
+    return plugin::CallAndReturn<RpMaterial*, 0x812380, RpMaterial*, RwReal>(material, coef);
 }
 
 RwTexture* RpMatFXMaterialGetBumpMapTexture(const RpMaterial* material) {
-    return ((RwTexture*(__cdecl *)(const RpMaterial*))0x812430)(material);
+    return plugin::CallAndReturn<RwTexture*, 0x812430, const RpMaterial*>(material);
 }
 
 RwTexture* RpMatFXMaterialGetBumpMapBumpedTexture(const RpMaterial* material) {
-    return ((RwTexture*(__cdecl *)(const RpMaterial*))0x8123E0)(material);
+    return plugin::CallAndReturn<RwTexture*, 0x8123E0, const RpMaterial*>(material);
 }
 
 RwFrame* RpMatFXMaterialGetBumpMapFrame(const RpMaterial* material) {
-    return ((RwFrame*(__cdecl *)(const RpMaterial*))0x812480)(material);
+    return plugin::CallAndReturn<RwFrame*, 0x812480, const RpMaterial*>(material);
 }
 
 RwReal RpMatFXMaterialGetBumpMapCoefficient(const RpMaterial* material) {
-    return ((RwReal(__cdecl *)(const RpMaterial*))0x8124D0)(material);
+    return plugin::CallAndReturn<RwReal, 0x8124D0, const RpMaterial*>(material);
 }
 
 RpMaterial* RpMatFXMaterialSetEnvMapTexture(RpMaterial* material, RwTexture* texture) {
-    return ((RpMaterial*(__cdecl *)(RpMaterial*, RwTexture*))0x812530)(material, texture);
+    return plugin::CallAndReturn<RpMaterial*, 0x812530, RpMaterial*, RwTexture*>(material, texture);
 }
 
 RpMaterial* RpMatFXMaterialSetEnvMapFrame(RpMaterial* material, RwFrame* frame) {
-    return ((RpMaterial*(__cdecl *)(RpMaterial*, RwFrame*))0x8125B0)(material, frame);
+    return plugin::CallAndReturn<RpMaterial*, 0x8125B0, RpMaterial*, RwFrame*>(material, frame);
 }
 
 RpMaterial* RpMatFXMaterialSetEnvMapFrameBufferAlpha(RpMaterial* material, RwBool useFrameBufferAlpha) {
-    return ((RpMaterial*(__cdecl *)(RpMaterial*, RwBool))0x812610)(material, useFrameBufferAlpha);
+    return plugin::CallAndReturn<RpMaterial*, 0x812610, RpMaterial*, RwBool>(material, useFrameBufferAlpha);
 }
 
 RpMaterial* RpMatFXMaterialSetEnvMapCoefficient(RpMaterial* material, RwReal coef) {
-    return ((RpMaterial*(__cdecl *)(RpMaterial*, RwReal))0x812680)(material, coef);
+    return plugin::CallAndReturn<RpMaterial*, 0x812680, RpMaterial*, RwReal>(material, coef);
 }
 
 RwTexture* RpMatFXMaterialGetEnvMapTexture(const RpMaterial* material) {
-    return ((RwTexture*(__cdecl *)(const RpMaterial*))0x8126F0)(material);
+    return plugin::CallAndReturn<RwTexture*, 0x8126F0, const RpMaterial*>(material);
 }
 
 RwFrame* RpMatFXMaterialGetEnvMapFrame(const RpMaterial* material) {
-    return ((RwFrame*(__cdecl *)(const RpMaterial*))0x812740)(material);
+    return plugin::CallAndReturn<RwFrame*, 0x812740, const RpMaterial*>(material);
 }
 
 RwBool RpMatFXMaterialGetEnvMapFrameBufferAlpha(const RpMaterial* material) {
-    return ((RwBool(__cdecl *)(const RpMaterial*))0x812790)(material);
+    return plugin::CallAndReturn<RwBool, 0x812790, const RpMaterial*>(material);
 }
 
 RwReal RpMatFXMaterialGetEnvMapCoefficient(const RpMaterial* material) {
-    return ((RwReal(__cdecl *)(const RpMaterial*))0x8127E0)(material);
+    return plugin::CallAndReturn<RwReal, 0x8127E0, const RpMaterial*>(material);
 }
 
 RpMaterial* RpMatFXMaterialSetDualTexture(RpMaterial* material, RwTexture* texture) {
-    return ((RpMaterial*(__cdecl *)(RpMaterial*, RwTexture*))0x812830)(material, texture);
+    return plugin::CallAndReturn<RpMaterial*, 0x812830, RpMaterial*, RwTexture*>(material, texture);
 }
 
 RpMaterial* RpMatFXMaterialSetDualBlendModes(RpMaterial* material, RwBlendFunction srcBlendMode, RwBlendFunction dstBlendMode) {
-    return ((RpMaterial*(__cdecl *)(RpMaterial*, RwBlendFunction, RwBlendFunction))0x8128C0)(material, srcBlendMode, dstBlendMode);
+    return plugin::CallAndReturn<RpMaterial*, 0x8128C0, RpMaterial*, RwBlendFunction, RwBlendFunction>(material, srcBlendMode, dstBlendMode);
 }
 
 RwTexture* RpMatFXMaterialGetDualTexture(const RpMaterial* material) {
-    return ((RwTexture*(__cdecl *)(const RpMaterial*))0x812930)(material);
+    return plugin::CallAndReturn<RwTexture*, 0x812930, const RpMaterial*>(material);
 }
 
 const RpMaterial* RpMatFXMaterialGetDualBlendModes(const RpMaterial* material, RwBlendFunction* srcBlendMode, RwBlendFunction* dstBlendMode) {
-    return ((const RpMaterial*(__cdecl *)(const RpMaterial*, RwBlendFunction*, RwBlendFunction*))0x812980)(material, srcBlendMode, dstBlendMode);
+    return plugin::CallAndReturn<const RpMaterial*, 0x812980, const RpMaterial*, RwBlendFunction*, RwBlendFunction*>(material, srcBlendMode, dstBlendMode);
 }
 
 RpMaterial* RpMatFXMaterialSetUVTransformMatrices(RpMaterial* material, RwMatrix* baseTransform, RwMatrix* dualTransform) {
-    return ((RpMaterial*(__cdecl *)(RpMaterial*, RwMatrix*, RwMatrix*))0x8129E0)(material, baseTransform, dualTransform);
+    return plugin::CallAndReturn<RpMaterial*, 0x8129E0, RpMaterial*, RwMatrix*, RwMatrix*>(material, baseTransform, dualTransform);
 }
 
 const RpMaterial* RpMatFXMaterialGetUVTransformMatrices(const RpMaterial* material, RwMatrix* baseTransform, RwMatrix* dualTransform) {
-    return ((const RpMaterial*(__cdecl *)(const RpMaterial*, RwMatrix*, RwMatrix*))0x812A50)(material, baseTransform, dualTransform);
+    return plugin::CallAndReturn<const RpMaterial*, 0x812A50, const RpMaterial*, RwMatrix*, RwMatrix*>(material, baseTransform, dualTransform);
 }
 
 RxPipeline* RpMatFXGetD3D9Pipeline(RpMatFXD3D9Pipeline d3d9Pipeline) {
-    return ((RxPipeline*(__cdecl *)(RpMatFXD3D9Pipeline))0x8162F0)(d3d9Pipeline);
+    return plugin::CallAndReturn<RxPipeline*, 0x8162F0, RpMatFXD3D9Pipeline>(d3d9Pipeline);
 }

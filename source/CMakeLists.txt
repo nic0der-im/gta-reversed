@@ -9,9 +9,13 @@ option(${RE_PROJECT}_WITH_OPENAL "Use OpenAL" OFF)
 option(${RE_PROJECT}_USE_SDL3 "Use SDL3" OFF)
 option(${RE_PROJECT}_STANDALONE "Build standalone executable" OFF)
 option(${RE_PROJECT}_STANDALONE_DUMP_HOOKS_ONLY "Dump hooks only" OFF)
+option(${RE_PROJECT}_NATIVE "Build a native (host OS, no retail exe) executable" OFF)
 
 if (${RE_PROJECT}_USE_SDL3)
     add_compile_definitions(NOTSA_USE_SDL3)
+endif()
+if (${RE_PROJECT}_NATIVE AND NOT ${RE_PROJECT}_USE_SDL3)
+    message(FATAL_ERROR "${RE_PROJECT}_NATIVE requires ${RE_PROJECT}_USE_SDL3=ON")
 endif()
 if (${RE_PROJECT}_STANDALONE)
     add_compile_definitions(NOTSA_STANDALONE)
@@ -36,7 +40,7 @@ if(${RE_PROJECT}_WITH_SCRIPT_COMMAND_HOOKS)
     add_compile_definitions(NOTSA_WITH_SCRIPT_COMMAND_HOOKS)
 endif()
 
-if (NOT WIN32 AND NOT ${RE_PROJECT}_WITH_OPENAL)
+if (NOT WIN32 AND NOT ${RE_PROJECT}_NATIVE AND NOT ${RE_PROJECT}_WITH_OPENAL)
     set(${RE_PROJECT}_WITH_OPENAL ON)
 endif()
 
@@ -70,6 +74,16 @@ else()
     list(REMOVE_ITEM SOURCE_FILES_WITHOUT_MODULES_LIST ${OPENAL_FILES})
 endif()
 
+if (${RE_PROJECT}_NATIVE)
+    # The native build replaces the Windows platform layer (Win32, Direct3D9, DirectShow,
+    # the hooking machinery and the tools menu) with `app/platform/native/`.
+    # NOTE: `app/platform/native/` itself MUST stay in the source list.
+    list(FILTER SOURCE_FILES_WITHOUT_MODULES_LIST EXCLUDE REGEX "^(app/platform/win|reversiblehooks|toolsmenu)/")
+    list(FILTER SOURCE_FILES_WITHOUT_MODULES_LIST EXCLUDE REGEX "^(oswrapper/oswrapper_win|dllmain|InjectHooksMain)\\.cpp$")
+    list(FILTER SOURCE_FILES_WITHOUT_MODULES_LIST EXCLUDE REGEX "^game_sa/RenderWare/D3D[^/]*\\.cpp$")
+    list(FILTER SOURCE_FILES_WITHOUT_MODULES_LIST EXCLUDE REGEX "^game_sa/Audio/Loaders/AE(WMA|MF)Decoder\\.")
+endif()
+
 #
 # Source files that should be scanned for modules
 #
@@ -85,7 +99,9 @@ file(
     "${CMAKE_CURRENT_SOURCE_DIR}/*.ixx"
 )
 
-if (${RE_PROJECT}_STANDALONE)
+if (${RE_PROJECT}_NATIVE)
+    add_executable(${RE_PROJECT_LIB_NAME} MACOSX_BUNDLE)
+elseif (${RE_PROJECT}_STANDALONE)
     add_executable(${RE_PROJECT_LIB_NAME} WIN32)
 else()
     add_library(${RE_PROJECT_LIB_NAME} MODULE)
@@ -108,11 +124,25 @@ target_compile_options(${RE_PROJECT_LIB_NAME} PRIVATE
     "$<$<CXX_COMPILER_ID:MSVC>:/MP;/Zc:preprocessor;/W3;/wd4200;/wd4251;/wd4275;/wd4996;/wd26495;/wd26812;/wd28159>"
     "$<$<OR:$<CXX_COMPILER_ID:Clang,GCC>,$<CXX_COMPILER_ID:GNU>>:-Wall;-Wno-switch>"
 )
+if (${RE_PROJECT}_NATIVE)
+    # MSVC extensions and attributes are still used by the shared game code
+    target_compile_options(${RE_PROJECT_LIB_NAME} PRIVATE
+        "$<$<OR:$<CXX_COMPILER_ID:Clang,GCC>,$<CXX_COMPILER_ID:GNU>>:-Wno-microsoft-anon-tag;-Wno-ignored-attributes>"
+    )
+endif()
 
-if (${RE_PROJECT}_STANDALONE) 
-    set(TARGET_SUFFIX ".exe")
+if (${RE_PROJECT}_NATIVE)
+    # MACOSX_BUNDLE names its own output (`gta_reversed.app`), so no suffix is needed
+    set(TARGET_SUFFIX "")
+    # The native port still has plenty of non-portable warnings; don't fail the build on them
+    set(TARGET_WARNINGS_AS_ERRORS OFF)
 else()
-    set(TARGET_SUFFIX ".asi")
+    set(TARGET_WARNINGS_AS_ERRORS ON)
+    if (${RE_PROJECT}_STANDALONE)
+        set(TARGET_SUFFIX ".exe")
+    else()
+        set(TARGET_SUFFIX ".asi")
+    endif()
 endif()
 set_target_properties(${RE_PROJECT_LIB_NAME}
     PROPERTIES
@@ -120,9 +150,11 @@ set_target_properties(${RE_PROJECT_LIB_NAME}
     ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/${CMAKE_BUILD_TYPE}/"
     LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/${CMAKE_BUILD_TYPE}/"
     RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/${CMAKE_BUILD_TYPE}/"
-    COMPILE_WARNING_AS_ERROR ON
+    COMPILE_WARNING_AS_ERROR ${TARGET_WARNINGS_AS_ERRORS}
 )
-target_link_options(${RE_PROJECT_LIB_NAME} PRIVATE "/SUBSYSTEM:WINDOWS")
+if (MSVC)
+    target_link_options(${RE_PROJECT_LIB_NAME} PRIVATE "/SUBSYSTEM:WINDOWS")
+endif()
 
 #--------------------------------------------------------------------
 # Add dependencies
@@ -141,10 +173,14 @@ macro(add_dependency)
         find_package(${target} CONFIG REQUIRED)
 
         # Disable warnings of dependencies
-        add_compile_options(${target} PRIVATE
-            "$<$<CXX_COMPILER_ID:MSVC>:-w>"
-            "$<$<OR:$<CXX_COMPILER_ID:Clang,GCC>,$<CXX_COMPILER_ID:GNU>>:-Wno-everything>"
-        )
+        # NOTE: `add_compile_options` has no target/PRIVATE arguments, so on MSVC these
+        # end up as ignored directory-wide flags, but a clang build rejects them outright.
+        if (NOT ${RE_PROJECT}_NATIVE)
+            add_compile_options(${target} PRIVATE
+                "$<$<CXX_COMPILER_ID:MSVC>:-w>"
+                "$<$<OR:$<CXX_COMPILER_ID:Clang,GCC>,$<CXX_COMPILER_ID:GNU>>:-Wno-everything>"
+            )
+        endif()
     endforeach()
 endmacro()
 add_dependency(
@@ -161,6 +197,12 @@ if (${RE_PROJECT}_USE_SDL3)
     add_dependency(SDL3)
 endif()
 
+# Windows-only system libraries; the native build has no equivalent
+set(PLATFORM_LINK_LIBS)
+if (NOT ${RE_PROJECT}_NATIVE)
+    set(PLATFORM_LINK_LIBS ddraw Winmm dxguid strmiids d3d9)
+endif()
+
 target_link_libraries(${RE_PROJECT_LIB_NAME} PRIVATE
     nlohmann_json::nlohmann_json
     Ogg::ogg
@@ -169,17 +211,19 @@ target_link_libraries(${RE_PROJECT_LIB_NAME} PRIVATE
     vorbis::vorbis
     imgui::imgui
     libjpeg-turbo::libjpeg-turbo
-    ddraw
-    Winmm
-    dxguid
-    strmiids
-    d3d9
+    ${PLATFORM_LINK_LIBS}
     Boost::headers
 )
 if (${RE_PROJECT}_USE_SDL3)
     target_link_libraries(${RE_PROJECT_LIB_NAME} PRIVATE
         SDL3::SDL3
     )
+endif()
+
+if (${RE_PROJECT}_NATIVE)
+    set(PLATFORM_INCLUDE_DIRS app/platform/native/)
+else()
+    set(PLATFORM_INCLUDE_DIRS app/platform/win/ app/platform/win/VideoPlayer/)
 endif()
 
 target_include_directories(${RE_PROJECT_LIB_NAME} PRIVATE
@@ -231,10 +275,7 @@ target_include_directories(${RE_PROJECT_LIB_NAME} PRIVATE
     app/
     app/imgui
     app/platform/
-    app/platform/android/
-    app/platform/win/
-    app/platform/win/VideoPlayer/
-    app/platform/linux/
+    ${PLATFORM_INCLUDE_DIRS}
     app/securom/
 
     oswrapper
@@ -247,16 +288,27 @@ target_sources(${RE_PROJECT_LIB_NAME} PRIVATE
     notsa.natvis
 )
 
-target_compile_definitions(${RE_PROJECT_LIB_NAME} PRIVATE
-    _CRT_SECURE_NO_WARNINGS
-    USE_GTASA_ALLOCATOR
-    EXTRA_DEBUG_FEATURES
-    FIX_BUGS
-    NOTSA_WINDOWED_MODE # NOTE: This is a workaround for the game to run in windowed mode, and it must be enabled, otherwise shit's gonna crash
-    SA_SKINNED_PEDS
+if (${RE_PROJECT}_NATIVE)
+    target_compile_definitions(${RE_PROJECT_LIB_NAME} PRIVATE
+        NOTSA_NATIVE
+        NOTSA_STANDALONE
+        NOTSA_USE_SDL3
+        FIX_BUGS
+        SA_SKINNED_PEDS
+        EXTRA_DEBUG_FEATURES
+    )
+else()
+    target_compile_definitions(${RE_PROJECT_LIB_NAME} PRIVATE
+        _CRT_SECURE_NO_WARNINGS
+        USE_GTASA_ALLOCATOR
+        EXTRA_DEBUG_FEATURES
+        FIX_BUGS
+        NOTSA_WINDOWED_MODE # NOTE: This is a workaround for the game to run in windowed mode, and it must be enabled, otherwise shit's gonna crash
+        SA_SKINNED_PEDS
 
-    USE_D3D9 # TODO
-)
+        USE_D3D9 # TODO
+    )
+endif()
 target_compile_features(${RE_PROJECT_LIB_NAME} PRIVATE cxx_std_23)
 target_precompile_headers(${RE_PROJECT_LIB_NAME} PRIVATE StdInc.cpp)
 
@@ -288,7 +340,9 @@ endif()
 #--------------------------------------------------------------------
 # Configure the Audio API
 #--------------------------------------------------------------------
-if (${RE_PROJECT}_WITH_OPENAL)
+if (${RE_PROJECT}_NATIVE)
+    # No audio backend yet: the game runs with a silent one until B4 brings OpenAL back
+elseif (${RE_PROJECT}_WITH_OPENAL)
     target_compile_definitions(${RE_PROJECT_LIB_NAME} PRIVATE USE_OPENAL)
 
     target_include_directories(${RE_PROJECT_LIB_NAME} PRIVATE
@@ -304,7 +358,7 @@ endif()
 #--------------------------------------------------------------------
 # Configure misc. dependencies for Windows
 #--------------------------------------------------------------------
-if(WIN32)
+if(WIN32 AND NOT ${RE_PROJECT}_NATIVE)
     if(MSVC)
         # MSVC knows how to find dbghelp on it's own
         target_link_libraries(${RE_PROJECT_LIB_NAME} PRIVATE

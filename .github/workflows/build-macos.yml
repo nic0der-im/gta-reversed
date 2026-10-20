@@ -1,0 +1,28 @@
+name: Build macOS
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # The native (arm64) port is work in progress: never block the repository on it.
+    # Remove once B1 (compiles, links, opens a window) is done.
+    continue-on-error: true
+    permissions:
+      contents: read
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # Same action the Windows workflow uses: installs Conan on the PATH and
+      # generates the `default` profile that `conan/profiles/macos-arm64.txt` includes.
+      - name: Install Conan
+        uses: conan-io/setup-conan@v1
+        with:
+          profile_detect: true
+
+      - name: Build
+        run: python3 setup.py --build -p macos-arm64.txt

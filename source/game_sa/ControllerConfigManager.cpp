@@ -1,5 +1,7 @@
 #include "StdInc.h"
+#ifndef NOTSA_NATIVE
 #include "WinInput.h"
+#endif
 
 #include "ControllerConfigManager.h"
 

@@ -304,7 +304,7 @@ uint32 FxSystem_c::ForAllParticles(void(*callback)(Particle_c*, int32, FxBox_c**
 
 // 0x4AA9A0
 void FxSystem_c::UpdateBoundingBoxCB(Particle_c* particle, int32 a2, FxBox_c** data) {
-    ((void(__cdecl *)(Particle_c*, int32, FxBox_c**))0x4AA9A0)(particle, a2, data);
+    plugin::Call<0x4AA9A0, Particle_c*, int32, FxBox_c**>(particle, a2, data);
 }
 
 // 0x4AAA40
@@ -415,7 +415,7 @@ bool FxSystem_c::IsVisible() const {
 
 // 0x4AAF70
 bool FxSystem_c::Update(RwCamera* camera, float timeDelta) {
-    return ((bool(__thiscall *)(FxSystem_c*, RwCamera*, float))0x4AAF70)(this, camera, timeDelta);
+    return plugin::CallMethodAndReturn<bool, 0x4AAF70, FxSystem_c*, RwCamera*, float>(this, camera, timeDelta);
 }
 
 // NOTSA

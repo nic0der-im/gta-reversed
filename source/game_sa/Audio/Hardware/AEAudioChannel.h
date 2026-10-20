@@ -1,6 +1,10 @@
 #pragma once
 
+#ifdef NOTSA_NATIVE
+#include "app/platform/native/audio_types.h"
+#else
 #include "dsound.h"
+#endif
 
 #include "Vector.h"
 
@@ -15,6 +19,11 @@ public:
         IDirectSoundBuffer8* m_pDirectSoundBuffer8;
     };
     IDirectSound3DBuffer* m_pDirectSound3DBuffer;
+#elif defined(NOTSA_NATIVE)
+    // Silent backend: these are always null, but the shared code still tests them.
+    IDirectSound*         m_pDirectSound{};
+    IDirectSoundBuffer*   m_pDirectSoundBuffer{};
+    IDirectSound3DBuffer* m_pDirectSound3DBuffer{};
 #endif
 
     char                  _pad10[24];
@@ -59,7 +68,13 @@ public:
     void   SetPosition(const CVector& vecPos) const;
     float  GetVolume() const { return m_Volume; };
     void   SetVolume(float volume);
-    bool   IsBufferPlaying() const { return m_nBufferStatus & DSBSTATUS_PLAYING; };
+    bool   IsBufferPlaying() const {
+#ifdef USE_DSOUND
+        return m_nBufferStatus & DSBSTATUS_PLAYING;
+#else
+        return false;
+#endif
+    };
     uint32 GetCurrentPlaybackPosition() const;
     uint32 ConvertFromBytesToMS(uint32 bytes) const;
     uint32 ConvertFromMsToBytes(uint32 ms) const;

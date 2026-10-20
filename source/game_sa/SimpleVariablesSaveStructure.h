@@ -1,6 +1,8 @@
 #pragma once
 
+#ifndef NOTSA_NATIVE
 #include <minwinbase.h> // SYSTEMTIME
+#endif // Native builds get `SYSTEMTIME` from `nativeincl.h` (Same 16 bytes layout)
 
 #include "eWeatherType.h"
 

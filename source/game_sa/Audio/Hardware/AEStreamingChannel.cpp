@@ -5,12 +5,14 @@
 #include "AEStreamingChannel.h"
 #include "AEAudioUtility.h"
 
+#ifndef NOTSA_NATIVE
 //! Stereo channel FX Param EQ presets [0x8CBA70]
 static inline DSFXParamEq s_FXParamEqPresets[(+eBassSetting::NUM)][2]{
     {{ 0.0f, 0.0f,  0.0f }, { 0.f,   0.0f,  0.0f }}, // Preset NORMAL [Unused]
     {{ 80.f, 30.f,  4.0f }, { 180.f, 30.f,  1.5f }}, // Preset BOOST
     {{ 80.f, 36.f, -15.f }, { 80.f,  36.f, -15.f }}, // Preset CUT
 };
+#endif
 
 // 0x4F2200
 CAEStreamingChannel::~CAEStreamingChannel() {
@@ -19,6 +21,7 @@ CAEStreamingChannel::~CAEStreamingChannel() {
     m_nState              = StreamingChannelState::Stopping;
     m_lStoppingFrameCount = 0;
 
+#ifndef NOTSA_NATIVE
     if (m_pDirectSoundBuffer8) {
         m_pDirectSoundBuffer8->SetFX(0, nullptr, nullptr);
     }
@@ -30,6 +33,7 @@ CAEStreamingChannel::~CAEStreamingChannel() {
     if (m_pDirectSoundBuffer) {
         std::exchange(m_pDirectSoundBuffer, nullptr)->Release();
     }
+#endif
 
     if (m_pStreamingDecoder) {
         delete std::exchange(m_pStreamingDecoder, nullptr);
@@ -42,6 +46,22 @@ CAEStreamingChannel::~CAEStreamingChannel() {
 
 // 0x4F22F0
 void CAEStreamingChannel::Initialise() {
+#ifdef NOTSA_NATIVE
+    m_WaveFormat.wFormatTag = WAVE_FORMAT_PCM;
+    m_WaveFormat.cbSize = 0;
+    m_WaveFormat.nChannels = 2;
+    m_WaveFormat.wBitsPerSample = 16;
+    m_WaveFormat.nSamplesPerSec = 48000;
+    m_WaveFormat.nAvgBytesPerSec = 192000;
+    m_WaveFormat.nBlockAlign = 4;
+
+    // Silent backend: no DirectSound buffer, but keep the state the shared code reads.
+    m_bInitialized = true;
+    SetOriginalFrequency(m_WaveFormat.nSamplesPerSec);
+    m_pBuffer = m_aBuffer;
+    m_bLooped = true;
+    InitialiseSilence();
+#else
     VERIFY(SUCCEEDED(CoInitialize(nullptr)));
 
     DSBUFFERDESC bufferDesc{};
@@ -71,10 +91,14 @@ void CAEStreamingChannel::Initialise() {
         m_bLooped = true;
     }
     InitialiseSilence();
+#endif
 }
 
 // 0x4F1C70
 void CAEStreamingChannel::InitialiseSilence() {
+#ifdef NOTSA_NATIVE
+    // Silent backend: there is no silence buffer to create or play.
+#else
     DSBUFFERDESC bufferDesc{};
     bufferDesc.dwSize = 36;
     bufferDesc.lpwfxFormat = &m_WaveFormat;
@@ -93,14 +117,17 @@ void CAEStreamingChannel::InitialiseSilence() {
     } else {
         NOTSA_LOG_WARN("Creating silence buffer failed.");
     }
+#endif
 }
 
 // 0x4F1FF0
 void CAEStreamingChannel::SetReady() {
     switch (m_nState) {
     case StreamingChannelState::Stopping:
+#ifndef NOTSA_NATIVE
         AESmoothFadeThread.CancelFade(m_pDirectSoundBuffer);
         m_pDirectSoundBuffer->Stop();
+#endif
         m_nState = StreamingChannelState::Stopped;
 
         break;
@@ -113,6 +140,10 @@ void CAEStreamingChannel::SetReady() {
 
 // 0x4F1F30
 void CAEStreamingChannel::SetBassEQ(eBassSetting mode, float gain) {
+#ifdef NOTSA_NATIVE
+    // Silent backend: there is no DirectSound FX chain to configure.
+    UNUSED(mode, gain);
+#else
     if (mode == eBassSetting::NORMAL) {
         if (m_bEQEnabled) {
             RemoveFX();
@@ -140,10 +171,15 @@ void CAEStreamingChannel::SetBassEQ(eBassSetting mode, float gain) {
         VERIFY(SUCCEEDED(fxEqParam->SetAllParameters(&savedFxExParam)));
         fxEqParam->Release();
     }
+#endif // NOTSA_NATIVE
 }
 
 // 0x4F2060
 void CAEStreamingChannel::SetFrequencyScalingFactor(float factor) {
+#ifdef NOTSA_NATIVE
+    // Silent backend: there is no DirectSound buffer to re-frequency.
+    UNUSED(factor);
+#else
     if (factor == 0.0f) {
         if (!m_pDirectSoundBuffer || m_nState == StreamingChannelState::Paused || !IsBufferPlaying())
             return;
@@ -167,6 +203,7 @@ void CAEStreamingChannel::SetFrequencyScalingFactor(float factor) {
 
         m_nState = StreamingChannelState::Started;
     }
+#endif // NOTSA_NATIVE
 }
 
 // 0x4F1870
@@ -210,8 +247,13 @@ uint32 CAEStreamingChannel::FillBuffer(void* buffer, uint32 size) {
 
 // 0x4F23D0, broken af
 void CAEStreamingChannel::PrepareStream(CAEStreamingDecoder* newDecoder, int8 soundFlags, uint32 audioBytes) {
+#ifdef NOTSA_NATIVE
+    if (!newDecoder)
+        return;
+#else
     if (!newDecoder || !m_pDirectSoundBuffer)
         return;
+#endif
 
     if (audioBytes != 0) {
         switch (m_nState) {
@@ -232,6 +274,7 @@ void CAEStreamingChannel::PrepareStream(CAEStreamingDecoder* newDecoder, int8 so
 
     m_bLoopTrack = (soundFlags & 1) != 0;
     m_pStreamingDecoder = newDecoder;
+#ifndef NOTSA_NATIVE
     if (SUCCEEDED(m_pDirectSoundBuffer->Lock(
         0,
         0,
@@ -258,6 +301,7 @@ void CAEStreamingChannel::PrepareStream(CAEStreamingDecoder* newDecoder, int8 so
 
         m_pDirectSoundBuffer->Unlock(newDecoder, audioBytes, nullptr, 0);
     }
+#endif
 
     switch (m_nState) {
     case StreamingChannelState::UNK_MINUS_3:
@@ -274,7 +318,9 @@ void CAEStreamingChannel::PrepareStream(CAEStreamingDecoder* newDecoder, int8 so
     m_bSilenced = false;
     m_bNeedSwitch = false;
     m_bShouldStop = false;
+#ifndef NOTSA_NATIVE
     m_pDirectSoundBuffer->SetCurrentPosition(0);
+#endif
 }
 
 // 0x4F1DE0
@@ -313,6 +359,11 @@ int32 CAEStreamingChannel::UpdatePlayTime() {
         return m_nPlayTime;
     }
 
+#ifdef NOTSA_NATIVE
+    // Silent backend: there is no buffer cursor to derive the play time from.
+    m_nPlayTime = 0;
+    return m_nPlayTime;
+#else
     if (CAEAudioUtility::GetCurrentTimeInMS() - m_nLastUpdateTime < 1'000) {
         return GetPlayTime();
     }
@@ -341,10 +392,16 @@ int32 CAEStreamingChannel::UpdatePlayTime() {
     m_nLastUpdateTime = CAEAudioUtility::GetCurrentTimeInMS();
     m_nPlayTime       = std::max(0, m_nPlayTime); // Originally a bitwise hack: x &= (x <= 0) - 1
     return m_nPlayTime;
+#endif // NOTSA_NATIVE
 }
 
 // 0x4F1AE0
 bool CAEStreamingChannel::AddFX() {
+#ifdef NOTSA_NATIVE
+    // Silent backend: there is no DirectSound FX chain to create.
+    m_bEQEnabled = true;
+    return true;
+#else
     if (m_bEQEnabled)
         return true;
 
@@ -386,10 +443,15 @@ bool CAEStreamingChannel::AddFX() {
 
     m_bEQEnabled = true;
     return true;
+#endif // NOTSA_NATIVE
 }
 
 // 0x4F1C20
 void CAEStreamingChannel::RemoveFX() {
+#ifdef NOTSA_NATIVE
+    // Silent backend: there is no DirectSound FX chain to remove.
+    m_bEQEnabled = false;
+#else
     bool stopped{false};
     if (bufferStatus.Bit0x1) {
         m_pDirectSoundBuffer->Stop();
@@ -402,6 +464,7 @@ void CAEStreamingChannel::RemoveFX() {
         m_pDirectSoundBuffer->Play(0, 0, DSBPLAY_LOOPING);
 
     m_bEQEnabled = false;
+#endif // NOTSA_NATIVE
 }
 
 // 0x4F2040
@@ -441,6 +504,16 @@ uint16 CAEStreamingChannel::GetLength() {
 
 // 0x4F1D40
 void CAEStreamingChannel::Play(int16 startOffsetMs, int8 soundFlags, float freqFac) {
+#ifdef NOTSA_NATIVE
+    if (!m_pStreamingDecoder)
+        return;
+
+    SetOriginalFrequency(m_pStreamingDecoder->GetSampleRate());
+    if (m_nState != StreamingChannelState::Paused) {
+        m_bLoopTrack = (soundFlags & 1) != 0;
+    }
+    m_nState = StreamingChannelState::Started;
+#else
     if (!m_pStreamingDecoder || !m_pDirectSoundBuffer)
         return;
 
@@ -460,6 +533,7 @@ void CAEStreamingChannel::Play(int16 startOffsetMs, int8 soundFlags, float freqF
     m_nState = StreamingChannelState::Started;
     m_pDirectSoundBuffer->SetVolume(static_cast<int32>(m_Volume * 100.0f));
     m_pDirectSoundBuffer->Play(0, 0, DSBPLAY_LOOPING);
+#endif
 }
 
 // 0x4F2170

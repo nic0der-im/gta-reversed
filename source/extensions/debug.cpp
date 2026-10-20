@@ -1,12 +1,11 @@
 #pragma once
 
 #include <cstdlib>
-#include <windows.h>
-#include <DbgHelp.h>
 #include <format>
 #include <extensions/CommandLine.h>
 #include "debug.hpp"
 
+#ifndef NOTSA_NATIVE // Native builds have no DbgHelp symbol engine (See `debug.hpp`)
 
 namespace notsa {
 namespace debug {
@@ -87,3 +86,5 @@ void UnloadSymbols() {
 }
 };
 };
+
+#endif // NOTSA_NATIVE

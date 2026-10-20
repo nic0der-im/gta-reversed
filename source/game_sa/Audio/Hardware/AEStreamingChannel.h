@@ -85,8 +85,12 @@ private:
 
                                 // NOTSA
     void DirectSoundBufferFadeToSilence() {
+#ifdef NOTSA_NATIVE
+        // Silent backend: there is no DirectSound buffer to fade.
+#else
         if (!AESmoothFadeThread.RequestFade(m_pDirectSoundBuffer, -100.0, 35, true))
             m_pDirectSoundBuffer->Stop();
+#endif
     }
 };
 

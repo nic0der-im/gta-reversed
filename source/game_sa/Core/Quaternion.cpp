@@ -39,47 +39,47 @@ void CQuaternion::Get(RwMatrix* out) const {
 
 // Quat to euler angles
 void CQuaternion::Get(float* x, float* y, float* z) {
-    ((void(__thiscall*)(CQuaternion*, float*, float*, float*))0x59C160)(this, x, y, z);
+    plugin::CallMethod<0x59C160, CQuaternion*, float*, float*, float*>(this, x, y, z);
 }
 
 // Quat to axis & angle
 void CQuaternion::Get(RwV3d* axis, float* angle) {
-    ((void(__thiscall*)(CQuaternion*, RwV3d*, float*))0x59C230)(this, axis, angle);
+    plugin::CallMethod<0x59C230, CQuaternion*, RwV3d*, float*>(this, axis, angle);
 }
 
 // Stores result of quat multiplication
 void CQuaternion::Multiply(const CQuaternion& a, const CQuaternion& b) {
-    ((void(__thiscall*)(CQuaternion*, const CQuaternion&, const CQuaternion&))0x59C270)(this, a, b);
+    plugin::CallMethod<0x59C270, CQuaternion*, const CQuaternion&, const CQuaternion&>(this, a, b);
 }
 
 // Spherical linear interpolation
 void CQuaternion::Slerp(const CQuaternion& from, const CQuaternion& to, float halftheta, float sintheta_inv, float t) {
-    ((void(__thiscall*)(CQuaternion*, const CQuaternion&, const CQuaternion&, float, float, float))0x59C300)(this, from, to, halftheta, sintheta_inv, t);
+    plugin::CallMethod<0x59C300, CQuaternion*, const CQuaternion&, const CQuaternion&, float, float, float>(this, from, to, halftheta, sintheta_inv, t);
 }
 
 // Quat from matrix
 void CQuaternion::Set(const RwMatrix& m) {
-    ((void(__thiscall*)(CQuaternion*, const RwMatrix&))0x59C3E0)(this, m);
+    plugin::CallMethod<0x59C3E0, CQuaternion*, const RwMatrix&>(this, m);
 }
 
 // Quat from euler angles
 void CQuaternion::Set(float x, float y, float z) {
-    ((void(__thiscall*)(CQuaternion*, float, float, float))0x59C530)(this, x, y, z);
+    plugin::CallMethod<0x59C530, CQuaternion*, float, float, float>(this, x, y, z);
 }
 
 // Quat from axis & angle
 void CQuaternion::Set(RwV3d* axis, float angle) {
-    ((void(__thiscall*)(CQuaternion*, RwV3d*, float))0x59C600)(this, axis, angle);
+    plugin::CallMethod<0x59C600, CQuaternion*, RwV3d*, float>(this, axis, angle);
 }
 
 // Spherical linear interpolation
 void CQuaternion::Slerp(const CQuaternion& from, const CQuaternion& to, float t) {
-    ((void(__thiscall*)(CQuaternion*, const CQuaternion&, const CQuaternion&, float))0x59C630)(this, from, to, t);
+    plugin::CallMethod<0x59C630, CQuaternion*, const CQuaternion&, const CQuaternion&, float>(this, from, to, t);
 }
 
 // Conjugate of a quat
 void CQuaternion::Conjugate() {
-    ((void(__thiscall*)(CQuaternion*))0x4D37D0)(this);
+    plugin::CallMethod<0x4D37D0, CQuaternion*>(this);
 }
 
 // Squared length of a quat
@@ -90,12 +90,12 @@ float CQuaternion::GetLengthSquared() const {
 
 // Multiplies quat by a floating point value
 void CQuaternion::Scale(float multiplier) {
-    ((void(__thiscall*)(CQuaternion*, float))0x4CF9B0)(this, multiplier);
+    plugin::CallMethod<0x4CF9B0, CQuaternion*, float>(this, multiplier);
 }
 
 // Copies value from other quat
 void CQuaternion::Copy(const CQuaternion& from) {
-    ((void(__thiscall*)(CQuaternion*, const CQuaternion&))0x4CF9E0)(this, from);
+    plugin::CallMethod<0x4CF9E0, CQuaternion*, const CQuaternion&>(this, from);
 }
 
 // Gets a dot product for quats

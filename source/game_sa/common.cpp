@@ -10,7 +10,9 @@
 #include "Garages.h"
 #include "common.h"
 #include "GxtChar.h"
+#ifndef NOTSA_NATIVE
 #include "UIRenderer.h"
+#endif
 #include "CarCtrl.h"
 #include "UserDisplay.h"
 #include "PostEffects.h"
@@ -207,6 +209,40 @@ bool IsPointInsideLine(
 // NOTSA
 std::wstring UTF8ToUnicode(const std::string &str)
 {
+#ifdef NOTSA_NATIVE
+    // No `MultiByteToWideChar` natively - decode UTF-8 by hand (`wchar_t` is UTF-32 on macOS)
+    std::wstring out;
+    out.reserve(str.size());
+    for (size_t i = 0; i < str.size();) {
+        const auto lead = static_cast<uint8>(str[i]);
+        uint32     codePoint{};
+        size_t     seqLen{};
+        if (lead < 0x80) {
+            codePoint = lead;
+            seqLen    = 1;
+        } else if ((lead & 0xE0) == 0xC0) {
+            codePoint = lead & 0x1F;
+            seqLen    = 2;
+        } else if ((lead & 0xF0) == 0xE0) {
+            codePoint = lead & 0x0F;
+            seqLen    = 3;
+        } else if ((lead & 0xF8) == 0xF0) {
+            codePoint = lead & 0x07;
+            seqLen    = 4;
+        } else {
+            break; // Invalid lead byte
+        }
+        if (i + seqLen > str.size()) {
+            break; // Truncated sequence
+        }
+        for (size_t j = 1; j < seqLen; j++) {
+            codePoint = (codePoint << 6) | (static_cast<uint8>(str[i + j]) & 0x3F);
+        }
+        i += seqLen;
+        out.push_back(static_cast<wchar_t>(codePoint));
+    }
+    return out;
+#else
     std::wstring out;
 
     int32 size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, str.data(), str.length(), nullptr, 0);
@@ -221,11 +257,36 @@ std::wstring UTF8ToUnicode(const std::string &str)
     }
 
     return out;
+#endif
 }
 
 // Convert Windows Unicode to UTF-8. Free pointer using delete[]
 // NOTSA
 std::string UnicodeToUTF8(const std::wstring& str) {
+#ifdef NOTSA_NATIVE
+    // No `WideCharToMultiByte` natively - encode UTF-8 by hand (`wchar_t` is UTF-32 on macOS)
+    std::string out;
+    out.reserve(str.size());
+    for (const auto wch : str) {
+        const auto codePoint = static_cast<uint32>(wch);
+        if (codePoint < 0x80) {
+            out.push_back(static_cast<char>(codePoint));
+        } else if (codePoint < 0x800) {
+            out.push_back(static_cast<char>(0xC0 | (codePoint >> 6)));
+            out.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+        } else if (codePoint < 0x10000) {
+            out.push_back(static_cast<char>(0xE0 | (codePoint >> 12)));
+            out.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+        } else {
+            out.push_back(static_cast<char>(0xF0 | (codePoint >> 18)));
+            out.push_back(static_cast<char>(0x80 | ((codePoint >> 12) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+        }
+    }
+    return out;
+#else
     std::string out;
 
     int32 size = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, str.data(), str.length(), nullptr, 0, nullptr, nullptr);
@@ -240,6 +301,7 @@ std::string UnicodeToUTF8(const std::wstring& str) {
     }
 
     return out;
+#endif
 }
 
 /*!

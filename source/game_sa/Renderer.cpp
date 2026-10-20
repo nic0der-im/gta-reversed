@@ -13,7 +13,9 @@
 #include "Shadows.h"
 #include "CarFXRenderer.h"
 
+#ifndef NOTSA_NATIVE
 #include "toolsmenu/UIRenderer.h"
+#endif
 auto& gnRendererModelRequestFlags = StaticRef<uint32>(0xB745C4);
 auto& gpOutEntitiesForGetObjectsInFrustum = StaticRef<CEntity**>(0xB76854);
 

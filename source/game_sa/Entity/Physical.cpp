@@ -852,7 +852,7 @@ void CPhysical::ApplyFrictionMoveForce(CVector moveForce)
 // 0x543100
 void CPhysical::ApplyFrictionTurnForce(CVector posn, CVector velocity)
 {
-    ((void(__thiscall*)(CPhysical*, CVector, CVector))0x543100)(this, posn, velocity);
+    plugin::CallMethod<0x543100, CPhysical*, CVector, CVector>(this, posn, velocity);
 }
 
 // 0x543220
@@ -1194,7 +1194,7 @@ bool CPhysical::ApplySpringDampening(float fDampingForce, float fSpringForceDamp
 // Unused
 bool CPhysical::ApplySpringDampeningOld(float arg0, float arg1, CVector& arg2, CVector& arg3, CVector& arg4)
 {
-    return ((bool(__thiscall*)(CPhysical*, float, float, CVector&, CVector&, CVector&))0x544100)(this, arg0, arg1, arg2, arg3, arg4);
+    return plugin::CallMethodAndReturn<bool, 0x544100, CPhysical*, float, float, CVector&, CVector&, CVector&>(this, arg0, arg1, arg2, arg3, arg4);
 }
 
 // 0x544280
@@ -2155,7 +2155,7 @@ void CPhysical::PlacePhysicalRelativeToOtherPhysical(CPhysical* relativeToPhysic
 // 0x546ED0
 float CPhysical::ApplyScriptCollision(CVector arg0, float arg1, float arg2, CVector* arg3)
 {
-    return ((float(__thiscall*)(CPhysical*, CVector, float, float, CVector*))0x546ED0)(this, arg0, arg1, arg2, arg3);
+    return plugin::CallMethodAndReturn<float, 0x546ED0, CPhysical*, CVector, float, float, CVector*>(this, arg0, arg1, arg2, arg3);
 }
 
 // 0x546FF0

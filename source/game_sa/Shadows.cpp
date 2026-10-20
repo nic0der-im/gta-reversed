@@ -133,14 +133,14 @@ void CShadows::TidyUpShadows() {
 
 // 0x706F60
 void CShadows::AddPermanentShadow(uint8 type, RwTexture* texture, CVector* posn, float topX, float topY, float rightX, float rightY, int16 intensity, uint8 red, uint8 greeb, uint8 blue, float drawDistance, uint32 time, float upDistance) {
-    ((void(__cdecl*)(uint8, RwTexture*, CVector*, float, float, float, float, int16, uint8, uint8, uint8, float, uint32, float))0x706F60)(type, texture, posn, topX, topY, rightX, rightY, intensity, red, greeb, blue, drawDistance, time, upDistance);
+    plugin::Call<0x706F60, uint8, RwTexture*, CVector*, float, float, float, float, int16, uint8, uint8, uint8, float, uint32, float>(type, texture, posn, topX, topY, rightX, rightY, intensity, red, greeb, blue, drawDistance, time, upDistance);
 }
 
 // 0x70C950
 void CShadows::UpdatePermanentShadows() {
     ZoneScoped;
 
-    ((void(__cdecl*)())0x70C950)();
+    plugin::Call<0x70C950>();
 }
 
 // 0x707930
@@ -647,12 +647,12 @@ void CShadows::RenderStaticShadows() {
 
 // 0x7086B0
 void CShadows::CastShadowEntityXY(CEntity* entity, float conrerAX, float cornerAY, float cornerBX, float cornerBY, CVector* posn, float frontX, float frontY, float sideX, float sideY, int16 intensity, uint8 red, uint8 green, uint8 blue, float zDistance, float scale, CPolyBunch** ppPolyBunch, uint8* pDayNightIntensity, int32 shadowType) {
-    ((void(__cdecl*)(CEntity*, float, float, float, float, CVector*, float, float, float, float, int16, uint8, uint8, uint8, float, float, CPolyBunch**, uint8*, int32))0x7086B0)(entity, conrerAX, cornerAY, cornerBX, cornerBY, posn, frontX, frontY, sideX, sideY, intensity, red, green, blue, zDistance, scale, ppPolyBunch, pDayNightIntensity, shadowType);
+    plugin::Call<0x7086B0, CEntity*, float, float, float, float, CVector*, float, float, float, float, int16, uint8, uint8, uint8, float, float, CPolyBunch**, uint8*, int32>(entity, conrerAX, cornerAY, cornerBX, cornerBY, posn, frontX, frontY, sideX, sideY, intensity, red, green, blue, zDistance, scale, ppPolyBunch, pDayNightIntensity, shadowType);
 }
 
 // 0x70A040
 void CShadows::CastShadowEntityXYZ(CEntity* entity, CVector* posn, float frontX, float frontY, float sideX, float sideY, int16 intensity, uint8 red, uint8 green, uint8 blue, float zDistance, float scale, CPolyBunch** ppPolyBunch, CRealTimeShadow* realTimeShadow) {
-    ((void(__cdecl*)(CEntity*, CVector*, float, float, float, float, int16, uint8, uint8, uint8, float, float, CPolyBunch**, CRealTimeShadow*))0x70A040)(entity, posn, frontX, frontY, sideX, sideY, intensity, red, green, blue, zDistance, scale, ppPolyBunch, realTimeShadow);
+    plugin::Call<0x70A040, CEntity*, CVector*, float, float, float, float, int16, uint8, uint8, uint8, float, float, CPolyBunch**, CRealTimeShadow*>(entity, posn, frontX, frontY, sideX, sideY, intensity, red, green, blue, zDistance, scale, ppPolyBunch, realTimeShadow);
 }
 
 // 0x70A470
@@ -744,13 +744,13 @@ void CShadows::CastPlayerShadowSectorList(
 template<typename PtrListType>
 void CShadows::CastShadowSectorList(PtrListType& ptrList, float conrerAX, float cornerAY, float cornerBX, float cornerBY, CVector* posn, float frontX, float frontY, float sideX, float sideY, int16 intensity, uint8 red, uint8 green, uint8 blue, float zDistance, float scale, CPolyBunch** ppPolyBunch, uint8* pDayNightIntensity, int32 shadowType) {
     // Nearly identical to `CastPlayerShadowSectorList`, the difference is 1 check is missing... :D
-    ((void(__cdecl*)(PtrListType&, float, float, float, float, CVector*, float, float, float, float, int16, uint8, uint8, uint8, float, float, CPolyBunch**, uint8*, int32))0x70A630)(ptrList, conrerAX, cornerAY, cornerBX, cornerBY, posn, frontX, frontY, sideX, sideY, intensity, red, green, blue, zDistance, scale, ppPolyBunch, pDayNightIntensity, shadowType);
+    plugin::Call<0x70A630, PtrListType&, float, float, float, float, CVector*, float, float, float, float, int16, uint8, uint8, uint8, float, float, CPolyBunch**, uint8*, int32>(ptrList, conrerAX, cornerAY, cornerBX, cornerBY, posn, frontX, frontY, sideX, sideY, intensity, red, green, blue, zDistance, scale, ppPolyBunch, pDayNightIntensity, shadowType);
 }
 
 // 0x70A7E0
 template<typename PtrListType>
 void CShadows::CastRealTimeShadowSectorList(PtrListType& ptrList, float conrerAX, float cornerAY, float cornerBX, float cornerBY, CVector* posn, float frontX, float frontY, float sideX, float sideY, int16 intensity, uint8 red, uint8 green, uint8 blue, float zDistance, float scale, CPolyBunch** ppPolyBunch, CRealTimeShadow* realTimeShadow, uint8* pDayNightIntensity) {
-    ((void(__cdecl*)(PtrListType&, float, float, float, float, CVector*, float, float, float, float, int16, uint8, uint8, uint8, float, float, CPolyBunch**, CRealTimeShadow*, uint8*))0x70A7E0)(ptrList, conrerAX, cornerAY, cornerBX, cornerBY, posn, frontX, frontY, sideX, sideY, intensity, red, green, blue, zDistance, scale, ppPolyBunch, realTimeShadow, pDayNightIntensity);
+    plugin::Call<0x70A7E0, PtrListType&, float, float, float, float, CVector*, float, float, float, float, int16, uint8, uint8, uint8, float, float, CPolyBunch**, CRealTimeShadow*, uint8*>(ptrList, conrerAX, cornerAY, cornerBX, cornerBY, posn, frontX, frontY, sideX, sideY, intensity, red, green, blue, zDistance, scale, ppPolyBunch, realTimeShadow, pDayNightIntensity);
 }
 
 // 0x70A960
@@ -981,18 +981,18 @@ void CShadows::RenderStoredShadows() {
 
 // 0x70B730
 void CShadows::GeneratePolysForStaticShadow(int16 staticShadowIndex) {
-    ((void(__cdecl*)(int16))0x70B730)(staticShadowIndex);
+    plugin::Call<0x70B730, int16>(staticShadowIndex);
 }
 
 // 0x70BA00
 bool CShadows::StoreStaticShadow(uint32 id, eShadowType type, RwTexture* texture, const CVector& posn, float frontX, float frontY, float sideX, float sideY, int16 intensity, uint8 red, uint8 green, uint8 blue, float zDistane, float scale, float drawDistance, bool temporaryShadow, float upDistance) {
-    return ((bool(__cdecl*)(uint32, eShadowType, RwTexture*, const CVector&, float, float, float, float, int16, uint8, uint8, uint8, float, float, float, bool, float))0x70BA00)(
+    return plugin::CallAndReturn<bool, 0x70BA00, uint32, eShadowType, RwTexture*, const CVector&, float, float, float, float, int16, uint8, uint8, uint8, float, float, float, bool, float>(
         id, type, texture, posn, frontX, frontY, sideX, sideY, intensity, red, green, blue, zDistane, scale, drawDistance, temporaryShadow, upDistance);
 }
 
 // 0x70BDA0
 void CShadows::StoreShadowForVehicle(CVehicle* vehicle, VEH_SHD_TYPE vehShadowType) {
-    ((void(__cdecl*)(CVehicle*, VEH_SHD_TYPE))0x70BDA0)(vehicle, vehShadowType);
+    plugin::Call<0x70BDA0, CVehicle*, VEH_SHD_TYPE>(vehicle, vehShadowType);
     // So far so good (most likely), I'm just lazy to finish it
     /*
     const auto shdwStrength = CTimeCycle::m_CurrentColours.m_nShadowStrength;
@@ -1250,7 +1250,12 @@ void CShadows::RenderIndicatorShadow(
 }
 
 // 0x709CF0
-#ifdef _MSC_VER
+#ifdef NOTSA_NATIVE
+CVector* ShadowRenderTriangleCB(CVector* normal, CVector* trianglePos, _ProjectionParam* param) {
+    // `c` is passed in registers - There's no way to call it but through `plugin::Call*` (Aborts)
+    return plugin::CallAndReturn<CVector*, 0x709CF0, CVector*, CVector*, _ProjectionParam*>(normal, trianglePos, param);
+}
+#elif defined(_MSC_VER)
 CVector* ShadowRenderTriangleCB(CVector* normal, CVector* trianglePos, _ProjectionParam* param) {
     CVector* result = nullptr;
     __asm mov eax, normal

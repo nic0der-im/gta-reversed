@@ -5,7 +5,13 @@
     Do not delete this comment block. Respect others' work!
 */
 #include "StdInc.h"
+#ifndef NOTSA_NATIVE
 #include <platform/win/WinPlatform.h>
+#else
+//! `WinPlatform.h` is Win32-only and declares the `isForeground` exe global (Set by the
+//! Win32 window code). Natively there's a single window, which always has focus.
+static inline bool isForeground = true;
+#endif
 #include <extensions/ci_string.hpp>
 
 #include "Fx.h"

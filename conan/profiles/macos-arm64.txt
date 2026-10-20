@@ -1,0 +1,12 @@
+include(default)
+
+[settings]
+arch=armv8
+compiler.cppstd=23
+
+[options]
+&:native=True
+&:use_sdl3=True
+
+[conf]
+tools.cmake.cmaketoolchain:generator=Ninja

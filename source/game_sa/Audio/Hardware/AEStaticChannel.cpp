@@ -29,6 +29,9 @@ CAEStaticChannel::CAEStaticChannel(IDirectSound* pDirectSound, uint16 channelId,
 
 // 0x4F10D0
 void CAEStaticChannel::Service() {
+#ifdef NOTSA_NATIVE
+    // Silent backend: no DirectSound buffer to service.
+#else
     if (!m_pDirectSoundBuffer) {
         m_nBufferStatus = 0;
         return;
@@ -67,6 +70,7 @@ void CAEStaticChannel::Service() {
             buf->Release();
         }
     }
+#endif // NOTSA_NATIVE
 }
 
 // 0x4F0F40
@@ -96,6 +100,11 @@ uint16 CAEStaticChannel::GetLength() {
 
 // 0x4F0BD0
 void CAEStaticChannel::Play(int16 timeInMs, int8 unused, float scalingFactor) {
+#ifdef NOTSA_NATIVE
+    // Silent backend: there is no DirectSound buffer to start.
+    m_bNeedsSynch = true;
+    m_bPaused = scalingFactor == 0.0f;
+#else
     if (m_bLooped && m_nCurrentBufferOffset != 0 || !timeInMs) {
         m_bUnkn2 = false;
     } else {
@@ -104,12 +113,17 @@ void CAEStaticChannel::Play(int16 timeInMs, int8 unused, float scalingFactor) {
     }
     m_bNeedsSynch = true;
     m_bPaused = scalingFactor == 0.0f;
+#endif
 }
 
     
 
 // 0x4F1040
 void CAEStaticChannel::SynchPlayback() {
+#ifdef NOTSA_NATIVE
+    // Silent backend: nothing to synchronize.
+    return;
+#else
     if (!m_pDirectSoundBuffer || !m_bNeedsSynch || m_bPaused)
         return;
 
@@ -124,10 +138,14 @@ void CAEStaticChannel::SynchPlayback() {
     m_pDirectSoundBuffer->Play(0, 0, m_bLooped);
     m_nSyncTime = CTimer::GetTimeInMS();
     m_bNeedsSynch = false;
+#endif // NOTSA_NATIVE
 }
 
 // 0x4F0FB0
 void CAEStaticChannel::Stop() {
+#ifdef NOTSA_NATIVE
+    // Silent backend: there is no DirectSound buffer to stop or release.
+#else
     if (m_pDirectSoundBuffer &&
         CAEAudioChannel::IsBufferPlaying() &&
         !AESmoothFadeThread.RequestFade(m_pDirectSoundBuffer, -100.0F, -1, true)
@@ -147,6 +165,7 @@ void CAEStaticChannel::Stop() {
         m_pDirectSound3DBuffer = nullptr;
     }
     }
+#endif // NOTSA_NATIVE
 }
 
 bool CAEStaticChannel::SetAudioBuffer(IDirectSound3DBuffer* buffer, uint16 size, int16 f88, int16 f8c, int16 loopOffset, uint16 frequency) {

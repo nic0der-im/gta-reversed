@@ -23,15 +23,59 @@ void CAESmoothFadeThread::InjectHooks() {
 }
 
 CAESmoothFadeThread::CAESmoothFadeThread() {
+#ifdef NOTSA_NATIVE
+    m_threadHandle = nullptr;
+#else
     m_threadHandle         = INVALID_HANDLE_VALUE;
+#endif
     m_dwThreadId           = 0;
     m_bInitialized       = false;
     m_bActive              = false;
+    m_bSmoothFadesDisabled = false;
     m_numRequests                = 0;
     m_lastRequest               = 0;
     m_currentTime     = 0;
     m_nNumAvailableBuffers = 0;
 }
+
+#ifdef NOTSA_NATIVE
+void CAESmoothFadeThread::Initialise() {
+    InitialiseRequestSlots();
+    m_bInitialized         = false; // No DirectSound buffers to fade in the silent backend
+    m_bSmoothFadesDisabled = true;
+}
+
+void CAESmoothFadeThread::InitialiseRequestSlots() {
+    for (auto& entry : m_aEntries) {
+        entry.m_nStatus = eSmoothFadeEntryStatus::STATE_IDLE;
+        entry.m_pSoundBuffer = nullptr;
+    }
+}
+
+void CAESmoothFadeThread::Start() {
+    m_bActive = true;
+}
+
+void CAESmoothFadeThread::Stop() {
+    m_bActive = false;
+}
+
+void CAESmoothFadeThread::WaitForExit() {}
+
+void CAESmoothFadeThread::Service() {}
+
+void CAESmoothFadeThread::CancelFade(IDirectSoundBuffer* buffer) {
+    UNUSED(buffer);
+}
+
+bool CAESmoothFadeThread::RequestFade(IDirectSoundBuffer* buffer, float fTargetVolume, int16 fadeTime, bool bStopBufferAfterFade) {
+    return false;
+}
+
+void CAESmoothFadeThread::SetBufferVolume(IDirectSoundBuffer* buffer, float volume) {}
+
+void CAESmoothFadeThread::SmoothFadeProc(void* smoothFade) {}
+#else
 
 void CAESmoothFadeThread::Initialise() {
     InitialiseRequestSlots();
@@ -243,3 +287,4 @@ DWORD WINAPI CAESmoothFadeThread::SmoothFadeProc(void* smoothFade) {
 
     return 0;
 }
+#endif // NOTSA_NATIVE

@@ -35,13 +35,61 @@ public:
     }
 
     void Load(const std::string& fileName) {
+#ifdef NOTSA_NATIVE
+        // The ini files are UTF-8, so parse them as narrow strings (No `wchar_t` locale games)
+        std::ifstream in(fileName);
+        assert(!in.bad());
+
+        ParseIniFile(in, m_content);
+#else
         std::wifstream in(fileName);
         assert(!in.bad());
 
         ParseIniFile(in, m_content);
+#endif
     }
 
 private:
+#ifdef NOTSA_NATIVE
+    static void ParseIniFile(std::ifstream& file, IniContent& ini) {
+        std::string sectionName{};
+        std::string line{};
+        while (std::getline(file, line)) {
+            const auto StripText = [](std::string& s) {
+                s.erase(0, s.find_first_not_of(" \t\n\r\f\v"));
+                s.erase(s.find_last_not_of(" \t\n\r\f\v") + 1);
+            };
+
+            if (const auto cf = line.find(';'); cf != std::string::npos) {
+                line.erase(cf);
+            }
+
+            StripText(line);
+
+            if (line.empty())
+                continue;
+
+            if (line.front() == '[' && line.back() == ']') {
+                sectionName = line.substr(1, line.size() - 2);
+                continue;
+            }
+
+            if (const auto ef = line.find('='); ef != std::string::npos) {
+                auto key   = line.substr(0, ef);
+                auto value = line.substr(ef + 1);
+
+                StripText(key);
+                StripText(value);
+
+                ini[sectionName][key] = value;
+                continue;
+            }
+
+            NOTSA_LOG_DEBUG("err: something wrong!");
+            break;
+        }
+    }
+#else
     static void ParseIniFile(std::wifstream& file, IniContent& ini) {
         std::string sectionName{};
         std::wstring line{};
@@ -80,6 +128,7 @@ private:
             break;
         }
     }
+#endif
 } g_ConfigurationMgr;
 
 namespace notsa::detail {

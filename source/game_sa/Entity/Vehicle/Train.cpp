@@ -177,7 +177,7 @@ void CTrain::InitTrains() {
 
 // 0x6F55D0
 void CTrain::ReadAndInterpretTrackFile(const char* filename, CTrainNode** nodes, int32* lineCount, float* totalDist, int32 skipStations) {
-    ((void(__cdecl*)(const char*, CTrainNode **, int32*, float*, int32))0x6F55D0)(filename, nodes, lineCount, totalDist, skipStations);
+    plugin::Call<0x6F55D0, const char*, CTrainNode **, int32*, float*, int32>(filename, nodes, lineCount, totalDist, skipStations);
 }
 
 // 0x6F58D0
@@ -207,12 +207,12 @@ void PlayAnnouncement(uint8 arg0, uint8 arg1) {
 
 // 0x6F59E0
 void CTrain::FindCoorsFromPositionOnTrack(float railDistance, int32 trackId, CVector* outCoors) {
-    ((void(__cdecl*)(float, int32, CVector*))0x6F59E0)(railDistance, trackId, outCoors);
+    plugin::Call<0x6F59E0, float, int32, CVector*>(railDistance, trackId, outCoors);
 }
 
 // 0x6F5BA0
 bool CTrain::FindMaximumSpeedToStopAtStations(float* speed) {
-    return ((bool(__thiscall*)(CTrain*, float*))0x6F5BA0)(this, speed);
+    return plugin::CallMethodAndReturn<bool, 0x6F5BA0, CTrain*, float*>(this, speed);
 }
 
 // 0x6F5CD0
@@ -282,17 +282,17 @@ void CTrain::SetTrainCruiseSpeed(CTrain* train, float speed) {
 
 // 0x6F5E70
 CTrain* CTrain::FindCaboose(CTrain* train) {
-    return ((CTrain * (__cdecl*)(CTrain*))0x6F5E70)(train);
+    return plugin::CallAndReturn<CTrain *, 0x6F5E70, CTrain*>(train);
 }
 
 // 0x6F5E90
 CTrain* CTrain::FindEngine(CTrain* train) {
-    return ((CTrain * (__cdecl*)(CTrain*))0x6F5E90)(train);
+    return plugin::CallAndReturn<CTrain *, 0x6F5E90, CTrain*>(train);
 }
 
 // 0x6F5EB0
 CTrain* CTrain::FindCarriage(CTrain* train, uint8 carriage) {
-    return ((CTrain * (__cdecl*)(CTrain*, uint8))0x6F5EB0)(train, carriage);
+    return plugin::CallAndReturn<CTrain *, 0x6F5EB0, CTrain*, uint8>(train, carriage);
 }
 
 // 0x6F5EF0
@@ -302,7 +302,7 @@ bool CTrain::FindSideStationIsOn() const {
 
 // 0x6F5F00
 void CTrain::FindNextStationPositionInDirection(bool clockwiseDirection, float distance, float* distanceToStation, int32* numStations) {
-    ((void(__cdecl*)(bool, float, float*, int32*))0x6F5F00)(clockwiseDirection, distance, distanceToStation, numStations);
+    plugin::Call<0x6F5F00, bool, float, float*, int32*>(clockwiseDirection, distance, distanceToStation, numStations);
 }
 
 // 0x6F6320
@@ -337,12 +337,12 @@ void MarkSurroundingEntitiesForCollisionWithTrain(CVector pos, float radius, CEn
 // 0x6F5CF0
 template<typename PtrListType>
 void TrainHitStuff(PtrListType& ptrList, CEntity* entity) {
-    ((void(__cdecl*)(PtrListType&, CEntity*))0x6F5CF0)(ptrList, entity);
+    plugin::Call<0x6F5CF0, PtrListType&, CEntity*>(ptrList, entity);
 }
 
 // 0x6F6850
 void CTrain::RemoveRandomPassenger() {
-    ((void(__thiscall*)(CTrain*))0x6F6850)(this);
+    plugin::CallMethod<0x6F6850, CTrain*>(this);
 }
 
 // 0x6F6A20
@@ -360,7 +360,7 @@ void CTrain::RemoveMissionTrains() {
 
 // 0x6F6AA0
 void CTrain::RemoveAllTrains() {
-    ((void(__cdecl*)())0x6F6AA0)();
+    plugin::Call<0x6F6AA0>();
 }
 
 // 0x6F6B60
@@ -374,17 +374,17 @@ void CTrain::ReleaseMissionTrains() {
 
 // 0x6F6BD0
 int32 CTrain::FindClosestTrackNode(CVector posn, int32* outTrackId) {
-    return ((int32(__cdecl*)(CVector, int32*))0x6F6BD0)(posn, outTrackId);
+    return plugin::CallAndReturn<int32, 0x6F6BD0, CVector, int32*>(posn, outTrackId);
 }
 
 // 0x6F6CC0
 void CTrain::FindPositionOnTrackFromCoors() {
-    ((void(__thiscall*)(CTrain*))0x6F6CC0)(this);
+    plugin::CallMethod<0x6F6CC0, CTrain*>(this);
 }
 
 // 0x6F7090
 CTrain* CTrain::FindNearestTrain(CVector posn, bool mustBeMainTrain) {
-    return ((CTrain * (__cdecl*)(CVector, bool))0x6F7090)(posn, mustBeMainTrain);
+    return plugin::CallAndReturn<CTrain *, 0x6F7090, CVector, bool>(posn, mustBeMainTrain);
 }
 
 // 0x6F7140
@@ -395,27 +395,27 @@ void CTrain::SetNewTrainPosition(CTrain* train, CVector posn) {
 
 // 0x6F7260
 bool CTrain::IsNextStationAllowed(CTrain* train) {
-    return ((bool(__cdecl*)(CTrain*))0x6F7260)(train);
+    return plugin::CallAndReturn<bool, 0x6F7260, CTrain*>(train);
 }
 
 // 0x6F72F0
 void CTrain::SkipToNextAllowedStation(CTrain* train) {
-    ((void(__cdecl*)(CTrain*))0x6F72F0)(train);
+    plugin::Call<0x6F72F0, CTrain*>(train);
 }
 
 // 0x6F7550
 void CTrain::CreateMissionTrain(CVector posn, bool clockwiseDirection, uint32 trainType, CTrain** outFirstCarriage, CTrain** outLastCarriage, int32 nodeIndex, int32 trackId, bool isMissionTrain) {
-    ((void(__cdecl*)(CVector, bool, uint32, CTrain**, CTrain**, int32, int32, bool))0x6F7550)(posn, clockwiseDirection, trainType, outFirstCarriage, outLastCarriage, nodeIndex, trackId, isMissionTrain);
+    plugin::Call<0x6F7550, CVector, bool, uint32, CTrain**, CTrain**, int32, int32, bool>(posn, clockwiseDirection, trainType, outFirstCarriage, outLastCarriage, nodeIndex, trackId, isMissionTrain);
 }
 
 // 0x6F7900
 void CTrain::DoTrainGenerationAndRemoval() {
-    ((void(__cdecl*)())0x6F7900)();
+    plugin::Call<0x6F7900>();
 }
 
 // 0x6F8170
 void CTrain::AddNearbyPedAsRandomPassenger() {
-    ((void(__thiscall*)(CTrain*))0x6F8170)(this);
+    plugin::CallMethod<0x6F8170, CTrain*>(this);
 }
 
 // 0x6F86A0

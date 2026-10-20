@@ -1,8 +1,10 @@
 #include "StdInc.h"
 
 #include "app_debug.h"
+#ifndef NOTSA_NATIVE
 #include <windows.h>
 #include <DbgHelp.h>
+#endif
 #include <spdlog/async.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -59,6 +61,7 @@ void FlushObrsPrintfs() {
 }
 
 // This probably should be in winps :D
+#ifndef NOTSA_NATIVE
 LONG WINAPI WindowsExceptionHandler(PEXCEPTION_POINTERS pExceptionInfo) {
     // If this function itself crashes it's invoked again
     // So let's prevent the recusion with this simple hack
@@ -163,6 +166,7 @@ LONG WINAPI WindowsExceptionHandler(PEXCEPTION_POINTERS pExceptionInfo) {
 
     return EXCEPTION_EXECUTE_HANDLER;
 }
+#endif // NOTSA_NATIVE
 
 notsa::Logging::Logging() {
     using namespace std::chrono_literals;
@@ -184,7 +188,9 @@ notsa::Logging::Logging() {
     spdlog::set_default_logger(Create("default"));
     spdlog::flush_every(100ms);
 
+#ifndef NOTSA_NATIVE
     SetUnhandledExceptionFilter(WindowsExceptionHandler);
+#endif
 }
 
 notsa::Logging::~Logging() {

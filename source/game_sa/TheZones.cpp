@@ -241,7 +241,7 @@ void CTheZones::Init() {
 // Unlock the current zone
 // 0x572800
 void CTheZones::SetCurrentZoneAsUnlocked() {
-    ((void(__cdecl*)())0x572800)();
+    plugin::Call<0x572800>();
 }
 
 // Creates a zone

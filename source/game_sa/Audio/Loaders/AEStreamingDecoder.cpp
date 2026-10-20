@@ -11,7 +11,12 @@ CAEStreamingDecoder::CAEStreamingDecoder(CAEDataStream* dataStream) {
 
 #ifdef USE_DEFAULT_FUNCTIONS
 void CAEStreamingDecoder::operator delete(void* mem) {
+#ifndef NOTSA_NATIVE
     ((void(__thiscall*)(void*, int32))(0x4f2860))(mem, 1);
+#else
+    // `__thiscall` has no `plugin::Call*` equivalent
+    notsa::native::UnreversedCall(0x4F2860);
+#endif
 }
 #endif
 

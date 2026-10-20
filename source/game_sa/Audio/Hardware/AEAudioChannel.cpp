@@ -52,7 +52,9 @@ CAEAudioChannel::CAEAudioChannel(IDirectSound* directSound, uint16 channelId, ui
     m_pDirectSound               = directSound;
     m_nChannelId                 = channelId;
     m_nFlags                     = 0;
+#ifdef USE_DSOUND
     m_nBufferStatus              = 0;
+#endif
     m_nFrequency                 = samplesPerSec;
     m_nOriginalFrequency         = samplesPerSec;
     m_Volume                    = -100.0f;
@@ -72,6 +74,9 @@ CAEAudioChannel::CAEAudioChannel(IDirectSound* directSound, uint16 channelId, ui
 
 // 0x4D7910
 CAEAudioChannel::~CAEAudioChannel() {
+#ifdef NOTSA_NATIVE
+    // Silent backend: no DirectSound buffers are ever created.
+#else
     if (m_pDirectSoundBuffer) {
         --g_numSoundChannelsUsed;
         std::exchange(m_pDirectSoundBuffer, nullptr)->Release();
@@ -80,10 +85,20 @@ CAEAudioChannel::~CAEAudioChannel() {
     if (m_pDirectSound3DBuffer) {
         std::exchange(m_pDirectSound3DBuffer, nullptr)->Release();
     }
+#endif
 }
 
 // 0x4D7D00
 void CAEAudioChannel::SetFrequencyScalingFactor(float factor) {
+#ifdef NOTSA_NATIVE
+    // Silent backend: keep the channel state, but there is no buffer to re-frequency.
+    if (factor == 0.0F) {
+        m_bPaused = true;
+        return;
+    }
+    SetFrequency(static_cast<uint32>(float(m_nOriginalFrequency) * factor));
+    m_bPaused = false;
+#else
     if (factor == 0.0F) {
         if (m_pDirectSoundBuffer &&
             !m_bPaused &&
@@ -116,6 +131,7 @@ void CAEAudioChannel::SetFrequencyScalingFactor(float factor) {
         }
         m_bPaused = false;
     }
+#endif // NOTSA_NATIVE
 }
 
 // 0x4D7950
@@ -157,9 +173,13 @@ uint32 CAEAudioChannel::GetCurrentPlaybackPosition() const {
     if (!m_pDirectSoundBuffer)
         return 0;
 
+#ifdef NOTSA_NATIVE
+    return 0;
+#else
     uint32 outPos = 0;
     m_pDirectSoundBuffer->GetCurrentPosition(reinterpret_cast<LPDWORD>(&outPos), nullptr);
     return outPos;
+#endif
 }
 
 // 0x4D79D0
@@ -215,6 +235,11 @@ bool CAEAudioChannel::Lost() const {
 
 // 0x4D7AA0
 bool CAEAudioChannel::SetReverbAndDepth(uint32 reverbEnv, uint32 depth) {
+#ifdef NOTSA_NATIVE
+    // Silent backend: there is no 3D buffer (nor EAX) to configure.
+    UNUSED(reverbEnv, depth);
+    return false;
+#else
     if (!m_pDirectSoundBuffer || !m_pDirectSound3DBuffer || AEAudioHardware.m_n3dEffectsQueryResult != 1) {
         return false;
     }
@@ -231,10 +256,15 @@ bool CAEAudioChannel::SetReverbAndDepth(uint32 reverbEnv, uint32 depth) {
 #endif
     }
     return false;
+#endif // NOTSA_NATIVE
 }
 
 // 0x4D7B50
 void CAEAudioChannel::SetNotInRoom(bool onStreet) {
+#ifdef NOTSA_NATIVE
+    // Silent backend: there is no 3D buffer (nor EAX) to configure.
+    UNUSED(onStreet);
+#else
     if (!m_pDirectSoundBuffer || !m_pDirectSound3DBuffer || AEAudioHardware.m_n3dEffectsQueryResult != 1) {
         return;
     }
@@ -250,4 +280,5 @@ void CAEAudioChannel::SetNotInRoom(bool onStreet) {
         assert(ppIKsPropertySet->Set(EAXPROPERTYID_EAX_Source, EAXSOURCE_ROOM, nullptr, 0, &room, sizeof(room)));
 #endif
     }
+#endif // NOTSA_NATIVE
 }

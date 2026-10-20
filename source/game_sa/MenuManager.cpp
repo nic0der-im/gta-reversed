@@ -12,7 +12,9 @@
 #include "AEAudioUtility.h"
 #include "Radar.h"
 #include "Gamma.h"
+#ifndef NOTSA_NATIVE // Video modes are a renderer concern (See B3)
 #include "VideoMode.h"
+#endif
 #include "C_PcSave.h"
 #include "platform.h"
 #include "Hud.h"
@@ -175,8 +177,10 @@ void CMenuManager::Initialise() {
     m_nCurrentScreenItem = 0;
     m_SelectedSlot = 0;
     if (m_bDoVideoModeUpdate) {
+#ifndef NOTSA_NATIVE // Video modes are a renderer concern - See B3
         RwD3D9ChangeMultiSamplingLevels(m_nPrefsAntialiasing);
         SetVideoMode(m_nPrefsVideoMode);
+#endif
         m_bDoVideoModeUpdate = false;
     }
     CentreMousePointer();
@@ -750,7 +754,11 @@ void CMenuManager::LoadSettings() {
         TheText.Load(false);
         m_bLanguageChanged = true;
         InitialiseChangedLanguageSettings(false);
+#ifdef NOTSA_NATIVE
+        NOTSA_LOG_DEBUG("The previously saved language is now in use"); // SA
+#else
         OutputDebugStringA("The previously saved language is now in use"); // SA
+#endif
     }
 
     CFileMgr::CloseFile(file);

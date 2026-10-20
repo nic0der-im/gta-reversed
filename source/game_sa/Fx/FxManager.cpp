@@ -165,7 +165,7 @@ bool FxManager_c::LoadFxProject(const char* path) {
 
 // 0x4A9AE0
 void FxManager_c::UnloadFxProject() {
-    // ((void(__thiscall*)(FxManager_c*))0x4A9AE0)(this);
+    // plugin::CallMethod<0x4A9AE0, FxManager_c*>(this);
 
     DestroyAllFxSystems();
     m_FxSystemBPs.RemoveAll();
@@ -180,7 +180,7 @@ void FxManager_c::UnloadFxProject() {
 
 // 0x5C1F50
 void FxManager_c::LoadFxSystemBP(Const char* filename, FILESTREAM file) {
-    // return ((FxSystemBP_c * (__thiscall*)(FxManager_c*, char*, FILESTREAM))0x5C1F50)(this, filename, file);
+    // return plugin::CallMethodAndReturn<FxSystemBP_c *, 0x5C1F50, FxManager_c*, char*, FILESTREAM>(this, filename, file);
 
     int32 version;
     char line[256];
@@ -194,7 +194,7 @@ void FxManager_c::LoadFxSystemBP(Const char* filename, FILESTREAM file) {
 
 // 0x4A9360
 FxSystemBP_c* FxManager_c::FindFxSystemBP(const char* name) {
-    // return ((FxSystemBP_c * (__thiscall*)(FxManager_c*, const char*))0x4A9360)(this, name);
+    // return plugin::CallMethodAndReturn<FxSystemBP_c *, 0x4A9360, FxManager_c*, const char*>(this, name);
 
     const auto key = CKeyGen::GetUppercaseKey(name);
     for (FxSystemBP_c* it = m_FxSystemBPs.GetHead(); it; it = m_FxSystemBPs.GetNext(it)) {
@@ -227,7 +227,7 @@ void FxManager_c::CalcFrustumInfo(RwCamera* camera) {
 
 // 0x4A9A80
 void FxManager_c::Update(RwCamera* camera, float timeDelta) {
-    // ((void(__thiscall*)(FxManager_c*, RwCamera*, float))0x4A9A80)(this, camera, timeDelta);
+    // plugin::CallMethod<0x4A9A80, FxManager_c*, RwCamera*, float>(this, camera, timeDelta);
 
     assert(camera);
     CalcFrustumInfo(camera);
@@ -245,7 +245,7 @@ void FxManager_c::Update(RwCamera* camera, float timeDelta) {
 
 // 0x4A92A0
 void FxManager_c::Render(RwCamera* camera, bool bHeatHaze) {
-    // ((void(__thiscall*)(FxManager_c*, RwCamera*, uint8))0x4A92A0)(this, camera, bHeatHaze);
+    // plugin::CallMethod<0x4A92A0, FxManager_c*, RwCamera*, uint8>(this, camera, bHeatHaze);
 
     auto balance = 1.0f - CCustomBuildingDNPipeline::m_fDNBalanceParam;
     m_bHeatHazeEnabled = false;
@@ -273,7 +273,7 @@ Particle_c* FxManager_c::GetParticle(int8 primType) {
 
 // 0x4A9400
 void FxManager_c::FreeUpParticle() {
-    // ((void(__thiscall*)(FxManager_c*))0x4A9400)(this);
+    // plugin::CallMethod<0x4A9400, FxManager_c*>(this);
 
     FxSystem_c* system;
     do {

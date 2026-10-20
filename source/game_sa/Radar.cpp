@@ -408,15 +408,21 @@ uint8 CRadar::CalculateBlipAlpha(float distance) {
  */
 CVector2D CRadar::TransformRadarPointToScreenSpace(const CVector2D& in) {
     // CRadar::DrawRadarSection assumes this function won't spoil EDX, but it does, so we need to keep it up to data.
+#ifndef NOTSA_NATIVE // `edx` is only clobbered because of the x86 calling convention of the exe
     _asm { push edx };
+#endif
     if (FrontEndMenuManager.m_bDrawingMap) {
+#ifndef NOTSA_NATIVE
         _asm { pop edx };
+#endif
         return {
             FrontEndMenuManager.m_vMapOrigin.x + FrontEndMenuManager.m_fMapZoom * in.x,
             FrontEndMenuManager.m_vMapOrigin.y - FrontEndMenuManager.m_fMapZoom * in.y
         };
     } else {
+#ifndef NOTSA_NATIVE
         _asm { pop edx };
+#endif
         return {
             SCREEN_STRETCH_X(94.0f) / 2.0f + SCREEN_STRETCH_X(40.0f) + SCREEN_STRETCH_X(94.0f * in.x) / 2.0f,
             SCREEN_STRETCH_FROM_BOTTOM(104.0f) + SCREEN_STRETCH_Y(76.0f) / 2.0f - SCREEN_STRETCH_Y(76.0f * in.y) / 2.0f
@@ -1553,11 +1559,15 @@ void CRadar::DrawRadarMap() {
     RwRenderStateSet(rwRENDERSTATESRCBLEND,           RWRSTATE(rwBLENDSRCALPHA));
     RwRenderStateSet(rwRENDERSTATEDESTBLEND,          RWRSTATE(rwBLENDINVSRCALPHA));
     RwRenderStateSet(rwRENDERSTATETEXTUREFILTER,      RWRSTATE(rwFILTERLINEAR));
+#ifndef NOTSA_NATIVE
     RwRenderStateSet(rwRENDERSTATESHADEMODE,          RWRSTATE(D3DSHADE_FLAT));
+#endif
     RwRenderStateSet(rwRENDERSTATEZTESTENABLE,        RWRSTATE(rwRENDERSTATETEXTURERASTER));
     RwRenderStateSet(rwRENDERSTATEZWRITEENABLE,       RWRSTATE(FALSE));
     RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE,  RWRSTATE(FALSE));
+#ifndef NOTSA_NATIVE
     RwRenderStateSet(rwRENDERSTATETEXTUREADDRESS,     RWRSTATE(D3DTADDRESS_CLAMP));
+#endif
     RwRenderStateSet(rwRENDERSTATETEXTUREPERSPECTIVE, RWRSTATE(FALSE));
 
     DrawRadarSection(x - 1,     y - 1);

@@ -274,7 +274,11 @@ constexpr int32 TOTAL_TEMP_BUFFER_3DVERTICES = 2048;
 constexpr int32 TOTAL_TEMP_BUFFER_2DVERTICES = 1024;
 constexpr int32 TOTAL_RADIOSITY_VERTEX_BUFFER = 1532;
 
+#ifdef NOTSA_NATIVE
+static inline int32 WindowsCharset = 65001; // `CP_UTF8` - Native paths/charsets are always UTF-8
+#else
 static inline int32 WindowsCharset = static_cast<int32>(GetACP());
+#endif
 
 struct TempVertexBuffer {
     RwIm3DVertex m_3d[TOTAL_TEMP_BUFFER_3DVERTICES]; // For Im3D rendering

@@ -1,5 +1,9 @@
 #include "StdInc.h"
 
+#ifdef NOTSA_NATIVE
+#include "app/platform/native/NativePath.h"
+#endif
+
 auto& gStreamFileHandles = StaticRef<HANDLE[MAX_CD_STREAM_HANDLES]>(0x8E4010);
 auto& gCdImageNames = StaticRef<char[MAX_CD_STREAM_HANDLES][MAX_CD_STREAM_IMAGE_NAME_SIZE]>(0x8E4098);
 auto& gStreamFileCreateFlags = StaticRef<uint32>(0x8E3FE0);
@@ -16,6 +20,7 @@ auto& gLastCdStreamPosn = StaticRef<uint32>(0x8E4898);
 
 #define APPLY_CD_STREAM_DEADLOCK_FIX 1
 
+#ifndef NOTSA_NATIVE // Native streaming is synchronous, so there's no reader thread to synchronize with
 #ifdef APPLY_CD_STREAM_DEADLOCK_FIX
 // thanks to http://forums.codeguru.com/showthread.php?175474-a-CCriticalSection-question
 class CSync {
@@ -46,6 +51,7 @@ public:
 
 static CSync cdStreamThreadSync;
 #endif
+#endif // NOTSA_NATIVE
 #include "AEBankLoader.h"
 
 void InjectCdStreamHooks() {
@@ -63,6 +69,158 @@ void InjectCdStreamHooks() {
     RH_ScopedGlobalInstall(CdStreamShutdown, 0x406370);
 }
 
+#ifdef NOTSA_NATIVE
+//
+// Native streaming implementation.
+//
+// The Windows one reads asynchronously on a dedicated thread using overlapped IO and a
+// queue of pending reads. Natively `CdStreamRead` reads the requested sectors right away
+// on the calling thread, which keeps the semantics of the API (and the game) intact -
+// only the prefetching is lost.
+//
+
+static FILE* GetStreamFile(const CdStream& stream) {
+    return static_cast<FILE*>(stream.hFile);
+}
+
+CdStreamHandle CdStreamOpen(const char* lpFileName) {
+    NOTSA_LOG_DEBUG("CdStreamOpen: {}", lpFileName);
+
+    int32 idx = 0;
+    for (; idx < MAX_CD_STREAM_HANDLES; idx++) {
+        if (!gStreamFileHandles[idx]) {
+            break;
+        }
+    }
+    if (idx == MAX_CD_STREAM_HANDLES) {
+        NOTSA_LOG_DEBUG("CdStreamOpen: too many open images");
+        return 0;
+    }
+
+    const auto path  = notsa::native::NormalizePath(lpFileName);
+    auto* const file = std::fopen(path.c_str(), "rb");
+    if (!file) {
+        NOTSA_LOG_DEBUG("CdStreamOpen: failed to open '{}'", path);
+        return 0;
+    }
+
+    gStreamFileHandles[idx] = file;
+    strncpy_s(gCdImageNames[idx], lpFileName, MAX_CD_STREAM_IMAGE_NAME_SIZE);
+    return (CdStreamHandle)(idx << CD_STREAM_HANDLE_BITS);
+}
+
+eCdStreamStatus CdStreamSync(int32 streamId) {
+    CdStream& stream = gCdStreams[streamId];
+    stream.bInUse = false;
+    return stream.status;
+}
+
+eCdStreamStatus CdStreamGetStatus(int32 streamId) {
+    CdStream& stream = gCdStreams[streamId];
+    if (gStreamingInitialized) {
+        if (stream.bInUse) {
+            return eCdStreamStatus::READING;
+        }
+        if (stream.nSectorsToRead) {
+            return eCdStreamStatus::WAITING_TO_READ;
+        }
+        if (stream.status != eCdStreamStatus::READING_SUCCESS) {
+            const auto status = stream.status;
+            stream.status = eCdStreamStatus::READING_SUCCESS;
+            return status;
+        }
+    }
+    return eCdStreamStatus::READING_SUCCESS;
+}
+
+bool CdStreamRead(int32 streamId, void* lpBuffer, CdStreamPos pos, int32 sectorCount) {
+    CdStream& stream = gCdStreams[streamId];
+    gLastCdStreamPosn = sectorCount + (notsa::IsFixBugs() ? pos.Offset : pos.ToInt()); // CD_STREAM_READ_POS_FIX
+    stream.hFile = gStreamFileHandles[pos.FileID];
+
+    auto* const file = GetStreamFile(stream);
+    if (!file) {
+        stream.status = eCdStreamStatus::READING_FAILURE;
+        return false;
+    }
+
+    std::fseek(file, static_cast<long>(pos.Offset) * STREAMING_SECTOR_SIZE, SEEK_SET);
+    const auto sectorsRead = std::fread(lpBuffer, STREAMING_SECTOR_SIZE, sectorCount, file);
+    stream.status         = sectorsRead == static_cast<size_t>(sectorCount) ? eCdStreamStatus::READING_SUCCESS : eCdStreamStatus::READING_FAILURE;
+    stream.nSectorsToRead = 0;
+    stream.bInUse         = false;
+    return stream.status == eCdStreamStatus::READING_SUCCESS;
+}
+
+[[noreturn]] void WINAPI CdStreamThread(LPVOID) {
+    // Reads are synchronous natively, so this thread is never launched - Keep the symbol
+    // around because it's referenced by the (empty) hook registration.
+    NOTSA_LOG_CRIT("CdStreamThread called, but native streaming doesn't spawn a thread");
+    std::abort();
+}
+
+void CdStreamInitThread() {
+    // Nothing to do - See `CdStreamThread`
+}
+
+void CdStreamInit(int32 streamCount) {
+    for (int32 i = 0; i < MAX_CD_STREAM_HANDLES; i++) {
+        gStreamFileHandles[i] = nullptr;
+        gCdImageNames[i][0]   = 0;
+    }
+
+    gStreamFileCreateFlags = 0;
+    gOverlappedIO          = 0;
+    gStreamingInitialized  = 0;
+
+    // Same probe as the original: read a sector of the first image before enabling streaming
+    auto* const pAllocatedMemory = CMemoryMgr::MallocAlign(STREAMING_SECTOR_SIZE, STREAMING_SECTOR_SIZE);
+
+    gOpenStreamCount = 0;
+    gStreamCount     = streamCount;
+    gCdStreams       = static_cast<CdStream*>(std::calloc(streamCount, sizeof(CdStream)));
+    VERIFY(gCdStreams);
+
+    CdStreamOpen("MODELS\\GTA3.IMG");
+    const bool bStreamRead = CdStreamRead(0, pAllocatedMemory, {}, 1);
+    CdStreamRemoveImages();
+    gStreamingInitialized = 1;
+    if (!bStreamRead) {
+        NOTSA_LOG_WARN("CdStreamInit: failed to read from 'MODELS/GTA3.IMG'");
+    }
+
+    CdStreamInitThread();
+    CMemoryMgr::FreeAlign(pAllocatedMemory);
+}
+
+void CdStreamRemoveImages() {
+    for (int32 i = 0; i < gStreamCount; i++) {
+        CdStreamSync(i);
+    }
+    for (int32 i = 0; i < MAX_CD_STREAM_HANDLES; i++) {
+        if (auto* const file = static_cast<FILE*>(gStreamFileHandles[i])) {
+            std::fclose(file);
+        }
+        gStreamFileHandles[i] = nullptr;
+        gCdImageNames[i][0]   = 0;
+    }
+    gOpenStreamCount = 0;
+}
+
+void CdStreamShutdown() {
+    if (gStreamingInitialized) {
+        CdStreamRemoveImages();
+        gStreamingInitialized = 0;
+    }
+    std::free(gCdStreams);
+    gCdStreams = nullptr;
+}
+
+uint32 CdStreamHandleToFileID(CdStreamHandle h) {
+    return h >> CD_STREAM_HANDLE_BITS;
+}
+
+#else // NOTSA_NATIVE
 // 0x4067B0
 CdStreamHandle CdStreamOpen(const char* lpFileName) {
     NOTSA_LOG_DEBUG("CdStreamOpen: {}", lpFileName);
@@ -340,3 +498,5 @@ void CdStreamShutdown() {
 uint32 CdStreamHandleToFileID(CdStreamHandle h) {
     return h >> CD_STREAM_HANDLE_BITS;
 }
+
+#endif // NOTSA_NATIVE

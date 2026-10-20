@@ -2,8 +2,10 @@
 
 #include <cstdio>
 
+#ifndef NOTSA_NATIVE
 // COM
 #include <ShObjIdl.h>
+#endif
 
 #include "common.h"
 
@@ -11,9 +13,13 @@
 
 #include "AEAudioUtility.h"
 #include "AEDataStream.h"
+#ifndef NOTSA_NATIVE
 #include "AEMFDecoder.h"
+#endif
 #include "AEWaveDecoder.h"
+#ifndef NOTSA_NATIVE
 #include "AEWMADecoder.h"
+#endif
 #include "AEVorbisDecoder.h"
 
 #include "FileMgr.h"
@@ -42,6 +48,9 @@ bool CAEUserRadioTrackManager::Initialise() {
 
     m_baDecodersSupported[AUDIO_FILE_TYPE_VORBIS] = true;
     m_baDecodersSupported[AUDIO_FILE_TYPE_WAV] = true;
+#ifdef NOTSA_NATIVE
+    // Native build only supports Vorbis and WAV user tracks (see plan B4).
+#else
     m_baDecodersSupported[AUDIO_FILE_TYPE_WMA] = CAEWMADecoder::InitLibrary();
     m_baDecodersSupported[AUDIO_FILE_TYPE_QUICKTIME] = CAEMFDecoder::InitLibrary();
 
@@ -56,6 +65,7 @@ bool CAEUserRadioTrackManager::Initialise() {
             NOTSA_LOG_DEBUG("Assigned MP3 decoder to be WMA because MediaFoundation decoder failed to load.");
         }
     }
+#endif
     return true;
 }
 
@@ -66,8 +76,10 @@ void CAEUserRadioTrackManager::Shutdown() {
         m_pUserTracksInfo = nullptr;
     }
 
+#ifndef NOTSA_NATIVE
     CAEWMADecoder::Shutdown();
     CAEMFDecoder::Shutdown();
+#endif
 }
 
 // 0x4f3050
@@ -112,11 +124,14 @@ CAEStreamingDecoder* CAEUserRadioTrackManager::LoadUserTrack(int32 trackID) {
 
     CAEStreamingDecoder* decoder = nullptr;
 
+#ifndef NOTSA_NATIVE
     // QuickTime decoder doesn't need the data stream
     if (targetOffset.fileType == AUDIO_FILE_TYPE_QUICKTIME)
         // MikuAuahDark: We've agreed to replace QuickTime with MediaFoundation
         decoder = new CAEMFDecoder(filename, trackID);
-    else {
+    else
+#endif
+    {
         CAEDataStream* dataStream = new CAEDataStream(trackID, filename, 0, 0, false);
 
         CFileMgr::SetDirMyDocuments();
@@ -137,8 +152,14 @@ CAEStreamingDecoder* CAEUserRadioTrackManager::LoadUserTrack(int32 trackID) {
             decoder = new CAEWaveDecoder(dataStream);
             break;
         case AUDIO_FILE_TYPE_WMA:
+#ifndef NOTSA_NATIVE
             decoder = new CAEWMADecoder(dataStream);
             break;
+#else
+            // Native build only supports Vorbis and WAV user tracks.
+            delete dataStream;
+            return nullptr;
+#endif
         default:
             delete dataStream;
             return nullptr;
@@ -179,6 +200,19 @@ bool CAEUserRadioTrackManager::ReadUserTracks() {
 
 // 0x4f4ba0
 bool CAEUserRadioTrackManager::ScanUserTracks() {
+#ifdef NOTSA_NATIVE
+    // The silent backend scans synchronously: there is no worker thread to wait for.
+    switch (m_nUserTracksScanState) {
+    case USER_TRACK_SCAN_OFF:
+        m_nUserTracksScanState = USER_TRACK_SCAN_IN_PROGRESS;
+        WriteUserTracksThread(this);
+        return m_nUserTracksScanState != USER_TRACK_SCAN_IN_PROGRESS;
+    case USER_TRACK_SCAN_IN_PROGRESS:
+        return false;
+    default:
+        return true;
+    }
+#else
     switch (m_nUserTracksScanState) {
     case USER_TRACK_SCAN_OFF:
         m_nUserTracksScanState = USER_TRACK_SCAN_IN_PROGRESS;
@@ -193,11 +227,14 @@ bool CAEUserRadioTrackManager::ScanUserTracks() {
     default:
         return false;
     }
+#endif
 }
 
 // 0x4f32f0
 void CAEUserRadioTrackManager::DeleteUserTracksInfo() {
+#ifndef NOTSA_NATIVE
     TerminateThread(m_hwndUserTracksScanThreadHandle, 0);
+#endif
     CFileMgr::SetDirMyDocuments();
     fs::remove("sa-ufiles.dat");
     fs::remove("sa-utrax.dat");
@@ -267,7 +304,9 @@ uint8 CAEUserRadioTrackManager::GetUserTrackPlayMode() {
 
 // 0x4f4a20
 DWORD __stdcall CAEUserRadioTrackManager::WriteUserTracksThread(CAEUserRadioTrackManager* self) {
+#ifndef NOTSA_NATIVE
     VERIFY(SUCCEEDED(CoInitialize(nullptr)));
+#endif
 
     // Open sa-ufiles.dat
     CFileMgr::SetDirMyDocuments();
@@ -294,7 +333,9 @@ DWORD __stdcall CAEUserRadioTrackManager::WriteUserTracksThread(CAEUserRadioTrac
             FrontEndMenuManager.m_UserTrackIndex = 0;
             self->m_nUserTracksScanState = USER_TRACK_SCAN_COMPLETE;
 
+#ifndef NOTSA_NATIVE
             CoUninitialize();
+#endif
         } else {
             // NOTSA(MikuAuahDark): GTASA doesn't check if sa-utrax.dat fails to open
             self->m_nUserTracksScanState = USER_TRACK_SCAN_ERROR;
@@ -308,7 +349,9 @@ DWORD __stdcall CAEUserRadioTrackManager::WriteUserTracksThread(CAEUserRadioTrac
     self->m_bUserTracksLoadedCopy = self->m_bUserTracksLoaded;
 
     CFileMgr::SetDir("");
+#ifndef NOTSA_NATIVE
     CoUninitialize();
+#endif
     return 0;
 }
 
@@ -373,6 +416,10 @@ char* CAEUserRadioTrackManager::ResolveShortcut(const char* path) {
 }
 
 std::wstring CAEUserRadioTrackManager::ResolveShortcut(const std::wstring& path) {
+#ifdef NOTSA_NATIVE
+    // No COM on native platforms - `.lnk` shortcuts aren't resolved (Windows only feature).
+    return path;
+#else
     IShellLinkW* shellLink{};
     IPersistFile* persistFile{};
 
@@ -398,6 +445,7 @@ std::wstring CAEUserRadioTrackManager::ResolveShortcut(const std::wstring& path)
     shellLink->Release();
 
     return target;
+#endif // NOTSA_NATIVE
 }
 
 void CAEUserRadioTrackManager::InjectHooks() {

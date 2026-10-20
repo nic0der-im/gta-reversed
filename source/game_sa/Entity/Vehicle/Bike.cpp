@@ -275,7 +275,7 @@ CPed* CBike::KnockOffRider(eWeaponType arg0, uint8 arg1, CPed* ped, bool arg3) {
 
 // 0x6B5F50
 void CBike::SetRemoveAnimFlags(CPed* ped) {
-    ((void(__thiscall*)(CBike*, CPed*))0x6B5F50)(this, ped);
+    plugin::CallMethod<0x6B5F50, CBike*, CPed*>(this, ped);
 }
 
 // 0x6B5F90
@@ -525,7 +525,7 @@ void CBike::ProcessControl() {
 
 // 0x6B6740
 void CBike::ResetSuspension() {
-    ((void(__thiscall*)(CBike*))0x6B6740)(this);
+    plugin::CallMethod<0x6B6740, CBike*>(this);
 }
 
 // 0x6B6790
@@ -540,7 +540,7 @@ void CBike::DebugCode() {
 
 // 0x6B6D40
 void CBike::DoSoftGroundResistance(uint32& arg0) {
-    ((void(__thiscall*)(CBike*, uint32&))0x6B6D40)(this, arg0);
+    plugin::CallMethod<0x6B6D40, CBike*, uint32&>(this, arg0);
 }
 
 // 0x6B7130
@@ -566,17 +566,17 @@ void CBike::CalculateLeanMatrix() {
 
 // 0x6B7F90
 void CBike::FixHandsToBars(CPed* rider) {
-    ((void(__thiscall*)(CBike*, CPed*))0x6B7F90)(this, rider);
+    plugin::CallMethod<0x6B7F90, CBike*, CPed*>(this, rider);
 }
 
 // 0x6BEEB0
 void CBike::PlaceOnRoadProperly() {
-    ((void(__thiscall*)(CBike*))0x6BEEB0)(this);
+    plugin::CallMethod<0x6BEEB0, CBike*>(this);
 }
 
 // 0x6BF230
 void CBike::GetCorrectedWorldDoorPosition(CVector& out, CVector arg1, CVector arg2) {
-    ((void(__thiscall*)(CBike*, CVector&, CVector, CVector))0x6BF230)(this, out, arg1, arg2);
+    plugin::CallMethod<0x6BF230, CBike*, CVector&, CVector, CVector>(this, out, arg1, arg2);
 }
 
 // 0x6BEA10

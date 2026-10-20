@@ -12,7 +12,9 @@
 #include "Securom.h"
 #include "UserDisplay.h"
 #include "Garages.h"
+#ifndef NOTSA_NATIVE
 #include "UIRenderer.h"
+#endif
 #include "Gamma.h"
 #include "Birds.h"
 #include "Skidmarks.h"
@@ -84,7 +86,9 @@ bool RwInitialize(void* param) {
 // 0x53D910
 void RwTerminate() {
     CGame::ShutdownRenderWare();
+#ifndef NOTSA_NATIVE // Gamma is a D3D9 concern - See B3
     ResetGammaWhenExiting();
+#endif
     RsRwTerminate();
 }
 
@@ -120,7 +124,9 @@ void RenderEffects() {
     CRenderer::RenderFirstPersonVehicle();
     CPostEffects::Render();
 
+#ifndef NOTSA_NATIVE
     notsa::ui::UIRenderer::GetInstance().Render3D();
+#endif
 }
 
 // 0x53DF40
@@ -379,8 +385,10 @@ void Idle(void* param) {
     CDebug::DebugDisplayTextBuffer();
     FlushObrsPrintfs();
 
-    // NOTSA: ImGui menu draw loop
+    // NOTSA: ImGui menu draw loop (The debug UI is not built natively in B1)
+#ifndef NOTSA_NATIVE
     notsa::ui::UIRenderer::GetInstance().DrawLoop();
+#endif
 
     RwCameraEndUpdate(Scene.m_pRwCamera);
     RsCameraShowRaster(Scene.m_pRwCamera);
@@ -436,8 +444,10 @@ void FrontendIdle() {
         CDebug::DebugDisplayTextBuffer();
         FlushObrsPrintfs();
 
-        // NOTSA: ImGui menu draw loop
+        // NOTSA: ImGui menu draw loop (The debug UI is not built natively in B1)
+#ifndef NOTSA_NATIVE
         notsa::ui::UIRenderer::GetInstance().DrawLoop();
+#endif
 
         RwCameraEndUpdate(Scene.m_pRwCamera);
         RsCameraShowRaster(Scene.m_pRwCamera);

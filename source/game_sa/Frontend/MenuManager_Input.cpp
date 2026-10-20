@@ -4,7 +4,9 @@
 #include "MenuManager_Internal.h"
 #include "MenuSystem.h"
 #include "app/app.h"
+#ifndef NOTSA_NATIVE // Video modes are a renderer concern (See B3)
 #include "VideoMode.h" // todo
+#endif
 #include "ControllerConfigManager.h"
 #include "extensions/Configs/FastLoader.hpp"
 #include "reversiblebugfixes/Bugs.hpp"

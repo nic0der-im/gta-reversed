@@ -10,7 +10,9 @@
 #include "PostEffects.h"
 #include "app/platform/platform.h"
 #include "ControllerConfigManager.h"
+#ifndef NOTSA_NATIVE // Video modes are a renderer concern (See B3)
 #include "VideoMode.h"
+#endif
 
 using enum eControllerAction;
 
@@ -647,10 +649,17 @@ void CMenuManager::DrawStandardMenus(bool drawTitle) {
             rightColumnText = GetOnOffText(!bInvertMouseY);
             break;
         case eMenuAction::MENU_ACTION_RESOLUTION: {
+#ifdef NOTSA_NATIVE
+            // There's no renderer video mode list yet (See B3)
+            static GxtChar s_NotAvailable[8]{};
+            AsciiToGxtChar("N/A", s_NotAvailable);
+            rightColumnText = s_NotAvailable;
+#else
             GxtChar tmpBuffer[1'024];
             auto Videomodes = GetVideoModeList();
             AsciiToGxtChar(std::format("{}", Videomodes[m_nDisplayVideoMode]).c_str(), tmpBuffer);
             rightColumnText = tmpBuffer;
+#endif
             break;
         }
         case eMenuAction::MENU_ACTION_CONTROL_TYPE:

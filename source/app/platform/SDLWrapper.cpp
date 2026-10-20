@@ -3,10 +3,14 @@
 #ifdef NOTSA_USE_SDL3
 #include <SDL3/SDL.h>
 #include "SDLWrapper.hpp"
+#include "PostEffects.h"
+#ifndef NOTSA_NATIVE
 #include <bindings/imgui_impl_sdl3.h>
 #include <WindowedMode.hpp>
-#include "PostEffects.h"
 #include "UIRenderer.h"
+#else
+#include <imgui.h> // Only `ImGui::GetCurrentContext` (The debug UI itself returns in B3)
+#endif
 
 static bool IsInFullscreen()
 {
@@ -32,9 +36,11 @@ void ProcessEvents() {
     const auto* const imCtx = ImGui::GetCurrentContext();
     const auto* const imIO  = imCtx ? &imCtx->IO : nullptr;
     for (SDL_Event e; SDL_PollEvent(&e);) {
+#ifndef NOTSA_NATIVE
         if (imIO) {
             ImGui_ImplSDL3_ProcessEvent(&e);
         }
+#endif
 
         switch (e.type) {
         case SDL_EVENT_QUIT: {
@@ -53,9 +59,11 @@ void ProcessEvents() {
             continue;
         }
         case SDL_EVENT_MOUSE_MOTION: {
+#ifndef NOTSA_NATIVE
             if (notsa::ui::UIRenderer::GetInstance().IsActive()) {
                 break;
             }
+#endif
             static CVector2D s_MousePos{};
 
             // Use desktop cursor speed if it's windowed, accelerate ingame otherwise.

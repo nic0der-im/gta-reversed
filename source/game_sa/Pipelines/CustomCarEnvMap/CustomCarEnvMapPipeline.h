@@ -107,7 +107,10 @@ public:
     static inline auto& m_gEnvMapPipeAtmDataPool = StaticRef<CustomEnvMapPipeAtomicDataPool*>(0xC02D2C);
     static inline auto& m_gSpecMapPipeMatDataPool = StaticRef<CustomSpecMapPipeMaterialDataPool*>(0xC02D30);
 
+#ifndef NOTSA_NATIVE
+    // D3DLIGHT9 isn't available in the native build - replaced by the librw backend in B3
     static inline auto& g_GameLight = StaticRef<D3DLIGHT9>(0xC02CB0);
+#endif
 
 public:
     static void InjectHooks();

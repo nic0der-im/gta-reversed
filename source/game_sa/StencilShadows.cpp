@@ -30,7 +30,9 @@ void CStencilShadows::InjectHooks() {
 void CStencilShadows::Init() {
     ZoneScoped;
 
+#ifndef NOTSA_NATIVE
     RwD3D9SetStencilClear(0);
+#endif
     pFirstAvailableStencilShadowObject = m_StencilShadowObjects.data();
     pFirstActiveStencilShadowObject = nullptr;
 

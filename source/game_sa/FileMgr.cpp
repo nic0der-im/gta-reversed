@@ -2,10 +2,14 @@
 
 #include <cerrno>
 #include <cstring>
-#include <direct.h>
 
+#ifndef NOTSA_NATIVE
+#include <direct.h>
 #include "winincl.h"
 #include <ShlObj.h>
+#else
+#include "app/platform/native/NativePath.h"
+#endif
 
 #include "FileMgr.h"
 
@@ -17,6 +21,7 @@ auto& gta_user_dir_path = StaticRef<char[256]>(0xc92368);
 
 constexpr size_t PATH_SIZE = 256;
 
+#ifndef NOTSA_NATIVE
 inline void createDirectory(const wchar_t* path)
 {
     HANDLE folderHandle = CreateFileW(
@@ -33,12 +38,56 @@ inline void createDirectory(const wchar_t* path)
     else
         CloseHandle(folderHandle);
 }
+#else
+inline void createDirectory(const std::string& path)
+{
+    std::error_code ec;
+    fs::create_directories(fs::path{path}, ec);
+}
+
+//! `chdir` for the game's classes: backslash separated, case insensitive paths
+static int32 ChangeDirectory(const char* path)
+{
+    return chdir(notsa::native::NormalizePath(path).c_str());
+}
+#endif
 
 // 0x744FB0
 char* InitUserDirectories()
 {
     if (gta_user_dir_path[0] != '\0')
         return gta_user_dir_path;
+
+#ifdef NOTSA_NATIVE
+    // `SHGetFolderPathW(CSIDL_PERSONAL)` equivalent: The user's Documents folder
+    fs::path userDir;
+    if (g_MiscConfig.SaveDirectoryPath.has_value()) {
+        userDir = fs::absolute(fs::path(*g_MiscConfig.SaveDirectoryPath));
+    } else if (const auto* const home = std::getenv("HOME")) {
+        userDir = fs::path(home) / "Documents";
+        if (!fs::is_directory(userDir)) {
+            userDir = home;
+        }
+        userDir /= "GTA San Andreas User Files";
+    } else {
+        strcpy_s(gta_user_dir_path, "data"); // 2nd param is required or game won't be able to find files!
+        return gta_user_dir_path;
+    }
+    createDirectory(userDir.string());
+
+    const auto galleryDir = userDir / "Gallery";
+    const auto tracksDir  = userDir / "User Tracks";
+    createDirectory(galleryDir.string());
+    createDirectory(tracksDir.string());
+
+    const auto StorePath = [](char* dst, size_t dstSize, const fs::path& path, const char* fallback) {
+        const auto str = path.string();
+        strcpy_s(dst, dstSize, str.length() >= dstSize ? fallback : str.c_str());
+    };
+    StorePath(gta_user_dir_path,     PATH_SIZE, userDir,    ".");
+    StorePath(user_gallery_dir_path, PATH_SIZE, galleryDir, ".\\Gallery");
+    StorePath(user_tracks_dir_path,  PATH_SIZE, tracksDir,  ".\\User Tracks");
+#else
 
     // NOTSA(MikuAuahDark): Let's improve the function to use wide char
     static std::array<wchar_t, MAX_PATH> gtaUserDirWide;
@@ -102,6 +151,7 @@ char* InitUserDirectories()
     else
         strcpy_s(user_tracks_dir_path, temp.c_str());
 
+#endif
     return gta_user_dir_path;
 }
 
@@ -110,6 +160,10 @@ void CFileMgr::Initialise()
 {
     memset(ms_rootDirName, 0, DIRNAMELENGTH);
 
+#ifdef NOTSA_NATIVE
+    VERIFY(getcwd(ms_rootDirName, DIRNAMELENGTH));
+    strcat_s(ms_rootDirName, "/");
+#else
     if (WindowsCharset != CP_UTF8)
     {
         // MikuAuahDark: Improve the function to use wide char
@@ -132,6 +186,7 @@ void CFileMgr::Initialise()
         VERIFY(_getcwd(ms_rootDirName, DIRNAMELENGTH));
 
     ms_rootDirName[strlen(ms_rootDirName)] = '\\';
+#endif
 }
 
 // 0x538730
@@ -159,6 +214,9 @@ int32 CFileMgr::ChangeDir(const char *path)
             lastPos[1] = '\\';
     }
 
+#ifdef NOTSA_NATIVE
+    const int32 r = ChangeDirectory(ms_dirName);
+#else
     int32 r;
     if (WindowsCharset != CP_UTF8)
     {
@@ -167,6 +225,7 @@ int32 CFileMgr::ChangeDir(const char *path)
     }
     else
         r = _chdir(ms_dirName);
+#endif
 
     return r;
 }
@@ -192,6 +251,9 @@ int32 CFileMgr::SetDir(const char *path)
             lastPos[1] = '\\';
     }
 
+#ifdef NOTSA_NATIVE
+    const int32 r = ChangeDirectory(ms_dirName);
+#else
     int32 r;
     if (WindowsCharset != CP_UTF8)
     {
@@ -200,6 +262,7 @@ int32 CFileMgr::SetDir(const char *path)
     }
     else
         r = _chdir(ms_dirName);
+#endif
 
     return r;
 }
@@ -216,6 +279,9 @@ int32 CFileMgr::SetDirMyDocuments()
 
     strcpy_s(ms_dirName, userDir);
 
+#ifdef NOTSA_NATIVE
+    const int32 r = ChangeDirectory(ms_dirName);
+#else
     int32 r;
     if (WindowsCharset != CP_UTF8)
     {
@@ -224,6 +290,7 @@ int32 CFileMgr::SetDirMyDocuments()
     }
     else
         r = _chdir(ms_dirName);
+#endif
 
     return r;
 }
@@ -248,6 +315,9 @@ size_t CFileMgr::LoadFile(const char *path, uint8 *buf, size_t size, const char 
 FILESTREAM CFileMgr::OpenFile(const char *path, const char *mode) {
     ZoneScoped;
 
+#ifdef NOTSA_NATIVE
+    return std::fopen(notsa::native::NormalizePath(path).c_str(), mode);
+#else
     FILESTREAM fs{nullptr};
     if (WindowsCharset == CP_UTF8) {
         fopen_s(&fs, path, mode);
@@ -259,6 +329,7 @@ FILESTREAM CFileMgr::OpenFile(const char *path, const char *mode) {
         _wfopen_s(&fs, pathWide.c_str(), modeWide.c_str());
     }
     return fs;
+#endif
 }
 
 // 0x538910

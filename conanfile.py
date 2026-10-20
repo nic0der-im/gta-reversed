@@ -29,6 +29,9 @@ class saRecipe(ConanFile):
 
         # Standalone build mode
         "standalone": [False, 'dump_hooks_only'], # There's no `True` yet, as we can't build a fully standalone version yet
+
+        # Native build mode: executable for the host OS, without the retail exe
+        "native": [True, False],
     }
 
     default_options = {
@@ -36,6 +39,7 @@ class saRecipe(ConanFile):
         "use_sdl3": True,
         "standalone": False,
         "unity_build": False,
+        "native": False,
     }
     
     def requirements(self):
@@ -69,6 +73,7 @@ class saRecipe(ConanFile):
         tc.cache_variables["GTASA_WITH_SCRIPT_COMMAND_HOOKS"] = self.options.with_script_command_hooks
         tc.cache_variables["GTASA_USE_SDL3"] = self.options.use_sdl3
         tc.cache_variables["GTASA_UNITY_BUILD"] = self.options.unity_build
+        tc.cache_variables["GTASA_NATIVE"] = bool(self.options.native)
         tc.generate()
 
         # Copy ImGui bindings, and misc stuff
@@ -84,8 +89,12 @@ class saRecipe(ConanFile):
                 os.path.join(self.dependencies["imgui"].package_folder, "res", "bindings"),
                 os.path.join(imgui_libs_folder, "bindings")
             )
-        copy_imgui_bindings("*imgui_impl_sdl3*" if self.options.use_sdl3 else "*imgui_impl_win32*")
-        copy_imgui_bindings("*imgui_impl_dx9*")
+        if self.options.native:
+            copy_imgui_bindings("*imgui_impl_sdl3*")
+            copy_imgui_bindings("*imgui_impl_opengl3*")
+        else:
+            copy_imgui_bindings("*imgui_impl_sdl3*" if self.options.use_sdl3 else "*imgui_impl_win32*")
+            copy_imgui_bindings("*imgui_impl_dx9*")
         copy(
             self,
             "*",

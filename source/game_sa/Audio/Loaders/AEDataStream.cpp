@@ -31,6 +31,7 @@ CAEDataStream::~CAEDataStream() {
 }
 
 // 0x4dc410
+#ifndef NOTSA_NATIVE
 HRESULT CAEDataStream::QueryInterface(REFIID riid, void** objout) {
     // MikuAuahDark: Despite having QueryInterface implemented,
     // I don't think CAEDataStream is meant to be QueryInterface'd.
@@ -137,6 +138,7 @@ HRESULT CAEDataStream::Stat(STATSTG* statout, DWORD flags) {
 HRESULT CAEDataStream::Clone(IStream** target) {
     return E_NOTIMPL;
 }
+#endif // NOTSA_NATIVE
 
 // 0x4dc1c0
 size_t CAEDataStream::FillBuffer(void* dest, size_t size) {

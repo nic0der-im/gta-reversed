@@ -86,6 +86,22 @@ bool CAEAudioHardware::Initialise() {
         return false;
     }
 
+#ifdef NOTSA_NATIVE
+    // Silent backend: no DirectSound device until B4.
+    NOTSA_LOG_WARN("Audio backend is silent until B4");
+
+    m_nNumChannels = 48;
+    m_IsHardwareMixAvailable = false;
+    AESmoothFadeThread.m_nNumAvailableBuffers = 48;
+
+    m_pStreamingChannel = new CAEStreamingChannel(nullptr, 0);
+    m_pStreamingChannel->Initialise();
+
+    m_aChannels[0] = m_pStreamingChannel;
+    for (auto i = 1u; i < m_nNumChannels; i++) {
+        m_aChannels[i] = new CAEStaticChannel(nullptr, i, false, 44'100, 16);
+    }
+#else
     VERIFY(SUCCEEDED(CoInitialize(nullptr)));
 
 #if 0 // No EAX
@@ -130,6 +146,7 @@ bool CAEAudioHardware::Initialise() {
     for (auto i = 1u; i < m_nNumChannels; i++) {
         m_aChannels[i] = new CAEStaticChannel(m_pDSDevice, i, m_IsHardwareMixAvailable, 44'100, 16);
     }
+#endif
 
     m_pStreamingChannel->SetVolume(-100.0f);
     m_awChannelFlags[0] = 55; // todo: flag
@@ -150,7 +167,7 @@ bool CAEAudioHardware::Initialise() {
                 break;
             }
 
-            Sleep(100);
+            OS_ThreadSleep(100);
         }
     }
 
@@ -168,6 +185,11 @@ bool CAEAudioHardware::Initialise() {
 
 // 0x4D9640
 bool CAEAudioHardware::InitDirectSoundListener(uint32 numChannels, uint32 samplesPerSec, uint32 bitsPerSample) {
+#ifdef NOTSA_NATIVE
+    // Silent backend: there is no DirectSound listener to initialize.
+    UNUSED(numChannels, samplesPerSec, bitsPerSample);
+    return true;
+#else
     if (!m_pDSDevice)
         return false;
 
@@ -224,6 +246,7 @@ bool CAEAudioHardware::InitDirectSoundListener(uint32 numChannels, uint32 sample
     Query3DSoundEffects();
 
     return true;
+#endif // NOTSA_NATIVE
 }
 
 // 0x4D97A0
@@ -237,8 +260,10 @@ void CAEAudioHardware::Terminate() {
     }
     delete std::exchange(m_pMP3BankLoader, nullptr);
     delete std::exchange(m_pMP3TrackLoader, nullptr);
+#ifndef NOTSA_NATIVE
     SAFE_RELEASE(m_pDirectSound3dListener);
     SAFE_RELEASE(m_pDSDevice);
+#endif
 }
 
 void CAEAudioHardware::PlaySound(int16 channel, uint16 channelSlot, uint16 soundIdInSlot, uint16 bankSlot, int16 playPosition, int16 flags, float speed) {
@@ -754,6 +779,10 @@ void CAEAudioHardware::ResumeAllSounds() {
 
 // 0x4D8490
 void CAEAudioHardware::Query3DSoundEffects() {
+#ifdef NOTSA_NATIVE
+    // Silent backend: no DirectSound device, hence no EAX/3D effects.
+    m_n3dEffectsQueryResult = 2;
+#else
     DSBUFFERDESC bufferDesc;
     bufferDesc.guid3DAlgorithm = GUID_NULL;
     bufferDesc.lpwfxFormat = nullptr;
@@ -794,11 +823,14 @@ void CAEAudioHardware::Query3DSoundEffects() {
 
     SAFE_RELEASE(ppDS3DBuffer);
     SAFE_RELEASE(ppDSBuffer);
+#endif // NOTSA_NATIVE
 }
 
 // 0x4D9870
 void CAEAudioHardware::Service() {
+#ifndef NOTSA_NATIVE
     VERIFY(SUCCEEDED(m_pDirectSound3dListener->CommitDeferredSettings()));
+#endif
     RescaleChannelVolumes();
     if (m_n3dEffectsQueryResult) {
         UpdateReverbEnvironment();

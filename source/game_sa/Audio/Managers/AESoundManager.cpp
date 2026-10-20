@@ -5,8 +5,10 @@
 #include "AEAudioEnvironment.h"
 #include "AEAudioHardware.h"
 
+#ifndef NOTSA_NATIVE
 #include <DebugModules/Audio/SoundManagerDebugModule.hpp>
 #include <UIRenderer.h>
+#endif
 
 auto& AESoundManager = StaticRef<CAESoundManager>(0xB62CB0);
 

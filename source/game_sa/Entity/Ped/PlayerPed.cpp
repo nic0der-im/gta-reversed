@@ -697,10 +697,12 @@ float CPlayerPed::ControlButtonSprint(eSprintType sprintType) {
 float CPlayerPed::GetButtonSprintResults(eSprintType sprintType) {
     return plugin::CallMethodAndReturn<float, 0x60A820, CPlayerPed *, eSprintType>(this, sprintType);
 
+#ifndef NOTSA_NATIVE
     // Forces the compiler to preserve the value of `edx`.
     // Otherwise it's value is lost when called from 0x60B44C.
     // which causes a crash (as it is used to store a pointer to an anim blend assoc)
     __asm { and edx, edx };
+#endif
 
     if (GetPlayerData()->m_fMoveSpeed <= PLAYER_SPRINT_THRESHOLD) {
         return GetPlayerData()->m_fMoveSpeed <= 0.0f ? 0.0f : 1.0f;

@@ -3,6 +3,11 @@
 #include "SimpleVariablesSaveStructure.h"
 #include "GxtChar.h"
 
+#ifdef NOTSA_NATIVE
+#include <chrono>
+#include <ctime>
+#endif
+
 #define SAVEGAME_MAX_NAME_LEN 22
 
 void CSimpleVariablesSaveStructure::InjectHooks() {
@@ -88,7 +93,24 @@ void CSimpleVariablesSaveStructure::Construct() {
     m_bFrenchGame = CLocalisation::frenchGame;
     m_bNastyGame = CLocalisation::nastyGame;
 
+#ifdef NOTSA_NATIVE
+    // `GetLocalTime` equivalent - UTC time converted to the local timezone
+    const auto now = std::chrono::system_clock::now();
+    const auto tt  = std::chrono::system_clock::to_time_t(now);
+    std::tm    localTime{};
+    localtime_r(&tt, &localTime);
+    const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+    m_systemTime.wYear         = localTime.tm_year + 1900;
+    m_systemTime.wMonth        = localTime.tm_mon + 1;
+    m_systemTime.wDayOfWeek    = localTime.tm_wday;
+    m_systemTime.wDay          = localTime.tm_mday;
+    m_systemTime.wHour         = localTime.tm_hour;
+    m_systemTime.wMinute       = localTime.tm_min;
+    m_systemTime.wSecond       = localTime.tm_sec;
+    m_systemTime.wMilliseconds = static_cast<uint16>(milliseconds.count());
+#else
     GetLocalTime(&m_systemTime);
+#endif
     m_nWaterConfiguration = CWaterLevel::m_nWaterConfiguration;
     m_nTargetBlipIndex = FrontEndMenuManager.m_nTargetBlipIndex;
     m_bHasDisplayedPlayerQuitEnterCarHelpText = CPlayerPed::bHasDisplayedPlayerQuitEnterCarHelpText;

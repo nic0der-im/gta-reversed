@@ -1,6 +1,10 @@
 #pragma once
 
+#ifdef NOTSA_NATIVE
+#include "app/platform/native/nativeincl.h"
+#else
 #include "winincl.h"
+#endif
 #include "Queue.h"
 
 enum class eCdStreamStatus : int32 {
@@ -26,7 +30,9 @@ VALIDATE_SIZE(CdStreamPos, sizeof(uint32));
 
 union SyncObj {
     HANDLE             hSemaphore;
+#ifndef NOTSA_NATIVE // Native streaming is synchronous, no condition variable is needed
     CONDITION_VARIABLE cv;
+#endif
 };
 
 struct CdStream {
@@ -40,7 +46,9 @@ struct CdStream {
     eCdStreamStatus status;
     SyncObj         sync;
     HANDLE          hFile;
+#ifndef NOTSA_NATIVE // Overlapped IO doesn't exist natively
     OVERLAPPED      overlapped;
+#endif
 };
 
 struct CdStreamInfoSA {

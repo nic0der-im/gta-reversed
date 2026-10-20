@@ -157,7 +157,7 @@ void CHeli::SpecialHeliPreRender() {
 // 0x6C4760
 CVector CHeli::FindSwatPositionRelativeToHeli(int32 swatNumber) {
     CVector result;
-    ((void(__thiscall*)(CHeli*, CVector*, int32))0x6C4760)(this, &result, swatNumber);
+    plugin::CallMethod<0x6C4760, CHeli*, CVector*, int32>(this, &result, swatNumber);
     return result;
 
     switch ( swatNumber ) {
@@ -196,12 +196,12 @@ void CHeli::SearchLightCone(int32 coronaIndex,
                             float a14,
                             float a15
 ) {
-    ((void(__cdecl*)(int32, CVector, CVector, float, float, uint8, uint8, CVector&, CVector&, CVector&, bool, float, float, float, float))0x6C58E0)(coronaIndex, origin, target, targetRadius, power, unknownFlag, drawShadow, useless0, useless1, useless2, a11, baseRadius, a13, a14, a15);
+    plugin::Call<0x6C58E0, int32, CVector, CVector, float, float, uint8, uint8, CVector&, CVector&, CVector&, bool, float, float, float, float>(coronaIndex, origin, target, targetRadius, power, unknownFlag, drawShadow, useless0, useless1, useless2, a11, baseRadius, a13, a14, a15);
 }
 
 // 0x6C6520
 CHeli* CHeli::GenerateHeli(CPed* target, bool newsHeli) {
-    return ((CHeli * (__cdecl*)(CPed*, bool))0x6C6520)(target, newsHeli);
+    return plugin::CallAndReturn<CHeli *, 0x6C6520, CPed*, bool>(target, newsHeli);
 }
 
 // 0x6C6890
@@ -226,14 +226,14 @@ void CHeli::TestSniperCollision(CVector* origin, CVector* target) {
 
 // 0x6C69C0
 bool CHeli::SendDownSwat() {
-    return ((bool(__thiscall*)(CHeli*))0x6C69C0)(this);
+    return plugin::CallMethodAndReturn<bool, 0x6C69C0, CHeli*>(this);
 }
 
 // 0x6C79A0
 void CHeli::UpdateHelis() {
     ZoneScoped;
 
-    ((void(__cdecl*)())0x6C79A0)();
+    plugin::Call<0x6C79A0>();
 }
 
 // 0x6C7C50

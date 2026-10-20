@@ -2,12 +2,21 @@
 
 #include "AEStreamingChannel.h"
 
+#ifdef NOTSA_NATIVE
+#include <mutex>
+#endif
+
 class CAEMP3TrackLoader;
 
 class CAEStreamThread {
 public:
+#ifdef NOTSA_NATIVE
+    //! The silent backend doesn't run a streaming thread (nothing to stream until B4).
+    std::mutex            m_mutex;
+#else
     HANDLE m_nHandle;
     LPDWORD               m_lpThreadId;
+#endif
     CAEStreamingChannel*  m_pStreamingChannel;
     CAEMP3TrackLoader*    m_pMp3TrackLoader;
     bool                  m_bActive;
@@ -29,7 +38,9 @@ public:
     int32                 m_nTrackLengthMs;
     int32                 m_nActiveTrackId;
     int32                 m_nPlayingTrackId;
+#ifndef NOTSA_NATIVE
     _RTL_CRITICAL_SECTION m_criticalSection;
+#endif
 
 public:
     static void InjectHooks();
@@ -53,7 +64,11 @@ public:
     int32 GetActiveTrackID() const;
     int32 GetPlayingTrackID() const;
 
+#ifdef NOTSA_NATIVE
+    static void MainLoop(CAEStreamThread* self);
+#else
     static DWORD WINAPI MainLoop(LPVOID);
+#endif
     void Service();
 };
 

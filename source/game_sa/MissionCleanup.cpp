@@ -24,14 +24,14 @@ void CMissionCleanup::Init() {
  * @addr 0x468560
  */
 void CMissionCleanup::Process() {
-    ((void(__thiscall*)(CMissionCleanup*))0x468560)(this);
+    plugin::CallMethod<0x468560, CMissionCleanup*>(this);
 }
 
 /* Finds a free entity, returns NULL if no free entity can be found.
  * @addr 0x4637C0
  */
 tMissionCleanupEntity* CMissionCleanup::FindFree() {
-    return ((tMissionCleanupEntity * (__thiscall*)(CMissionCleanup*))0x4637C0)(this);
+    return plugin::CallMethodAndReturn<tMissionCleanupEntity *, 0x4637C0, CMissionCleanup*>(this);
 }
 
 /* Adds entity to list
@@ -106,7 +106,7 @@ void CMissionCleanup::RemoveEntityFromList(int32 handle, MissionCleanUpEntityTyp
 void CMissionCleanup::CheckIfCollisionHasLoadedForMissionObjects() {
     ZoneScoped;
 
-    ((void(__thiscall*)(CMissionCleanup*))0x4652D0)(this);
+    plugin::CallMethod<0x4652D0, CMissionCleanup*>(this);
 }
 
 // NOTSA

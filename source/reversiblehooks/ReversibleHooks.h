@@ -2,6 +2,59 @@
 
 #include <string>
 
+//! Scoping helpers used by the macros below. They're kept around for both builds
+//! because a few files do `using namespace ReversibleHooks;` in their `InjectHooks()`.
+namespace ReversibleHooks {
+struct ScopeName {
+    std::string name{};
+};
+
+struct ScopeCategory {
+    std::string name{};
+};
+};
+
+#ifdef NOTSA_NATIVE
+
+//
+// Native builds don't install any hooks (`InjectHooks()` bodies are left as no-ops),
+// so every `RH_*` macro expands to nothing.
+// The only exceptions are the ones that declare a type alias, which could be referenced
+// by the code around the (now empty) install macros.
+//
+
+#define RH_GlobalCategoryName "Global"
+
+// Use when `name` is a class
+#define RH_ScopedClass(cls) using RHCurrentNS [[maybe_unused]] = cls;
+
+// Use when `name` is a class
+#define RH_ScopedNamedClass(cls, name) using RHCurrentNS [[maybe_unused]] = cls;
+
+// Use when `name` is a class (registers its virtual functions in the Windows build)
+#define RH_ScopedVirtualClass(cls, addrGTAVtbl, nVirtFns_) using RHCurrentNS [[maybe_unused]] = cls;
+
+#define RH_ScopedNamespaceName(ns)
+#define RH_ScopedNamespace(name)
+#define RH_ScopedCategory(name)
+#define RH_ScopedCategoryGlobal()
+
+#define RH_ScopedInstall(...)
+#define RH_ScopedGlobalInstall(...)
+#define RH_ScopedOverloadedInstall(...)
+#define RH_ScopedGlobalOverloadedInstall(...)
+#define RH_ScopedNamedGlobalInstall(...)
+#define RH_ScopedNamedInstall(...)
+#define RH_ScopedVMTOverloadedInstall(...)
+#define RH_ScopedNamedVMTInstall(...)
+#define RH_ScopedVMTInstall(...)
+#define RH_ScopedInstallScriptCommand(...)
+#define RH_ScopedConstructorInstall(...)
+#define RH_ScopedVMTDestructorInstall(...)
+#define RH_ScopedDestructorInstall(...)
+
+#else // NOTSA_NATIVE
+
 #include "VMTInfo.h"
 #include "HooksUtility.hpp"
 #include "RHManager.h"
@@ -119,12 +172,4 @@
 //#define RH_ScopedVMTAddressChange(fn, fnGTAAddr, ...) \
 //    rh->InstallVirtual(RHCurrentCat.name + "/" + RHCurrentScopeName.name, #fn, pGTAVTbl, pOurVTbl, FunctionPointerToVoidP(fnGTAAddr), nVirtFns __VA_OPT__(,) __VA_ARGS__)
 
-namespace ReversibleHooks {
-struct ScopeName {
-    std::string name{};
-};
-
-struct ScopeCategory {
-    std::string name{};
-};
-};
+#endif // NOTSA_NATIVE
