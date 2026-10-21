@@ -21,7 +21,7 @@ void CFont::InjectHooks() {
 
     RH_ScopedInstall(Initialise, 0x5BA690);
     RH_ScopedInstall(Shutdown, 0x7189B0);
-    RH_ScopedInstall(PrintChar, 0x718A10, { .Reversed = false });
+    RH_ScopedInstall(PrintChar, 0x718A10);
     RH_ScopedInstall(ParseToken, 0x718F00);
 
     // styling functions
@@ -45,10 +45,10 @@ void CFont::InjectHooks() {
     RH_ScopedInstall(SetOrientation, 0x719610);
 
     RH_ScopedInstall(InitPerFrame, 0x719800);
-    RH_ScopedInstall(RenderFontBuffer, 0x719840, { .Reversed = false });
+    RH_ScopedInstall(RenderFontBuffer, 0x719840);
     RH_ScopedInstall(GetStringWidth, 0x71A0E0);
     RH_ScopedInstall(DrawFonts, 0x71A210);
-    RH_ScopedInstall(ProcessCurrentString, 0x71A220, { .Reversed = false });
+    RH_ScopedInstall(ProcessCurrentString, 0x71A220);
     RH_ScopedInstall(GetNumberLines, 0x71A5E0);
     RH_ScopedInstall(ProcessStringToDisplay, 0x71A600);
     RH_ScopedInstall(GetTextRect, 0x71A620);
@@ -57,7 +57,7 @@ void CFont::InjectHooks() {
     RH_ScopedInstall(GetCharacterSize, 0x719750);
     RH_ScopedInstall(LoadFontValues, 0x7187C0);
     // Install("", "GetScriptLetterSize", 0x719670, &GetScriptLetterSize);
-    RH_ScopedInstall(FindSubFontCharacter, 0x7192C0, { .Reversed = false });
+    RH_ScopedInstall(FindSubFontCharacter, 0x7192C0);
     RH_ScopedGlobalInstall(GetLetterIdPropValue, 0x718770);
 }
 
@@ -179,124 +179,119 @@ void CFont::Shutdown() {
 
 // this adds a single character into rendering buffer
 // 0x718A10
-void CFont::PrintChar(float x, float y, char character) {
-    return plugin::Call<0x718A10, float, float, char>(x, y, character);
-
-    // todo: check the fucking uv values
-
-    // out of screen
-    if (x < 0.0f || x > SCREEN_WIDTH || y < 0.0f || y > SCREEN_HEIGHT)
+void CFont::PrintChar(float x, float y, uint8 character) {
+    // Out of screen
+    if (y < 0.0f || y > SCREEN_HEIGHT || x < 0.0f || x > SCREEN_WIDTH)
         return;
 
-    if (PS2Symbol) {
-        // extra symbol to be drawn (e.g. PS2 buttons)
-
-        CRect rt = {
-            x,
-            2.0f * RenderState.m_fHeight + y,
-            17.0f * RenderState.m_fHeight + x,
-            19.0f * RenderState.m_fHeight + y
-        };
-
-        ButtonSprite[PS2Symbol].Draw(rt, { 255, 255, 255, RenderState.m_color.a });
-
+    if (PS2Symbol != EXSYMBOL_NONE) {
+        // Extra symbol to be drawn (e.g. PS2 buttons)
+        ButtonSprite[PS2Symbol].Draw(
+            CRect{
+                x,
+                RenderState.m_fHeight * 2.0f  + y,
+                RenderState.m_fHeight * 17.0f + x,
+                RenderState.m_fHeight * 19.0f + y
+            },
+            CRGBA{ 255, 255, 255, RenderState.m_color.a }
+        );
         return;
     }
 
-    if (!character || character == '?') {
-        float propValue = GetLetterIdPropValue(character) / 32.0f;
-        bool zeroed = false;
+    bool skipDraw = false;
+    if (character == 0 || character == '?') {
+        // Space or a missing glyph - Don't draw anything
+        character = 0;
+        skipDraw  = true;
+    }
 
-        if (RenderState.m_nFontStyle == 1 && character == 208) {
-            character = 0;
-            zeroed = true;
-        }
+    const float propValue = GetLetterIdPropValue(character) * 0.03125f; // 1/32
 
-        //auto v1 = (character >> 4);
-        //auto u1 = (character & 0xf) / 16.0f;
+    if (RenderState.m_nFontStyle == 1 && character == 0xD0)
+        character = 0;
 
-        auto propval = propValue / 32.0f;
+    const float u0 = static_cast<float>(character & 0xF) * 0.0625f; // 1/16 (32px cell on a 512px wide atlas)
 
-        if (RenderState.m_wFontTexture && RenderState.m_wFontTexture != 1) {
-            if (!zeroed) {
-                CRect rt = {
-                    y,
-                    x,
-                    32.0f * propValue * RenderState.m_fWidth + x,
-                    16.0f * RenderState.m_fHeight + y,
-                };
+    if (RenderState.m_wFontTexture == 0 || RenderState.m_wFontTexture == 1) {
+        // The two main fonts have 32x40 cells (40/512 = 0.078125)
+        const float v0 = static_cast<float>(character >> 4) * 0.078125f;
 
-                float u1 = (character & 0xF) / 16.0f;
-                float v1 = (character >> 4) / 16.0f;
-                float u2 = propval / 16.0f + u1;
-                float v2 = v1;
-                float u3 = u1;
-                float v3 = v1 + 0.0625f;
-                float u4 = u2 - 0.0001f;
-                float v4 = v3 - 0.0001f;
-
-                CSprite2d::AddToBuffer(rt, RenderState.m_color, u1, v1, u2, v2, u3, v3, u4, v4);
-            }
-
+        if (skipDraw)
             return;
+
+        const float u3 = u0 + 0.0625f - 0.001f;
+
+        if (RenderState.m_fSlant > 0.0f) {
+            // Slanted text (The shear itself is applied by `RenderFontBuffer`)
+            CSprite2d::AddToBuffer(
+                CRect{
+                    x,
+                    y + 0.015f,
+                    RenderState.m_fWidth * 32.0f + x,
+                    RenderState.m_fHeight * 40.0f * 0.5f + y + 0.015f
+                },
+                RenderState.m_color,
+                u0, v0 + 0.00055f,
+                u3, v0 + 0.0121f,
+                u0, v0 + 0.078125f - 0.009f,
+                u3, v0 + 0.078125f - 0.0021f + 0.01f
+            );
+        } else if (character < 0xC0) {
+            // Normal glyph (20 * scaleY tall)
+            CSprite2d::AddToBuffer(
+                CRect{
+                    x,
+                    y,
+                    RenderState.m_fWidth * 32.0f + x,
+                    RenderState.m_fHeight * 40.0f * 0.5f + y
+                },
+                RenderState.m_color,
+                u0, v0 + 0.0021f,
+                u3, v0 + 0.0021f,
+                u0, v0 + 0.078125f - 0.0021f,
+                u3, v0 + 0.078125f - 0.0021f
+            );
+        } else {
+            // Half height glyph (16 * scaleY tall)
+            CSprite2d::AddToBuffer(
+                CRect{
+                    x,
+                    y,
+                    RenderState.m_fWidth * 32.0f + x,
+                    RenderState.m_fHeight * 32.0f * 0.5f + y
+                },
+                RenderState.m_color,
+                u0, v0 + 0.0021f,
+                u3, v0 + 0.0021f,
+                u0, v0 + 0.078125f - 0.016f,
+                u3, v0 + 0.078125f - 0.015f
+            );
         }
 
-        if (!zeroed) {
-            CRect rt;
-
-            rt.left = x;
-
-            if (RenderState.m_fSlant == 0.0f) {
-                rt.bottom = y;
-                rt.right = 32.0f * RenderState.m_fWidth + x;
-
-                if (character < 0xC0) {
-                    rt.top = 20.0f * RenderState.m_fHeight + y;
-
-                    float u1 = (character & 0xF) / 16.0f;
-                    float v1 = (character >> 4) / 12.8f + 0.0021f;
-                    float u2 = u1 + 0.0615f;
-                    float v2 = v1;
-                    float u3 = u1;
-                    float v3 = v2 - 0.0021f;
-                    float u4 = u2;
-                    float v4 = v2 - 0.0021f;
-
-                    CSprite2d::AddToBuffer(rt, RenderState.m_color, u1, v1, u2, v2, u3, v3, u4, v4);
-                }
-                else {
-                    rt.top = 16.0f * RenderState.m_fHeight + y;
-
-                    float u1 = (character & 0xF) / 16.0f;
-                    float v1 = (character >> 4) / 12.8f + 0.0021f;
-                    float u2 = u1 + 0.0615f;
-                    float v2 = v1;
-                    float u3 = u1;
-                    float v3 = v2 - 0.016f;
-                    float u4 = u2;
-                    float v4 = v2 - 0.015f;
-
-                    CSprite2d::AddToBuffer(rt, RenderState.m_color, u1, v1, u2, v2, u3, v3, u4, v4);
-                }
-            }
-            else {
-                rt.bottom = y + 0.015f;
-                rt.right = 32.0f * RenderState.m_fWidth + x;
-                rt.top = 20.0f * RenderState.m_fHeight + y + 0.015f;
-
-                float u1 = (character & 0xF) / 16.0f;
-                float v1 = (character >> 4) / 12.8f + 0.00055f;
-                float u2 = u1 + 0.0615f;
-                float v2 = (character >> 4) / 12.8f + 0.078125f;
-                float u3 = u1;
-                float v3 = v2 - 0.016f;
-                float u4 = u2;
-                float v4 = v2 - 0.015f;
-
-                CSprite2d::AddToBuffer(rt, RenderState.m_color, u1, v1, u2, v2, u3, v3, u4, v4);
-            }
-        }
+        return;
     }
+
+    // Fonts 2..N have square 32x32 cells
+    const float v0 = static_cast<float>(character >> 4) * 0.0625f;
+
+    if (skipDraw)
+        return;
+
+    const float u3 = u0 + propValue * 0.0625f;
+
+    CSprite2d::AddToBuffer(
+        CRect{
+            x,
+            y,
+            RenderState.m_fWidth * 32.0f * propValue + x,
+            RenderState.m_fHeight * 32.0f * 0.5f + y
+        },
+        RenderState.m_color,
+        u0,           v0,
+        u3,           v0,
+        u0,           v0 + 0.0625f,
+        u3 - 0.0001f, v0 + 0.0625f - 0.0001f
+    );
 }
 
 // Tags processing
@@ -592,19 +587,99 @@ void CFont::InitPerFrame() {
 // Draw text we have in buffer
 // 0x719840
 void CFont::RenderFontBuffer() {
-#ifdef NOTSA_NATIVE
-    // Pure draw: the retail function submits the glyphs queued in `FontRenderStateBuf` through
-    // `CSprite2d`/Im2D (it only reads that buffer). The native layer has no Im2D backend until
-    // plan B3, so there is nothing to submit to; `InitPerFrame` resets the buffer every frame,
-    // so skipping the draw loses no state.
-    static bool warned = false;
-    if (!warned) {
-        warned = true;
-        NOTSA_LOG_WARN("Native: CFont::RenderFontBuffer is a no-op until the Im2D backend (plan B3)");
+    if (pEmptyChar == &FontRenderStateBuf[0])
+        return;
+
+    Sprite[RenderState.m_wFontTexture].SetRenderState();
+    RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, RWRSTATE(TRUE));
+
+    RenderState.Set(FontRenderStateBuf[0]);
+
+    CRGBA color = RenderState.m_color;
+    float x     = RenderState.m_vPosn.x;
+    float y     = RenderState.m_vPosn.y;
+
+    // The first record holds the base state, the queued strings (and their state records) come after it
+    auto* text = reinterpret_cast<char*>(&FontRenderStateBuf[1]);
+    auto* end  = reinterpret_cast<char*>(pEmptyChar);
+
+    while (text < end) {
+        if (*text == '\0') {
+            // End of the current string - Skip to the next (4 byte aligned) state record
+            do {
+                ++text;
+            } while (reinterpret_cast<uintptr_t>(text) & 3);
+
+            if (text >= end)
+                break;
+
+            RenderState.Set(*reinterpret_cast<const CFontChar*>(text));
+
+            color = RenderState.m_color;
+            x     = RenderState.m_vPosn.x;
+            y     = RenderState.m_vPosn.y;
+
+            text += sizeof(CFontChar);
+        }
+
+        PS2Symbol = EXSYMBOL_NONE;
+
+        while (*text == '~' && PS2Symbol == EXSYMBOL_NONE) {
+            text = ParseToken(text, color, RenderState.m_bContainImages, nullptr);
+            if (!RenderState.m_bContainImages)
+                RenderState.m_color = color;
+        }
+
+        uint8 letter = static_cast<uint8>(*text - 0x20);
+
+        if (RenderState.m_nFontStyle == 0) {
+            if (letter == 0x91) {
+                letter = 0x40;
+            } else if (letter > 0x9B) {
+                letter = 0;
+            }
+        } else {
+            letter = FindSubFontCharacter(letter, RenderState.m_nFontStyle);
+        }
+
+        if (RenderState.m_fSlant > 0.0f) { // Shear the line
+            y = (RenderState.m_vSlanRefPoint.x - x) * RenderState.m_fSlant + RenderState.m_vSlanRefPoint.y;
+        }
+
+        if (PS2Symbol == EXSYMBOL_NONE || !RenderState.m_bContainImages)
+            PrintChar(x, y, letter);
+
+        if (PS2Symbol == EXSYMBOL_NONE) {
+            const uint8 idx = letter == '?' ? 0 : letter;
+            const uint8 adv = RenderState.m_bPropOn
+                ? gFontData[RenderState.m_wFontTexture].m_propValues[idx]
+                : gFontData[RenderState.m_wFontTexture].m_unpropValue;
+
+            x += (static_cast<float>(static_cast<int8>(RenderState.m_nOutline)) + static_cast<float>(adv)) * RenderState.m_fWidth;
+        } else {
+            // Advance past the symbol
+            x += RenderState.m_fHeight * 17.0f + static_cast<float>(static_cast<int8>(RenderState.m_nOutline));
+        }
+
+        if (letter == 0) // Space
+            x += RenderState.m_fWrap;
+
+        if (*text == '\0') {
+            if (PS2Symbol != EXSYMBOL_NONE) {
+                PS2Symbol = EXSYMBOL_NONE;
+                Sprite[RenderState.m_wFontTexture].SetRenderState();
+            }
+        } else if (PS2Symbol == EXSYMBOL_NONE) {
+            ++text;
+        } else {
+            PS2Symbol = EXSYMBOL_NONE;
+            Sprite[RenderState.m_wFontTexture].SetRenderState();
+        }
     }
-#else
-    plugin::Call<0x719840>();
-#endif
+
+    CSprite::FlushSpriteBuffer();
+    CSprite2d::RenderVertexBuffer();
+    pEmptyChar = &FontRenderStateBuf[0];
 }
 
 // 0x71A0E0
@@ -668,27 +743,142 @@ void CFont::DrawFonts() {
     RenderFontBuffer();
 }
 
+// 0x719B40
+// Queues a `[start, end)` range of `text` to be laid out at (x, y) - `RenderFontBuffer` draws it later
+static void QueueString(float x, float y, GxtChar* start, GxtChar* end, float spacing) {
+    plugin::Call<0x719B40, float, float, GxtChar*, GxtChar*, float>(x, y, start, end, spacing);
+}
+
 // 0x71A220
 int16 CFont::ProcessCurrentString(bool print, float x, float y, const GxtChar* text) {
-#ifdef NOTSA_NATIVE
-    // Lays the string out and queues its glyphs in `FontRenderStateBuf`, which only
-    // `RenderFontBuffer` consumes — and that draw is a no-op until the Im2D backend exists
-    // (plan B3). While it is, the queued state is never read, so the native build skips the
-    // whole measurement loop. Native-only callers use the return value (line count) for text
-    // block height, which is only cosmetic here.
-    UNUSED(print);
-    UNUSED(x);
-    UNUSED(y);
-    UNUSED(text);
-    static bool warned = false;
-    if (!warned) {
-        warned = true;
-        NOTSA_LOG_WARN("Native: CFont::ProcessCurrentString is a no-op until the Im2D backend (plan B3)");
+    int16 spaceCount = 0; // Spaces in the current line
+    int16 lineCount  = 0; // Lines the string takes up
+
+    const CRGBA savedColor = m_Color;
+
+    bool  firstOnLine      = true;  // Nothing was printed on the current line yet
+    char  tokenChar        = '\0';  // Single character token reported by `ParseToken`
+    float widthAtLastSpace = 0.0f;  // Width of the line up to the last space
+    CRGBA tokenColor       = m_Color; // FIX_BUGS: Uninitialized in the original, yet `ParseToken` reads it (`~h~`)
+    float lineWidth        = (m_bFontCentreAlign || m_bFontRightAlign) ? 0.0f : x; // Width of the text on the current line
+    float lineY            = y;
+    float drawX            = 0.0f;
+
+    GxtChar lineBuf[256]; // Used to re-queue a line starting with a token
+
+    if (*text != '\0') {
+        auto* cursor    = const_cast<GxtChar*>(text);
+        auto* wordStart = cursor;
+
+        while (*cursor != '\0') {
+            PS2Symbol = EXSYMBOL_NONE;
+
+            const float wordWidth = GetStringWidth(cursor, false, false);
+
+            if (*cursor == '~')
+                cursor = reinterpret_cast<GxtChar*>(ParseToken(reinterpret_cast<char*>(cursor), tokenColor, true, &tokenChar));
+
+            const float limit = m_bFontCentreAlign
+                ? m_fFontCentreSize
+                : (m_bFontRightAlign ? x - m_fRightJustifyWrap : m_fWrapx);
+
+            if ((lineWidth + wordWidth > limit && !firstOnLine) || m_bNewLine) {
+                // Current word doesn't fit - Start a new line
+                float spacing = 0.0f;
+
+                if (PS2Symbol != EXSYMBOL_NONE)
+                    cursor -= 3; // Step back to the start of the `~x~` token
+
+                auto* wordEnd = m_bNewLine ? cursor - 3 : cursor;
+
+                if (m_bFontJustify && !m_bFontCentreAlign) {
+                    // FIX_BUGS: Guard against a division by zero (Would result in an infinite spacing)
+                    if (spaceCount != 0)
+                        spacing = (m_fWrapx - widthAtLastSpace) / static_cast<float>(spaceCount);
+                }
+
+                if (m_bFontCentreAlign) {
+                    drawX = x - lineWidth * 0.5f;
+                } else if (m_bFontRightAlign) {
+                    drawX = x - (lineWidth - GetCharacterSize(0));
+                } else {
+                    drawX = x;
+                }
+
+                ++lineCount;
+
+                if (print)
+                    QueueString(drawX, lineY, wordStart, wordEnd, spacing);
+
+                if (tokenChar != '\0') {
+                    // Rebuild the line, so it starts with the token (Which we've already parsed)
+                    const auto prefixLen = std::snprintf(
+                        reinterpret_cast<char*>(lineBuf),
+                        std::size(lineBuf),
+                        "~%c~",
+                        static_cast<char>(tokenChar)
+                    );
+
+                    if (m_bNewLine)
+                        wordEnd += 3; // Skip the newline token
+
+                    // FIX_BUGS: Use a bounded copy (Originally the 256 byte `lineBuf` could be overflown)
+                    if (prefixLen > 0 && static_cast<size_t>(prefixLen) < std::size(lineBuf))
+                        std::strncat(reinterpret_cast<char*>(lineBuf), reinterpret_cast<const char*>(wordEnd), std::size(lineBuf) - 1 - static_cast<size_t>(prefixLen));
+
+                    cursor    = lineBuf;
+                    tokenChar = '\0';
+                }
+
+                lineY            += m_Scale.y * 32.0f * 0.5f + m_Scale.y + m_Scale.y; // 18 * scaleY
+                m_bNewLine        = false;
+                lineWidth         = (m_bFontCentreAlign || m_bFontRightAlign) ? 0.0f : x;
+                spaceCount        = 0;
+                widthAtLastSpace  = 0.0f;
+                firstOnLine       = true;
+                wordStart         = cursor;
+            } else {
+                lineWidth += wordWidth;
+
+                while (*cursor != ' ' && *cursor != '\0' && *cursor != '~')
+                    ++cursor;
+
+                if (*cursor == '\0') {
+                    // The last word of the string - Queue it right away
+                    if (m_bFontCentreAlign) {
+                        drawX = x - lineWidth * 0.5f;
+                    } else if (m_bFontRightAlign) {
+                        drawX = x - lineWidth;
+                    } else {
+                        drawX = x;
+                    }
+
+                    ++lineCount;
+
+                    if (print)
+                        QueueString(drawX, lineY, wordStart, cursor, 0.0f);
+                } else {
+                    if (!firstOnLine)
+                        ++spaceCount;
+
+                    if (*cursor != '~') { // Don't step over tokens
+                        lineWidth += GetCharacterSize(0); // Account for the space
+                        ++cursor;
+                    }
+
+                    widthAtLastSpace = lineWidth;
+                    firstOnLine      = false;
+                }
+            }
+
+            PS2Symbol = EXSYMBOL_NONE;
+        }
     }
-    return 0;
-#else
-    return plugin::CallAndReturn<int16, 0x71A220, bool, float, float, const GxtChar*>(print, x, y, text);
-#endif
+
+    if (print)
+        SetColor(savedColor);
+
+    return lineCount;
 }
 
 // 0x71A5E0

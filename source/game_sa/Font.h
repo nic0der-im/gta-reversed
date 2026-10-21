@@ -126,7 +126,7 @@ public:
     static void Initialise();
     static void LoadFontValues();
     static void Shutdown();
-    static void PrintChar(float x, float y, char character);
+    static void PrintChar(float x, float y, uint8 character);
     // Get next ' ' character in a string
     static char* GetNextSpace(char* string);
     static char* ParseToken(char* text, CRGBA& color, bool isBlip, char* tag);

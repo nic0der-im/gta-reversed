@@ -141,6 +141,18 @@ if (${RE_PROJECT}_NATIVE)
     set(TARGET_SUFFIX "")
     # The native port still has plenty of non-portable warnings; don't fail the build on them
     set(TARGET_WARNINGS_AS_ERRORS OFF)
+
+    # `Info.plist` of the bundle: identity, display name, Retina support and minimum macOS version.
+    set(NATIVE_BUNDLE_IDENTIFIER  "io.github.nic0der-im.gtareversed")
+    set(NATIVE_BUNDLE_NAME        "GTA San Andreas (reversed)")
+    set(NATIVE_BUNDLE_EXECUTABLE  "gta_reversed")
+    set(NATIVE_BUNDLE_VERSION     "1.0.0")
+    set(NATIVE_BUNDLE_INFO_PLIST  "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/platform/native/Info.plist.in"
+        "${NATIVE_BUNDLE_INFO_PLIST}"
+        @ONLY
+    )
 else()
     set(TARGET_WARNINGS_AS_ERRORS ON)
     if (${RE_PROJECT}_STANDALONE)
@@ -157,6 +169,28 @@ set_target_properties(${RE_PROJECT_LIB_NAME}
     RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/${CMAKE_BUILD_TYPE}/"
     COMPILE_WARNING_AS_ERROR ${TARGET_WARNINGS_AS_ERRORS}
 )
+if (${RE_PROJECT}_NATIVE)
+    # The bundle is `gta_reversed.app`, with `Contents/MacOS/gta_reversed` as `CFBundleExecutable`.
+    set_target_properties(${RE_PROJECT_LIB_NAME}
+        PROPERTIES
+        OUTPUT_NAME              "gta_reversed"
+        MACOSX_BUNDLE_INFO_PLIST "${NATIVE_BUNDLE_INFO_PLIST}"
+    )
+
+    # Ad-hoc signature (`-`): Gatekeeper runs the bundle without a developer certificate.
+    # Without it macOS reports the binary as damaged once it has been copied around.
+    find_program(CODESIGN_EXECUTABLE codesign)
+    if (CODESIGN_EXECUTABLE)
+        add_custom_command(
+            TARGET ${RE_PROJECT_LIB_NAME} POST_BUILD
+            COMMAND "${CODESIGN_EXECUTABLE}" --force --deep -s - "$<TARGET_BUNDLE_DIR:${RE_PROJECT_LIB_NAME}>"
+            COMMENT "Ad-hoc signing $<TARGET_BUNDLE_DIR:${RE_PROJECT_LIB_NAME}>"
+            VERBATIM
+        )
+    else()
+        message(WARNING "`codesign` not found: gta_reversed.app will not be signed")
+    endif()
+endif()
 if (MSVC)
     target_link_options(${RE_PROJECT_LIB_NAME} PRIVATE "/SUBSYSTEM:WINDOWS")
 endif()

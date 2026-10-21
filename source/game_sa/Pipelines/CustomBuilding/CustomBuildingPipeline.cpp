@@ -9,8 +9,6 @@
 #include "pipelines/SAPipelines.h"
 #endif
 
-constexpr auto PLUGIN_ID = rpPDS_MAKEPIPEID(rwVENDORID_DEVELOPER, 0x9C);
-
 void CCustomBuildingPipeline::InjectHooks() {
     RH_ScopedClass(CCustomBuildingPipeline);
     RH_ScopedCategoryGlobal();
@@ -51,7 +49,7 @@ void CCustomBuildingPipeline::DestroyPipe() {
 RpAtomic* CCustomBuildingPipeline::CustomPipeAtomicSetup(RpAtomic* atomic) {
     RpGeometryForAllMaterials(RpAtomicGetGeometry(atomic), CustomPipeMaterialSetup, nullptr);
     atomic->pipeline = ObjPipeline;
-    SetPipelineID(atomic, PLUGIN_ID);
+    SetPipelineID(atomic, CUSTOM_BUILDING_PIPELINE_ID);
     return atomic;
 }
 
@@ -73,8 +71,8 @@ RxPipeline* CCustomBuildingPipeline::CreateCustomObjPipe() {
     RxD3D9AllInOneSetReinstanceCallBack(node, CustomPipeReinstanceCB);
     RxD3D9AllInOneSetRenderCallBack(node, CustomPipeRenderCB);
 
-    pipe->pluginId = PLUGIN_ID;
-    pipe->pluginData = PLUGIN_ID;
+    pipe->pluginId = CUSTOM_BUILDING_PIPELINE_ID;
+    pipe->pluginData = CUSTOM_BUILDING_PIPELINE_ID;
 
     return pipe;
 }

@@ -60,20 +60,6 @@ rw::MemoryFunctions MakeLibrwMemoryFunctions() {
     return f;
 }
 
-// The device entry points the plugin-sdk exposes as macros (`RwRenderStateSet`, `RwIm2D*`,
-// `RwIm3D*`). Rendering is not implemented yet, so they accept and ignore everything.
-RwBool DeviceSystem(RwInt32, void*, void*, RwInt32) { return TRUE; }
-RwBool DeviceRenderStateSet(RwRenderState, void*) { return TRUE; }
-RwBool DeviceRenderStateGet(RwRenderState, void*) { return FALSE; }
-RwBool DeviceIm2DRenderLine(RwIm2DVertex*, RwInt32, RwInt32, RwInt32) { return TRUE; }
-RwBool DeviceIm2DRenderTriangle(RwIm2DVertex*, RwInt32, RwInt32, RwInt32, RwInt32) { return TRUE; }
-RwBool DeviceIm2DRenderPrimitive(RwPrimitiveType, RwIm2DVertex*, RwInt32) { return TRUE; }
-RwBool DeviceIm2DRenderIndexedPrimitive(RwPrimitiveType, RwIm2DVertex*, RwInt32, RwImVertexIndex*, RwInt32) { return TRUE; }
-RwBool DeviceIm3DRenderLine(RwInt32, RwInt32) { return TRUE; }
-RwBool DeviceIm3DRenderTriangle(RwInt32, RwInt32, RwInt32) { return TRUE; }
-RwBool DeviceIm3DRenderPrimitive(RwPrimitiveType) { return TRUE; }
-RwBool DeviceIm3DRenderIndexedPrimitive(RwPrimitiveType, RwImVertexIndex*, RwInt32) { return TRUE; }
-
 void SetupDeviceState(RwGlobals& globals) {
     auto& device = globals.dOpenDevice;
 
@@ -92,8 +78,6 @@ void SetupDeviceState(RwGlobals& globals) {
     device.fpIm3DRenderTriangle        = DeviceIm3DRenderTriangle;
     device.fpIm3DRenderPrimitive       = DeviceIm3DRenderPrimitive;
     device.fpIm3DRenderIndexedPrimitive = DeviceIm3DRenderIndexedPrimitive;
-
-    WarnOnce("Rw: render state and immediate mode are no-ops until the GL backend (plan B3)");
 }
 
 void RegisterLibrwPlugins() {
@@ -116,6 +100,12 @@ void WarnOnce(const char* message) {
     if (g_reported.insert(message).second) {
         NOTSA_LOG_WARN("{}", message);
     }
+}
+
+//! The device "system" request handler. The game's only requests are display-mode queries that
+//! librw's SDL window already answers; nothing here needs a device.
+RwBool DeviceSystem(RwInt32, void*, void*, RwInt32) {
+    return TRUE;
 }
 
 const RwMemoryFunctions& MemoryFunctions() {

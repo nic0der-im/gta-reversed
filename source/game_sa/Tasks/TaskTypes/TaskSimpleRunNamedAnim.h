@@ -31,16 +31,10 @@ public:
         uint32 endTime, bool bDontInterrupt, bool bRunInSequence, bool bOffsetPed, bool bHoldLastFrame);
 
     eTaskType GetTaskType() const override { return Type; }
-
-
-CTask* Clone() const override {
-        return new CTaskSimpleRunNamedAnim(m_animName, m_animGroupName,
-                                           m_animFlags, m_fBlendDelta, m_Time,
-                                           (m_nFlags & 2) >> 1, (m_nFlags & 0x10) >> 4, (m_nFlags & 0x20) >> 5, (m_nFlags & 4) >> 2); // todo: flags
-    }
-
- // 0x61B770
+    CTask* Clone() const override;
     bool ProcessPed(CPed* ped) override;
+
+    void StartAnim(CPed* ped);
     void OffsetPedPosition(CPed* ped);
 
 private:

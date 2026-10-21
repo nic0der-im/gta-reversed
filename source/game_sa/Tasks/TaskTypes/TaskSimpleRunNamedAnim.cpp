@@ -11,10 +11,10 @@ void CTaskSimpleRunNamedAnim::InjectHooks() {
     RH_ScopedInstall(Destructor, 0x61BF10);
 
     //RH_ScopedInstall(FinishRunAnimMovePedCB, 0x61AAA0, { .Reversed = false });
-    //RH_ScopedInstall(StartAnim, 0x61BB10, { .Reversed = false });
-    RH_ScopedVMTInstall(Clone, 0x61B770, { .Reversed = false });
-    RH_ScopedVMTInstall(GetTaskType, 0x61AA90, { .Reversed = false });
-    RH_ScopedVMTInstall(ProcessPed, 0x61BF20, { .Reversed = false });
+    RH_ScopedInstall(StartAnim, 0x61BB10, { .Reversed = false });
+    RH_ScopedVMTInstall(Clone, 0x61B770);
+    RH_ScopedVMTInstall(GetTaskType, 0x61AA90);
+    RH_ScopedVMTInstall(ProcessPed, 0x61BF20);
     RH_ScopedInstall(OffsetPedPosition, 0x61AB00);
 }
 
@@ -52,11 +52,77 @@ CTaskSimpleRunNamedAnim::CTaskSimpleRunNamedAnim(
     }
 }
 
-// 0x61BF20
+// 0x61B770
+CTask* CTaskSimpleRunNamedAnim::Clone() const {
+    return new CTaskSimpleRunNamedAnim(
+        m_animName,
+        m_animGroupName,
+        m_animFlags,
+        m_fBlendDelta,
+        m_Time,
+        m_bDontInterrupt,
+        m_bRunInSequence,
+        m_bOffsetAtEnd,
+        m_bHoldLastFrame
+    );
+}
 
-// 0x0
+// 0x61BF20
 bool CTaskSimpleRunNamedAnim::ProcessPed(CPed* ped) {
-    return plugin::CallMethodAndReturn<bool, 0x61BF20>(this, ped);
+    if (m_bOffsetAvailable) {
+        OffsetPedPosition(ped);
+    }
+
+    if (m_bIsFinished) {
+        if (!m_bOffsetAtEnd) {
+            const auto assoc   = RpAnimBlendClumpGetAssociation(ped->GetRpClump(), true, m_pAnimHierarchy);
+            const auto bonePos = ped->GetBonePosition(BONE_SPINE1);
+            if (m_fBlendDelta > 100.0f && assoc) {
+                if ((ped->GetPosition() - bonePos).Magnitude() > 1.0f) {
+                    assoc->m_Flags |= ANIMATION_IS_BLEND_AUTO_REMOVE;
+                    assoc->m_BlendDelta = -m_fBlendDelta;
+                }
+            }
+        }
+        return true;
+    }
+
+    if (!m_pAnimHierarchy || !m_pAnimHierarchy->m_pSequences) {
+        return true;
+    }
+
+    if (m_bDontInterrupt && (!(m_animFlags & ANIMATION_IS_FINISH_AUTO_REMOVE) || (m_animFlags & ANIMATION_IS_LOOPED))) {
+        ped->GetEventGroup().RemoveInvalidEvents(true);
+        ped->GetEventGroup().Reorganise();
+    }
+
+    // NOTE: The `m_bStarted` check is redundant (Also checked by `IsOutOfTime`), but it's in the original code
+    if (m_Timer.m_bStarted && m_Timer.IsOutOfTime()) {
+        if (!(m_animFlags & ANIMATION_IS_FINISH_AUTO_REMOVE)) {
+            if (m_pAnim) {
+                m_pAnim->SetFinishCallback(CDefaultAnimCallback::DefaultAnimCB, nullptr);
+            }
+            m_bIsFinished = true;
+            m_pAnim       = nullptr;
+            return true;
+        }
+        MakeAbortable(ped, ABORT_PRIORITY_LEISURE, nullptr);
+    }
+
+    if (!m_pAnim) {
+        const auto assoc = RpAnimBlendClumpGetAssociation(ped->GetRpClump(), true, m_pAnimHierarchy);
+        if (assoc && assoc->m_pCallbackData) {
+            return true;
+        }
+        StartAnim(ped);
+    }
+
+    return m_bIsFinished;
+}
+
+// 0x61BB10
+void CTaskSimpleRunNamedAnim::StartAnim(CPed* ped) {
+    plugin::CallMethod<0x61BB10, CTaskSimpleRunNamedAnim*, CPed*>(this, ped);
 }
 
 // 0x61AB00

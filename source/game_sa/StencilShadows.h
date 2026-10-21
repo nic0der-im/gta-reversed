@@ -19,12 +19,12 @@ public:
     static bool GraphicsHighQuality();
 
     static void UpdateHierarchy(CStencilShadowObject*& firstAvailable, CStencilShadowObject*& firstActive, CStencilShadowObject* newOne);
-    static void RegisterStencilShadows(CVector& cameraPos, bool doNotCreateNew);
+    static bool RegisterStencilShadows(CVector& cameraPos, bool doNotCreateNew);
 
     static void RenderStencilShadows();
-    static void RenderForVehicle(CStencilShadowObject*);
-    static void RenderForObject(CStencilShadowObject*);
-    static void Render(const CRGBA& color);
+    static bool RenderForVehicle(CStencilShadowObject*);
+    static bool RenderForObject(CStencilShadowObject*);
+    static bool Render(const CRGBA& color);
     static void RenderBuffer(const CVector& pos);
     static void SunSetPositionFromEntity(const CEntity* entity);
 

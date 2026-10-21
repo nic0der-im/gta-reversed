@@ -315,3 +315,29 @@ the running table state: 233 float rows differ, e.g. `0x848F90` multiplies `0x8E
 `0x848F70` already set to 0.0004 (result 0.004, not 0); one row inverts `fdivr` (`0x84CFC0` reports
 `inf` where the executable computes 2.0/150 = 0.0133); `0x84C7A0` is listed although both operands
 are 0.56 (the result is zero).
+
+## Packaging
+
+`python3 setup.py --build -p macos-arm64.txt` produces `bin/<config>/gta_reversed.app`.
+
+- `source/app/platform/native/Info.plist.in` is configured into the build tree
+  (`configure_file`, `@ONLY`) and installed as the bundle's `Info.plist` through
+  `MACOSX_BUNDLE_INFO_PLIST`: `CFBundleIdentifier=io.github.nic0der-im.gtareversed`,
+  `CFBundleName=GTA San Andreas (reversed)`, `NSHighResolutionCapable=true` and
+  `LSMinimumSystemVersion=12.0`.
+- A `POST_BUILD` step runs `codesign --force --deep -s - gta_reversed.app`, so the bundle launches
+  without a developer certificate. A warning is emitted instead when `codesign` isn't installed.
+
+The game directory is resolved by `notsa::native::NativeGameDir::Resolve`
+(`app/platform/native/NativeGameDir.{h,cpp}`), in this order:
+
+1. `--game-dir <path>`
+2. the `GTASA_DIR` environment variable
+3. the path saved by an earlier run in `gamedir.txt` inside
+   `SDL_GetPrefPath("gta-reversed", "gtasa")` (`~/Library/Application Support/gta-reversed/gtasa/`)
+4. a native folder picker (`SDL_ShowOpenFolderDialog`, video subsystem initialized on demand, five
+   minute cap); a successful choice is written back to `gamedir.txt`
+
+Every candidate must contain `models/gta3.img`, matched case-insensitively through `NormalizePath`.
+A bad explicit `--game-dir`/`GTASA_DIR` is reported instead of falling through to the picker; when
+no source yields a directory the game shows `Pass --game-dir or set GTASA_DIR` and exits with 1.

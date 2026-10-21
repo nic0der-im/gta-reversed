@@ -12,10 +12,10 @@ void CCustomBuildingRenderer::InjectHooks() {
     RH_ScopedInstall(Initialise, 0x5D7EC0);
     RH_ScopedInstall(Shutdown, 0x5D7EE0);
     RH_ScopedInstall(PluginAttach, 0x5D7EF0);
-    RH_ScopedInstall(AtomicSetup, 0x5D7F00, { .Reversed = false });
-    RH_ScopedInstall(IsCBPCPipelineAttached, 0x5D7F40, { .Reversed = false });
-    RH_ScopedInstall(UpdateDayNightBalanceParam, 0x5D7F80, { .Reversed = false });
-    RH_ScopedInstall(Update, 0x5D8050, { .Reversed = false });
+    RH_ScopedInstall(AtomicSetup, 0x5D7F00);
+    RH_ScopedInstall(IsCBPCPipelineAttached, 0x5D7F40);
+    RH_ScopedInstall(UpdateDayNightBalanceParam, 0x5D7F80);
+    RH_ScopedInstall(Update, 0x5D8050);
 }
 
 // 0x5D7EC0
@@ -40,61 +40,58 @@ bool CCustomBuildingRenderer::PluginAttach() {
 
 // 0x5D7F00
 void CCustomBuildingRenderer::AtomicSetup(RpAtomic* atomic) {
-    plugin::Call<0x5D7F00, RpAtomic*>(atomic);
+    const auto geometry = RpAtomicGetGeometry(atomic);
+    if (CCustomBuildingDNPipeline::GetExtraVertColourPtr(geometry)->NightColors && RpGeometryGetPreLightColors(geometry)) {
+        CCustomBuildingDNPipeline::CustomPipeAtomicSetup(atomic);
+    } else {
+        CCustomBuildingPipeline::CustomPipeAtomicSetup(atomic);
+    }
 }
 
 // 0x5D7F40
 bool CCustomBuildingRenderer::IsCBPCPipelineAttached(RpAtomic* atomic) {
-    return plugin::CallAndReturn<bool, 0x5D7F40, RpAtomic*>(atomic);
+    const auto pipeId = GetPipelineID(atomic);
+    if (pipeId == CUSTOM_BUILDING_PIPELINE_ID || pipeId == CUSTOM_BUILDING_DN_PIPELINE_ID) {
+        return true;
+    }
+
+    const auto geometry = RpAtomicGetGeometry(atomic);
+    return CCustomBuildingDNPipeline::GetExtraVertColourPtr(geometry)->NightColors && RpGeometryGetPreLightColors(geometry);
 }
 
 // 0x5D7F80
 void CCustomBuildingRenderer::UpdateDayNightBalanceParam() {
-    plugin::Call<0x5D7F80>();
-    /*
-    const auto minutes = (float)CClock::GetMinutesToday();
+    constexpr auto oneOver60 = 1.0f / 60.0f;
 
-    const auto six_hours = 360.0f;
-    if (minutes < six_hours) {
+    // Minutes since midnight (NOTE: Retail multiplies by `1/60` instead of dividing by 60)
+    const auto minutes = (float)(CClock::ms_nGameClockHours * 60u + CClock::ms_nGameClockMinutes) + (float)CClock::ms_nGameClockSeconds * oneOver60;
+
+    if (minutes < 360.0f) { // Before 06:00
         CCustomBuildingDNPipeline::m_fDNBalanceParam = 1.0f;
-        return;
-    }
-
-    const auto seven_hours = 420.0f;
-    if (minutes < seven_hours) {
-        CCustomBuildingDNPipeline::m_fDNBalanceParam = float(seven_hours - minutes) / 60.0f;
-        return;
-    }
-
-    const auto twenty_hours = 1200.0f;
-    if (minutes < twenty_hours) {
+    } else if (minutes < 420.0f) { // 06:00 - 07:00, Dawn
+        CCustomBuildingDNPipeline::m_fDNBalanceParam = (420.0f - minutes) * oneOver60;
+    } else if (minutes < 1200.0f) { // 07:00 - 20:00, Day
         CCustomBuildingDNPipeline::m_fDNBalanceParam = 0.0f;
-        return;
-    }
-
-    const auto twenty_one_hour = 1260.0f;
-    if (minutes >= twenty_one_hour)
+    } else if (minutes < 1260.0f) { // 20:00 - 21:00, Dusk
+        CCustomBuildingDNPipeline::m_fDNBalanceParam = 1.0f - (1260.0f - minutes) * oneOver60;
+    } else { // 21:00 - 06:00, Night
         CCustomBuildingDNPipeline::m_fDNBalanceParam = 1.0f;
-    else
-        CCustomBuildingDNPipeline::m_fDNBalanceParam = 1.0f - float(twenty_one_hour - minutes) / 60.0f;
-    */
+    }
+}
+
+// 0x5D6830
+//! Unnamed in the retail exe - Advances the DN working index, and sets the `force prelit update` flag.
+//! Both globals are also read by `CCustomBuildingDNPipeline::PreRenderUpdate`.
+static void AdvanceDNWorkingIndex(uint32 forcePrelitUpdate) {
+    auto& workingIndex = StaticRef<uint32>(0xC02C14);
+    auto& forceUpdate  = StaticRef<uint32>(0xC02C18);
+
+    workingIndex = (workingIndex + 1) & 0xF;
+    forceUpdate  = forcePrelitUpdate;
 }
 
 // 0x5D8050
 void CCustomBuildingRenderer::Update() {
-    ZoneScoped;
-
-    plugin::Call<0x5D8050>();
-
-    /*
-    void sub_5D6830(int a1) {
-        static uint32 dword_C02C14, dword_C02C18 = 0;
-
-        dword_C02C14 = (dword_C02C14 + 1) & 15;
-        dword_C02C18 = a1;
-    }
-
-    CCustomBuildingRenderer::UpdateDayNightBalanceParam();
-    sub_5D6830(0);
-    */
+    UpdateDayNightBalanceParam();
+    AdvanceDNWorkingIndex(0);
 }

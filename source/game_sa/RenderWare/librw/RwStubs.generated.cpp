@@ -2395,36 +2395,6 @@ rwIm3DPool* _rwIm3DGetPool() {
     return {};
 }
 
-void* RwIm3DTransform(RwIm3DVertex* pVerts, RwUInt32 numVerts, RwMatrix* ltm, RwUInt32 flags) {
-    notsa::fakerw::Stub("RwIm3DTransform");
-    return {};
-}
-
-RwBool RwIm3DEnd() {
-    notsa::fakerw::Stub("RwIm3DEnd");
-    return {};
-}
-
-RwBool RwIm3DRenderLine(RwInt32 vert1, RwInt32 vert2) {
-    notsa::fakerw::Stub("RwIm3DRenderLine");
-    return {};
-}
-
-RwBool RwIm3DRenderTriangle(RwInt32 vert1, RwInt32 vert2, RwInt32 vert3) {
-    notsa::fakerw::Stub("RwIm3DRenderTriangle");
-    return {};
-}
-
-RwBool RwIm3DRenderIndexedPrimitive(RwPrimitiveType primType, RwImVertexIndex* indices, RwInt32 numIndices) {
-    notsa::fakerw::Stub("RwIm3DRenderIndexedPrimitive");
-    return {};
-}
-
-RwBool RwIm3DRenderPrimitive(RwPrimitiveType primType) {
-    notsa::fakerw::Stub("RwIm3DRenderPrimitive");
-    return {};
-}
-
 RxPipeline* RwIm3DGetTransformPipeline() {
     notsa::fakerw::Stub("RwIm3DGetTransformPipeline");
     return {};

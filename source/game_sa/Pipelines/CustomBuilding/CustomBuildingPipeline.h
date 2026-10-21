@@ -1,5 +1,9 @@
 #pragma once
 
+#include "RenderWare.h"
+
+constexpr auto CUSTOM_BUILDING_PIPELINE_ID = rpPDS_MAKEPIPEID(rwVENDORID_DEVELOPER, 0x9C);
+
 class CCustomBuildingPipeline {
 public:
     static inline auto& ObjPipeline = StaticRef<RxPipeline*>(0xC02C68);

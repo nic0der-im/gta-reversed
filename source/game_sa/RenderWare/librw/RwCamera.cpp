@@ -4,6 +4,8 @@
 
 #include "RwFakerw.h"
 
+#include "app/platform/native/NativeCapture.h"
+
 #include <unordered_map>
 
 //! Cameras and rasters.
@@ -244,6 +246,7 @@ RwCamera* RwCameraShowRaster(RwCamera* camera, void* pDev, RwUInt32 flags) {
     }
 
     if (const auto it = g_cameraMirrors.find(camera); it != g_cameraMirrors.end()) {
+        notsa::native::CaptureOnPresent(); // Debug screenshots (`GTASA_CAPTURE`), no-op otherwise
         it->second.camera->showRaster(flags);
         RWSRCGLOBAL(renderFrame)++;
         return camera;
@@ -445,6 +448,14 @@ namespace notsa::fakerw {
 rw::Raster* GetLibrwRaster(RwRaster* raster) {
     const auto it = g_rasterMirrors.find(raster);
     return it != g_rasterMirrors.end() ? it->second : nullptr;
+}
+
+RwRaster* GetGameRaster(rw::Raster* raster) {
+    if (!raster) {
+        return nullptr;
+    }
+    const auto it = g_rasterOwners.find(raster);
+    return it != g_rasterOwners.end() ? it->second : nullptr;
 }
 
 } // namespace notsa::fakerw

@@ -1,6 +1,8 @@
 #include "StdInc.h"
 
 #include "TaskComplexGotoDoorAndOpen.h"
+#include "TaskSimpleRunAnim.h"
+#include "TaskSimpleGoToPoint.h"
 
 void CTaskComplexGotoDoorAndOpen::InjectHooks() {
     RH_ScopedVirtualClass(CTaskComplexGotoDoorAndOpen, 0x86FFC0, 11);
@@ -9,8 +11,8 @@ void CTaskComplexGotoDoorAndOpen::InjectHooks() {
     RH_ScopedOverloadedInstall(Constructor, "0", 0x66BB20, CTaskComplexGotoDoorAndOpen*(CTaskComplexGotoDoorAndOpen::*)(CObject *));
     RH_ScopedOverloadedInstall(Constructor, "1", 0x66BBA0, CTaskComplexGotoDoorAndOpen*(CTaskComplexGotoDoorAndOpen::*)(CVector const&, CVector const&));
     RH_ScopedInstall(Destructor, 0x66BC00);
-    RH_ScopedInstall(Clone, 0x66BCA0, { .Reversed = false });
-    RH_ScopedInstall(CreateNextSubTask, 0x66C0D0, { .Reversed = false });
+    RH_ScopedInstall(Clone, 0x66BCA0);
+    RH_ScopedInstall(CreateNextSubTask, 0x66C0D0);
     RH_ScopedInstall(CreateFirstSubTask, 0x66BD40, { .Reversed = false });
     RH_ScopedInstall(ControlSubTask, 0x66C1F0, { .Reversed = false });
 }
@@ -62,7 +64,29 @@ bool CTaskComplexGotoDoorAndOpen::MakeAbortable(CPed* ped, eAbortPriority priori
 
 // 0x66C0D0
 CTask* CTaskComplexGotoDoorAndOpen::CreateNextSubTask(CPed* ped) {
-    return plugin::CallMethodAndReturn<CTask*, 0x66C0D0, CTaskComplexGotoDoorAndOpen*, CPed*>(this, ped);
+    if (m_pSubTask->GetTaskType() != TASK_SIMPLE_GO_TO_POINT) {
+        return nullptr;
+    }
+
+    if (m_nFlags & 2) { // Final leg already issued
+        if (ped->IsPlayer()) {
+            CPad::GetPad()->bPlayerOnInteriorTransition = true;
+        }
+        return nullptr;
+    }
+
+    if (!ped->GetTaskManager().GetTaskSecondary(TASK_SECONDARY_PARTIAL_ANIM)) {
+        ped->GetTaskManager().SetTaskSecondary(
+            new CTaskSimpleRunAnim(ANIM_GROUP_DEFAULT, ANIM_ID_WALK_DOORPARTIAL, 8.0f, false),
+            TASK_SECONDARY_PARTIAL_ANIM
+        );
+    }
+
+    auto task = new CTaskSimpleGoToPoint(PEDMOVE_WALK, m_End, 0.2f, false, false);
+
+    m_nFlags |= 2;
+
+    return task;
 }
 
 // 0x66BD40

@@ -58,6 +58,29 @@ void* GetWindow();
 void GetRequestedSize(int32& width, int32& height);
 
 //-----------------------------------------------------------------------------
+// Device entry points
+//-----------------------------------------------------------------------------
+//
+// `RwRenderStateSet`, `RwIm2D*` and the `fpIm3D*` half of `RwIm3D*` are macros over
+// `RWSRCGLOBAL(dOpenDevice)`; `RwEngineInit` installs these on it. They translate the game's
+// D3D9-flavoured state numbers/vertex layouts onto librw. See `RwRenderState.cpp`, `RwIm2D.cpp`.
+
+RwBool DeviceSystem(RwInt32 request, void* out, void* in, RwInt32 numIn);
+
+RwBool DeviceRenderStateSet(RwRenderState state, void* value);
+RwBool DeviceRenderStateGet(RwRenderState state, void* value);
+
+RwBool DeviceIm2DRenderLine(RwIm2DVertex* vertices, RwInt32 numVertices, RwInt32 vert1, RwInt32 vert2);
+RwBool DeviceIm2DRenderTriangle(RwIm2DVertex* vertices, RwInt32 numVertices, RwInt32 vert1, RwInt32 vert2, RwInt32 vert3);
+RwBool DeviceIm2DRenderPrimitive(RwPrimitiveType primType, RwIm2DVertex* vertices, RwInt32 numVertices);
+RwBool DeviceIm2DRenderIndexedPrimitive(RwPrimitiveType primType, RwIm2DVertex* vertices, RwInt32 numVertices, RwImVertexIndex* indices, RwInt32 numIndices);
+
+RwBool DeviceIm3DRenderLine(RwInt32 vert1, RwInt32 vert2);
+RwBool DeviceIm3DRenderTriangle(RwInt32 vert1, RwInt32 vert2, RwInt32 vert3);
+RwBool DeviceIm3DRenderPrimitive(RwPrimitiveType primType);
+RwBool DeviceIm3DRenderIndexedPrimitive(RwPrimitiveType primType, RwImVertexIndex* indices, RwInt32 numIndices);
+
+//-----------------------------------------------------------------------------
 // Object plugin data
 //-----------------------------------------------------------------------------
 //
@@ -164,6 +187,9 @@ inline RwV3d* FromLibrw(rw::V3d& v) { return reinterpret_cast<RwV3d*>(&v); }
 
 //! librw raster behind a game raster (null when the raster was not created by this layer).
 rw::Raster* GetLibrwRaster(RwRaster* raster);
+
+//! Game raster behind a librw raster (null when the raster was not created by this layer).
+RwRaster* GetGameRaster(rw::Raster* raster);
 
 } // namespace notsa::fakerw
 

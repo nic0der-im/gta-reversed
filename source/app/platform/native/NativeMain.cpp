@@ -4,15 +4,12 @@
 
 #include <SDL3/SDL.h>
 
-#include <cstdlib>
-#include <cstring>
 #include <filesystem>
-#include <string>
 
 #include "app/platform/native/ExeData.generated.h"
 #include "app/platform/native/ExeGlobals.h"
+#include "app/platform/native/NativeGameDir.h"
 #include "app/platform/native/NativeInput.h"
-#include "app/platform/native/NativePath.h"
 #include "app/platform/native/VideoPlayerNative.h"
 #include "app/platform/SDLWrapper.hpp"
 
@@ -269,36 +266,18 @@ void MainLoop(int32 nCmdShow) {
 }
 
 int32 NativeMain(int argc, char** argv) {
-    // 1. Locate the game directory.
-    std::string gameDir;
-    for (int32 i = 1; i < argc; i++) {
-        if (std::strcmp(argv[i], "--game-dir") == 0 && i + 1 < argc) {
-            gameDir = argv[++i];
-        }
-    }
+    // 1. Locate and validate the game directory: `--game-dir`, `GTASA_DIR`, the directory picked
+    //    on an earlier run, or a folder picker (see `NativeGameDir::Resolve`).
+    const auto gameDir = notsa::native::NativeGameDir::Resolve(argc, argv);
     if (gameDir.empty()) {
-        if (const char* envDir = std::getenv("GTASA_DIR")) {
-            gameDir = envDir;
-        }
-    }
-    if (gameDir.empty()) {
-        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "GTA: San Andreas", "Pass --game-dir or set GTASA_DIR", nullptr);
         return 1;
     }
 
-    // 2. Validate the game directory (case-insensitively) and make it the working directory.
-    const auto normalizedGameDir = notsa::native::NormalizePath(gameDir);
-    const auto gameImg           = notsa::native::NormalizePath(normalizedGameDir + "/models/gta3.img");
-    if (!fs::exists(gameImg)) {
-        const auto msg = std::format("`{}/models/gta3.img` not found", normalizedGameDir);
-        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "GTA: San Andreas", msg.c_str(), nullptr);
-        return 1;
-    }
-
+    // 2. Make the game directory the working directory.
     std::error_code ec;
-    fs::current_path(normalizedGameDir, ec);
+    fs::current_path(gameDir, ec);
     if (ec) {
-        const auto msg = std::format("Failed to enter `{}`: {}", normalizedGameDir, ec.message());
+        const auto msg = std::format("Failed to enter `{}`: {}", gameDir, ec.message());
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "GTA: San Andreas", msg.c_str(), nullptr);
         return 1;
     }
