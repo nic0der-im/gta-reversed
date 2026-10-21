@@ -1212,8 +1212,8 @@ int32 CRadar::ClipRadarPoly(CVector2D* out, const CVector2D* in) {
 
     // The polygon covers the whole radar - Check whether the edges `v0 -> v1` and `v0 -> v3`
     // cross the line passing through `v0` (Both slopes have to be of opposite signs)
-    const auto slope01 = (in[0].x - in[1].x) / (in[0].y - in[1].y);
-    const auto slope03 = (in[0].x - in[3].x) / (in[0].y - in[3].y);
+    const auto slope01 = (in[0].y - in[1].y) / (in[0].x - in[1].x);
+    const auto slope03 = (in[0].y - in[3].y) / (in[0].x - in[3].x);
     if ((slope01 * in[3].x - in[3].y) * (slope01 * in[0].x - in[0].y) < 0.0f &&
         (slope03 * in[1].x - in[1].y) * (slope03 * in[0].x - in[0].y) < 0.0f) {
         std::copy(std::begin(corners), std::end(corners), out);
@@ -2005,25 +2005,25 @@ void CRadar::DrawEntityBlip(int32 blipIndex, uint8 isSprite) {
             return;
         }
         if (worldPos.z + 4.0f >= centreZ) {
-            // The blip is more or less at the same elevation
-            if (CTheScripts::RadarShowBlipOnAllLevels) {
-                ShowRadarTraceWithHeight(screenPos.x, screenPos.y, trace.m_nBlipSize, col.r, col.g, col.b, col.a, RADAR_TRACE_HIGH);
-            }
+            // The blip is more or less at the same elevation - Point at it
+            DrawRotatingRadarSprite(
+                RadarBlipSprites[RADAR_SPRITE_CENTRE],
+                screenPos.x,
+                screenPos.y,
+                CCamera::GetActiveCamera().m_nMode == MODE_TOPDOWN
+                    ? heading + PI
+                    : heading - (m_fRadarOrientation + PI),
+                (uint32)SCREEN_STRETCH_X(8.0f),
+                (uint32)SCREEN_STRETCH_Y(8.0f),
+                CRGBA{col, 255}
+            );
             return;
         }
 
-        // The blip is below what we're looking for - Point at it
-        DrawRotatingRadarSprite(
-            RadarBlipSprites[RADAR_SPRITE_CENTRE],
-            screenPos.x,
-            screenPos.y,
-            CCamera::GetActiveCamera().m_nMode == MODE_TOPDOWN
-                ? heading + PI
-                : heading - (m_fRadarOrientation + PI),
-            (uint32)SCREEN_STRETCH_X(8.0f),
-            (uint32)SCREEN_STRETCH_Y(8.0f),
-            CRGBA{col, 255}
-        );
+        // The blip is below what we're looking for
+        if (CTheScripts::RadarShowBlipOnAllLevels) {
+            ShowRadarTraceWithHeight(screenPos.x, screenPos.y, trace.m_nBlipSize, col.r, col.g, col.b, col.a, RADAR_TRACE_HIGH);
+        }
         return;
     }
 

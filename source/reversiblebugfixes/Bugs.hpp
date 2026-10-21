@@ -124,4 +124,15 @@ inline const ReversibleBugFix CVehicleModelInfo_SetClump_DirtMaterialsNeverFound
     .Credit          = "SilentPatch Contributors, W4liss0n",
     .RequiresRestart = true
 };
+inline const ReversibleBugFix CCarEnterExit_GetPassengerAtCarDoor_NoPassengerSeat{
+    .Name        = "CCarEnterExit::GetPassengerAtCarDoor - Door without a passenger seat",
+    .Description = "Return the driver instead of reading `m_apPassengers[-1]` when the door has no passenger seat",
+    .Credit      = "zsrv"
+};
+inline const ReversibleBugFix CObject_Render_DetachedPartRendering{
+    .Name        = "CObject::Render - Detached car part rendering",
+    .Description = "Detached car parts share their materials with the vehicle model, but nothing applies the vehicle's colours and paintjob to them, "
+                   "so they were rendered with the placeholder colours. Apply them before rendering the part, and render both of its sides",
+    .Credit      = "SilentPatch Contributors"
+};
 };

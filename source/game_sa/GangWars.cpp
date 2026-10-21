@@ -102,9 +102,10 @@ void CGangWars::AddKillToProvocation(ePedType pedType) {
     }
 
     for (auto& zone : std::span { aSpecificZones.data(), (size_t)NumSpecificZones }) {
-        auto zoneInfo = CTheZones::GetZoneInfo(CTheZones::GetNavigationZone(zone));
+        // Retail indexes the zone-info array directly (no null path).
+        const auto zoneInfoIndex = CTheZones::NavigationZoneArray[zone].m_ZoneInfoIndex;
 
-        if (zoneInfo->GangStrength[pedType - PED_TYPE_GANG1] != 0) {
+        if (CTheZones::ZoneInfoArray[zoneInfoIndex].GangStrength[pedType - PED_TYPE_GANG1] != 0) {
             Provocation += 1.0f;
             return;
         }

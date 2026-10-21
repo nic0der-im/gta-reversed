@@ -45,7 +45,7 @@ CTask* CTaskComplexSignalAtPed::CreateNextSubTask(CPed* ped) {
     case TASK_COMPLEX_TURN_TO_FACE_ENTITY: {
         return new CTaskSimpleStandStill{
             m_initialPause == -1
-                ? static_cast<int32>(CGeneral::GetRandomNumber() * (1.0f / 65536.0f) * 2000.0f) // `_ftol`, so truncated
+                ? static_cast<int32>(CGeneral::GetRandomNumber() * (1.0f / 32768.0f) * 2000.0f) // `_ftol`, so truncated
                 : m_initialPause
         };
     }
@@ -57,8 +57,8 @@ CTask* CTaskComplexSignalAtPed::CreateNextSubTask(CPed* ped) {
         }
         return new CTaskSimpleRunAnim{
             ANIM_GROUP_GANGS,
-            // `_ftol` truncates (doesn't round)
-            static_cast<AnimationId>(ANIM_ID_PRTIAL_GNGTLKA - static_cast<int32>(CGeneral::GetRandomNumber() * (1.0f / 65536.0f) * -8.0f)),
+            // `_ftol` truncates (doesn't round): 0..7 => ANIM_ID_PRTIAL_GNGTLKA..ANIM_ID_PRTIAL_GNGTLKH
+            static_cast<AnimationId>(ANIM_ID_PRTIAL_GNGTLKA + static_cast<int32>(CGeneral::GetRandomNumber() * (1.0f / 32768.0f) * 8.0f)),
             4.0f,
             false
         };
@@ -112,7 +112,7 @@ CTask* CTaskComplexSignalAtPed::ControlSubTask(CPed* ped) {
     }
 
     if (m_pedToSignalAt) {
-        ped->m_fCurrentRotation = CGeneral::LimitRadianAngle(
+        ped->m_fAimingRotation = CGeneral::LimitRadianAngle(
             CGeneral::GetRadianAngleBetweenPoints(
                 m_pedToSignalAt->GetPosition().x - ped->GetPosition().x,
                 m_pedToSignalAt->GetPosition().y - ped->GetPosition().y,

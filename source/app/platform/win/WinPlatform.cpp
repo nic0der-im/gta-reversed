@@ -3,12 +3,16 @@
 */
 
 #include "StdInc.h"
-
+#include <chrono>
 #include "WinPlatform.h"
 #include "WndProc.h"
 #include "WinMain.h"
 #include "WinInput.h"
 #include "Gamma.h"
+#include <TlHelp32.h>
+#include <Psapi.h>
+#include <DbgHelp.h>
+#include <extensions/debug.hpp>
 
 #define SHIFTED 0x8000
 #define KEY_DOWN(keystate) ((keystate & SHIFTED) != 0)
@@ -134,7 +138,137 @@ BOOL GTATranslateKey(RsKeyCodes* ck, LPARAM lParam, UINT vk) {
 }
 
 void WinPsInjectHooks();
-void Win32InjectHooks() {
+
+namespace notsa {
+namespace Win32 {
+DWORD ExceptionHandler(PEXCEPTION_POINTERS pExceptionInfo) {
+    spdlog::apply_all([](auto&& logger) {
+        logger->dump_backtrace();
+    });
+
+    const auto Section = [](const char* name) {
+        SPDLOG_INFO("*********{}**********", name);
+    };
+
+    Section("UNHANDLED EXCEPTION");
+
+    // Write minidump
+    SPDLOG_INFO("Writing minidump...");
+    {
+        std::error_code ec{};
+        fs::create_directory("dumps", ec);
+        if (ec && ec.value() != ERROR_ALREADY_EXISTS) {
+            NOTSA_LOG_WARN("Failed to create dumps directory: {}", ec.message());
+        }
+        HANDLE hFile = CreateFileA(
+            std::format("dumps/dump_{:%Y_%m_%d_%H_%M_%S}.dmp", std::chrono::utc_clock::now()).c_str(),
+            GENERIC_WRITE,
+            0,
+            NULL,
+            CREATE_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL,
+            NULL
+        );
+        if (hFile != INVALID_HANDLE_VALUE) {
+            MINIDUMP_EXCEPTION_INFORMATION dumpInfo;
+            dumpInfo.ThreadId          = GetCurrentThreadId();
+            dumpInfo.ExceptionPointers = pExceptionInfo;
+            dumpInfo.ClientPointers    = FALSE;
+            MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), hFile, MiniDumpWithThreadInfo, &dumpInfo, NULL, NULL);
+            CloseHandle(hFile);
+        } else {
+            NOTSA_LOG_WARN("Failed to create minidump file: {}", GetLastError());
+        }
+    }
+    SPDLOG_INFO("Writing minidump done");
+
+    Section("DETAILS");
+
+    SPDLOG_INFO("Code: {:#010x}", pExceptionInfo->ExceptionRecord->ExceptionCode);
+    SPDLOG_INFO("Flags: {:#010x}", pExceptionInfo->ExceptionRecord->ExceptionFlags);
+    SPDLOG_INFO("Address: {:#010x}", (uintptr_t)pExceptionInfo->ExceptionRecord->ExceptionAddress);
+
+    Section("PARAMETERS");
+    {
+        SPDLOG_INFO("Parameters[{}]:", pExceptionInfo->ExceptionRecord->NumberParameters);
+        for (DWORD i = 0; i < pExceptionInfo->ExceptionRecord->NumberParameters; i++) {
+            SPDLOG_INFO("{:>8}: {:#010x}", i, pExceptionInfo->ExceptionRecord->ExceptionInformation[i]);
+        }
+    }
+
+    CONTEXT& context = *pExceptionInfo->ContextRecord;
+
+    Section("REGISTERS");
+    {
+        const auto DumpRegister = [](auto name, auto value) {
+            SPDLOG_INFO("\t{}: {:#010x}", name, value);
+        };
+        DumpRegister("EAX", context.Eax);
+        DumpRegister("EBX", context.Ebx);
+        DumpRegister("ECX", context.Ecx);
+        DumpRegister("EDX", context.Edx);
+        DumpRegister("ESI", context.Esi);
+        DumpRegister("EDI", context.Edi);
+        DumpRegister("EBP", context.Ebp);
+        DumpRegister("ESP", context.Esp);
+        DumpRegister("EIP", context.Eip);
+        DumpRegister("EFLAGS", context.EFlags);
+    }
+
+#if 0
+    Section("LOADED MODULES");
+    {
+        HANDLE hProcess = GetCurrentProcess();
+
+        HMODULE hModules[1024];
+        DWORD cbNeeded;
+
+        if (EnumProcessModules(hProcess, hModules, sizeof(hModules), &cbNeeded)) {
+            const DWORD numModules = cbNeeded / sizeof(HMODULE);
+            for (DWORD i = 0; i < numModules; i++) {
+                MODULEINFO moduleInfo;
+                if (GetModuleInformation(hProcess, hModules[i], &moduleInfo, sizeof(moduleInfo))) {
+                    char moduleName[MAX_PATH];
+                    GetModuleBaseName (hProcess, hModules[i], moduleName, sizeof(moduleName));
+
+                    SPDLOG_INFO("\t{:#010x}: {}", LOG_PTR(moduleInfo.lpBaseOfDll), moduleName);
+                }
+            }
+        }
+    }
+#endif
+
+    Section("CALL STACK");
+    {
+        HANDLE hProcess = GetCurrentProcess();
+        HANDLE hThread = GetCurrentThread();
+
+        STACKFRAME stackFrame = {};
+        stackFrame.AddrPC.Mode = AddrModeFlat;
+        stackFrame.AddrStack.Mode = AddrModeFlat;
+        stackFrame.AddrFrame.Mode = AddrModeFlat;
+        stackFrame.AddrPC.Offset = context.Eip;
+        stackFrame.AddrStack.Offset = context.Esp;
+        stackFrame.AddrFrame.Offset = context.Ebp;
+
+        while (StackWalk(
+            IMAGE_FILE_MACHINE_I386, hProcess, hThread, &stackFrame, &context, NULL,
+            SymFunctionTableAccess, SymGetModuleBase, NULL))
+        {
+            NOTSA_LOG_INFO("\t{}", notsa::debug::GetFunctionInfoAtAddress(stackFrame.AddrPC.Offset));
+        }
+    }
+
+    Section("END OF UNHANDLED EXCEPTION");
+
+    spdlog::apply_all([](auto&& logger) {
+        logger->flush();
+    });
+
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+void InjectHooks() {
     RH_ScopedCategory("Win");
     RH_ScopedNamespaceName("Win");
 
@@ -148,3 +282,5 @@ void Win32InjectHooks() {
     InjectWinMainStuff();
     WinPsInjectHooks();
 }
+}; // namespace Win32
+}; // namespace notsa

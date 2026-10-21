@@ -1725,7 +1725,7 @@ void CVehicle::ProcessCarAlarm() {
 
     const auto ts = (uint16)CTimer::GetTimeStepInMS();
     if (m_nAlarmState >= ts) {
-        m_nAlarmState = ts;
+        m_nAlarmState -= ts;
     } else {
         m_nAlarmState = 0;
         m_HornCounter = 0;
@@ -4976,7 +4976,7 @@ void CVehicle::ProcessSirenAndHorn(bool updateHornCounter) {
         } else {
             m_HornCounter = 0u;
         }
-    } else if (updateHornCounter && CanUpdateHornCounter()) {
+    } else if (updateHornCounter && (!IsAlarmActivated() || GetStatus() == STATUS_WRECKED)) {
         m_HornCounter = pad->GetHorn();
     }
 }
@@ -5265,7 +5265,7 @@ void CVehicle::DoVehicleLights(CMatrix& vehicleMatrix, eVehicleLightsFlags flags
         }
     }
 
-    if (!CanUpdateHornCounter()) {
+    if (IsAlarmActivated() && GetStatus() != STATUS_WRECKED) {
         // alarm
         if (CTimer::GetTimeInMS() & 0x100) {
             forceOn = true;
@@ -5281,7 +5281,7 @@ void CVehicle::DoVehicleLights(CMatrix& vehicleMatrix, eVehicleLightsFlags flags
     if (GetModelIndex() == MODEL_ZR350 && GetStatus() != STATUS_WRECKED) {
         // calculate zr350's pop-up lights rotation
         constexpr auto popUpTarget = 0.69813174f; // aka (2.f / 9.f) * PI rad = 40 deg
-        if (vehicleFlags.bLightsOn || forceOn || !CanUpdateHornCounter()) {
+        if (vehicleFlags.bLightsOn || forceOn || IsAlarmActivated() && GetStatus() != STATUS_WRECKED) {
             asAuto->m_fPropRotate = notsa::step_up_to(asAuto->m_fPropRotate, popUpTarget, CTimer::GetTimeStep() * 0.01f);
             if (asAuto->m_fPropRotate < popUpTarget) {
                 return;

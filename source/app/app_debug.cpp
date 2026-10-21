@@ -3,11 +3,9 @@
 #include "app_debug.h"
 #ifndef NOTSA_NATIVE
 #include <windows.h>
-#include <DbgHelp.h>
 #endif
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
-#include <extensions/debug.hpp>
 
 #define FINAL 0
 
@@ -59,114 +57,6 @@ void FlushObrsPrintfs() {
 #endif
 }
 
-// This probably should be in winps :D
-#ifndef NOTSA_NATIVE
-LONG WINAPI WindowsExceptionHandler(PEXCEPTION_POINTERS pExceptionInfo) {
-    // If this function itself crashes it's invoked again
-    // So let's prevent the recusion with this simple hack
-    static bool s_HasHandled = false;
-    if (s_HasHandled) {
-        return EXCEPTION_CONTINUE_EXECUTION;
-    }
-    s_HasHandled = true;
-
-    spdlog::apply_all([](auto&& logger) {
-        logger->dump_backtrace();
-    });
-    
-    const auto Section = [](const char* name) {
-        SPDLOG_INFO("*********{}**********", name);
-    };
-
-    Section("UNHANDLED EXCEPTION");
-
-    SPDLOG_INFO("Exception Code: {:#010x}", pExceptionInfo->ExceptionRecord->ExceptionCode);
-    SPDLOG_INFO("Exception Flags: {:#010x}", pExceptionInfo->ExceptionRecord->ExceptionFlags);
-    SPDLOG_INFO("Exception Address: {:#010x}", (uintptr_t)pExceptionInfo->ExceptionRecord->ExceptionAddress);
-
-    // Dump exception parameters
-    Section("PARAMETERS");
-    {
-        SPDLOG_INFO("Parameters[{}]:", pExceptionInfo->ExceptionRecord->NumberParameters);
-        for (DWORD i = 0; i < pExceptionInfo->ExceptionRecord->NumberParameters; i++) {
-            SPDLOG_INFO("{:>8}: {:#010x}", i, pExceptionInfo->ExceptionRecord->ExceptionInformation[i]);
-        }
-    }
-
-    CONTEXT& context = *pExceptionInfo->ContextRecord;
-
-    Section("REGISTERS");
-    {
-        const auto DumpRegister = [](auto name, auto value) {
-            SPDLOG_INFO("\t{}: {:#010x}", name, value);
-        };
-        DumpRegister("EAX", context.Eax);
-        DumpRegister("EBX", context.Ebx);
-        DumpRegister("ECX", context.Ecx);
-        DumpRegister("EDX", context.Edx);
-        DumpRegister("ESI", context.Esi);
-        DumpRegister("EDI", context.Edi);
-        DumpRegister("EBP", context.Ebp);
-        DumpRegister("ESP", context.Esp);
-        DumpRegister("EIP", context.Eip);
-        DumpRegister("EFLAGS", context.EFlags);
-    }
-
-#if 0
-    Section("LOADED MODULES");
-    {
-        HANDLE hProcess = GetCurrentProcess();
-
-        HMODULE hModules[1024];
-        DWORD cbNeeded;
-
-        if (EnumProcessModules(hProcess, hModules, sizeof(hModules), &cbNeeded)) {
-            const DWORD numModules = cbNeeded / sizeof(HMODULE);
-            for (DWORD i = 0; i < numModules; i++) {
-                MODULEINFO moduleInfo;
-                if (GetModuleInformation(hProcess, hModules[i], &moduleInfo, sizeof(moduleInfo))) {
-                    char moduleName[MAX_PATH];
-                    GetModuleBaseName (hProcess, hModules[i], moduleName, sizeof(moduleName));
-
-                    SPDLOG_INFO("\t{:#010x}: {}", LOG_PTR(moduleInfo.lpBaseOfDll), moduleName);
-                }
-            }
-        }
-    }
-#endif
-
-    Section("CALL STACK");
-    {
-        HANDLE hProcess = GetCurrentProcess();
-        HANDLE hThread = GetCurrentThread();
-
-        STACKFRAME stackFrame = {};
-        stackFrame.AddrPC.Mode = AddrModeFlat;
-        stackFrame.AddrStack.Mode = AddrModeFlat;
-        stackFrame.AddrFrame.Mode = AddrModeFlat;
-        stackFrame.AddrPC.Offset = context.Eip;
-        stackFrame.AddrStack.Offset = context.Esp;
-        stackFrame.AddrFrame.Offset = context.Ebp;
-
-        DWORD prevFrameOffset = 0;
-        while (StackWalk(
-            IMAGE_FILE_MACHINE_I386, hProcess, hThread, &stackFrame, &context, NULL,
-            SymFunctionTableAccess, SymGetModuleBase, NULL))
-        {
-            NOTSA_LOG_INFO("\t{}", notsa::debug::GetFunctionInfoAtAddress(stackFrame.AddrPC.Offset));
-        }
-    }
-
-    Section("END OF UNHANDLED EXCEPTION");
-
-    spdlog::apply_all([](auto&& logger) {
-        logger->flush();
-    });
-
-    return EXCEPTION_EXECUTE_HANDLER;
-}
-#endif // NOTSA_NATIVE
-
 notsa::Logging::Logging() {
     using namespace std::chrono_literals;
 #if 0
@@ -179,7 +69,20 @@ notsa::Logging::Logging() {
     spdlog::enable_backtrace(128);
     spdlog::set_level(spdlog::level::debug);
 
+#ifdef NOTSA_NATIVE
+    // Native builds run from a terminal - the working directory is the game directory
     m_sinks.emplace_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/log.log"));
+#else
+    // Next to the exe, not in the working directory (that's `scripts/` while the ASI loader loads us)
+    const auto exeDir = [] {
+        char path[MAX_PATH]{};
+        GetModuleFileNameA(nullptr, path, std::size(path));
+        return std::filesystem::path{ path }.parent_path();
+    }();
+    std::error_code ec; // The sink throws if the directory is missing (e.g. on a fresh install)
+    fs::create_directory(exeDir / "logs", ec);
+    m_sinks.emplace_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>((exeDir / "logs" / "log.log").string()));
+#endif
     m_sinks.emplace_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
 
     spdlog::set_default_logger(Create("default"));
@@ -192,7 +95,6 @@ notsa::Logging::Logging() {
     } else {
         spdlog::flush_every(100ms);
     }
-    SetUnhandledExceptionFilter(WindowsExceptionHandler);
 #endif
 }
 

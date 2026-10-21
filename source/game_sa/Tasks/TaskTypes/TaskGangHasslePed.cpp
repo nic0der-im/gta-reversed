@@ -63,7 +63,7 @@ CTask* CTaskGangHasslePed::CreateFirstSubTask(CPed* ped) {
     const auto radius = static_cast<float>(CGeneral::GetRandomNumber()) * RAND_MAX_FLOAT_RECIPROCAL * 2.0f + 3.0f; // [3, 5]
 
     // Both RNG draws are made before `m_nTime` is stored (And before the task is allocated)
-    const auto waitTime = static_cast<int32>(static_cast<float>(CGeneral::GetRandomNumber()) * (1.0f / 65536.0f) * static_cast<float>(m_RndMax - m_RndMin));
+    const auto waitTime = static_cast<int32>(static_cast<float>(CGeneral::GetRandomNumber()) * (1.0f / 32768.0f) * static_cast<float>(m_RndMax - m_RndMin));
     m_nTime                    = static_cast<int32>(CTimer::GetTimeInMS());
     m_nSomeRandomShit          = m_RndMin + waitTime;
     m_bFirstSubTaskInitialised = true;
@@ -120,7 +120,7 @@ CTask* CTaskGangHasslePed::ControlSubTask(CPed* ped) {
             secondary = new CTaskSimpleRunAnim{
                 ANIM_GROUP_GANGS,
                 // 0..7 (Truncated, not rounded) => ANIM_ID_PRTIAL_GNGTLKA..ANIM_ID_PRTIAL_GNGTLKH
-                static_cast<AnimationId>(ANIM_ID_PRTIAL_GNGTLKA + static_cast<int32>(CGeneral::GetRandomNumber() * (1.0f / 65536.0f) * 8.0f)),
+                static_cast<AnimationId>(ANIM_ID_PRTIAL_GNGTLKA + static_cast<int32>(CGeneral::GetRandomNumber() * (1.0f / 32768.0f) * 8.0f)),
                 4.0f,
                 false
             };

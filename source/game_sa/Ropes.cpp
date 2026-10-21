@@ -106,7 +106,7 @@ bool CRopes::RegisterRope(uint32 ropeID, uint32 ropeType, CVector startPos, bool
     rope->m_aSegments[0]      = startPos;
     rope->m_aSpeed[0]         = CVector{};
     rope->m_nSegments         = segmentCount;
-    rope->m_nFlags2           = (uint8)(1 | ((flags & 1) << 2)); // Bit 0: "Registered this frame", Bit 2: "On ground"
+    rope->m_nFlags2           = (uint8)(((flags & 1) << 2) | (rope->m_nFlags2 & 0xF9) | 1); // Bit 0: "Registered this frame", Bit 2: "On ground", bits 1, 3-7 preserved
     rope->m_fGroundZ          = 0.0f;
     rope->m_pAttachedEntity   = nullptr;
     rope->m_pRopeAttachObject = nullptr;

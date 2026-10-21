@@ -84,10 +84,10 @@ CTask* CTaskComplexEnterCarAsPassengerWait::CreateSubTask(eTaskType taskType, CP
     case TASK_COMPLEX_GO_TO_POINT_AND_STAND_STILL: {
         CVector point;
         if (CPedGeometryAnalyser::ComputeClosestSurfacePoint(*ped, *m_Car, point)) {
-            return new CTaskComplexGoToPointAndStandStill{ m_MoveState, point, 1.5f, 0.5f };
+            return new CTaskComplexGoToPointAndStandStill{ m_MoveState, point, 1.5f, 2.0f };
         }
         const auto radius = CModelInfo::GetModelInfo(m_Car->m_nModelIndex)->GetColModel()->GetBoundRadius() + 1.5f;
-        return new CTaskComplexGoToPointAndStandStill{ m_MoveState, m_Car->GetPosition(), radius, 0.5f };
+        return new CTaskComplexGoToPointAndStandStill{ m_MoveState, m_Car->GetPosition(), radius, 2.0f };
     }
     default:
         return nullptr;
@@ -160,10 +160,10 @@ CTask* CTaskComplexEnterCarAsPassengerWait::ControlSubTask(CPed* ped) {
         const auto  dz     = static_cast<double>(point.z) - target.z;
         if (dx * dx + dy * dy + dz * dz > 0.025f) {
             if (hasPoint) {
-                goToTask->GoToPoint(point, 1.5f, 0.5f, false);
+                goToTask->GoToPoint(point, 1.5f, 2.0f, false);
             } else {
                 const auto radius = CModelInfo::GetModelInfo(m_Car->m_nModelIndex)->GetColModel()->GetBoundRadius() + 1.5f;
-                goToTask->GoToPoint(m_Car->GetPosition(), radius, 0.5f, false);
+                goToTask->GoToPoint(m_Car->GetPosition(), radius, 2.0f, false);
             }
         }
     }

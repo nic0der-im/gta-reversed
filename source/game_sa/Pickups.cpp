@@ -378,7 +378,7 @@ void CPickups::DoPickUpEffects(CEntity* entity) {
         || object->m_nBonusValue != 0
         || object->m_wCostValue != 0
     ) {
-        const auto dist = DistanceBetweenPoints(TheCamera.GetPosition(), entity->GetPosition());
+        const auto dist = DistanceBetweenPoints2D(TheCamera.GetPosition(), entity->GetPosition());
         if (dist < 14.0f && (uint32)NumMessages < MAX_PICKUP_MESSAGES) {
             const CVector msgPos = entity->GetPosition() + CVector{ 0.0f, 0.0f, 0.7f };
 

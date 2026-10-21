@@ -65,7 +65,7 @@ void CPostEffects::InjectHooks() {
     RH_ScopedInstall(SpeedFX, 0x7030A0);
     RH_ScopedInstall(DarknessFilter, 0x702F00);
     RH_ScopedInstall(ColourFilter, 0x703650);
-    RH_ScopedInstall(Radiosity, 0x702080, { .Reversed = false });
+    RH_ScopedInstall(Radiosity, 0x702080);
     RH_ScopedInstall(SetSpeedFXManualSpeedCurrentFrame, 0x700BE0);
     RH_ScopedInstall(Render, 0x7046E0);
 }
@@ -542,9 +542,11 @@ void CPostEffects::HeatHazeFXInit() {
 
     m_HeatHazeFXTypeLast = m_HeatHazeFXType;
 
+    // NOTE: Same expressions as the exe (and as the respawn in `HeatHazeFX`) - The position is a
+    //       fraction of the room *left over* past the scan size, so it's in `[0, raster - scan)`.
     for (auto i = 0; i < 180; i++) {
-        hpX[i] = CGeneral::GetRandomNumberInRange(m_HeatHazeFXScanSizeX, RwRasterGetWidth(pRasterFrontBuffer));
-        hpY[i] = CGeneral::GetRandomNumberInRange(m_HeatHazeFXScanSizeY, RwRasterGetHeight(pRasterFrontBuffer));
+        hpX[i] = int32(float(CGeneral::GetRandomNumber()) * (1.0f / 32768.0f) * float(RwRasterGetWidth(pRasterFrontBuffer)  - m_HeatHazeFXScanSizeX));
+        hpY[i] = int32(float(CGeneral::GetRandomNumber()) * (1.0f / 32768.0f) * float(RwRasterGetHeight(pRasterFrontBuffer) - m_HeatHazeFXScanSizeY));
         hpS[i] = CGeneral::GetRandomNumberInRange(m_HeatHazeFXSpeedMin,  m_HeatHazeFXSpeedMax);
     }
 }
@@ -1169,9 +1171,10 @@ void CPostEffects::SpeedFX(float speed) {
     do {
         // Only one of these can apply, as each keeps a single opposite UV pair alive
         if (isLookBehind) {
+            // Only the left/right (u1/u3) pair and all of `v` stop advancing, `u0/u2` keep going
             rX = rY = 0.0f;
-            upU = 0.0f;
-            upV = downU = downV = 0.0f;
+            downU = 0.0f;
+            upV = downV = 0.0f;
         }
         if (isLookSideways) {
             rX = rY = 0.0f;
@@ -1250,7 +1253,132 @@ void CPostEffects::ColourFilter(RwRGBA pass1, RwRGBA pass2) {
 
 // 0x702080
 void CPostEffects::Radiosity(int32 intensityLimit, int32 filterPasses, int32 renderPasses, int32 intensity) {
-    plugin::Call<0x702080>();
+    // NOTE: The exe keeps the screen size used here as a plain `int32` in these globals (it's
+    //       stored that way in `CPostEffects::Initialise`), and reads them back as `int32` too.
+    //       The header declares them as `float`, so read the stored bits.
+    auto width  = std::bit_cast<int32>(m_RadiosityPixelsX);
+    auto height = std::bit_cast<int32>(m_RadiosityPixelsY);
+
+    RwRenderStateSet(rwRENDERSTATETEXTUREFILTER,     RWRSTATE(rwFILTERNEAREST));
+    RwRenderStateSet(rwRENDERSTATEFOGENABLE,         RWRSTATE(FALSE));
+    RwRenderStateSet(rwRENDERSTATEZTESTENABLE,       RWRSTATE(TRUE));
+    RwRenderStateSet(rwRENDERSTATEZWRITEENABLE,      RWRSTATE(FALSE));
+    RwRenderStateSet(rwRENDERSTATETEXTURERASTER,     RWRSTATE(pRasterFrontBuffer));
+    RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, RWRSTATE(FALSE));
+    RwRenderStateSet(rwRENDERSTATESRCBLEND,          RWRSTATE(rwBLENDSRCALPHA));
+    RwRenderStateSet(rwRENDERSTATEDESTBLEND,         RWRSTATE(rwBLENDINVSRCALPHA));
+
+    const auto recipNearClip = 1.0f / RwCameraGetNearClipPlane(Scene.m_pRwCamera);
+    const auto rasterWidth   = float(RwRasterGetWidth(pRasterFrontBuffer));
+    const auto rasterHeight  = float(RwRasterGetHeight(pRasterFrontBuffer));
+
+    uiTempBufferVerticesStored = 0;
+
+    // Downscale the front buffer `filterPasses` times - Each pass is a quad drawn from the
+    // previous pass's result, so the source size is the target size of the previous one.
+    if (filterPasses > 0) {
+        RwRenderStateSet(rwRENDERSTATETEXTUREFILTER, RWRSTATE(rwFILTERLINEAR));
+
+        for (int32 i = 0; i < filterPasses; i++) {
+            const auto srcWidth  = width;
+            const auto srcHeight = height;
+            width  /= 2;
+            height /= 2;
+
+            auto* const v0 = &aRadiosityVertexBuffer[uiTempBufferVerticesStored + 0];
+            v0->x             = 0.0f;
+            v0->y             = 0.0f;
+            v0->z             = 0.0f;
+            v0->rhw           = recipNearClip;
+            v0->emissiveColor = 0xFFFFFFFF;
+            v0->u             = float(m_RadiosityFilterUCorrection) / rasterWidth;
+            v0->v             = float(m_RadiosityFilterVCorrection) / rasterHeight;
+
+            auto* const v1 = &aRadiosityVertexBuffer[uiTempBufferVerticesStored + 1];
+            v1->x             = float(width + 1);
+            v1->y             = float(height + 1);
+            v1->z             = 0.0f;
+            v1->rhw           = recipNearClip;
+            v1->emissiveColor = 0xFFFFFFFF;
+            v1->u             = float(srcWidth) / rasterWidth;
+            v1->v             = float(srcHeight) / rasterHeight;
+
+            uiTempBufferVerticesStored += 2;
+        }
+    }
+
+    RwRenderStateSet(rwRENDERSTATESRCBLEND,  RWRSTATE(rwBLENDSRCALPHA));
+    RwRenderStateSet(rwRENDERSTATEDESTBLEND, RWRSTATE(rwBLENDINVSRCALPHA));
+
+    // Brightness limit quad - The exe never writes its UVs, so it samples whatever the
+    // previous quad (or the previous frame) left in the buffer.
+    {
+        auto* const v0 = &aRadiosityVertexBuffer[uiTempBufferVerticesStored + 0];
+        v0->x   = 0.0f;
+        v0->y   = 0.0f;
+        v0->z   = 0.0f;
+        v0->rhw = recipNearClip;
+
+        auto* const v1 = &aRadiosityVertexBuffer[uiTempBufferVerticesStored + 1];
+        v1->x   = float(width + 1);
+        v1->y   = float(height + 1);
+        v1->z   = 0.0f;
+        v1->rhw = recipNearClip;
+
+        RwIm2DVertexSetIntRGBA(v0, intensityLimit, intensityLimit, intensityLimit, 128);
+        RwIm2DVertexSetIntRGBA(v1, intensityLimit, intensityLimit, intensityLimit, 128);
+
+        uiTempBufferVerticesStored += 2;
+    }
+
+    if (renderPasses > 0) {
+        if (uiTempBufferVerticesStored > 2) {
+            RwIm2DRenderPrimitive(rwPRIMTYPETRISTRIP, aRadiosityVertexBuffer, uiTempBufferVerticesStored);
+        }
+        uiTempBufferVerticesStored = 0;
+
+        RwRenderStateSet(rwRENDERSTATETEXTUREFILTER, RWRSTATE(m_bRadiosityLinearFilter ? rwFILTERLINEAR : rwFILTERMIPNEAREST));
+
+        // The debug colour is only honoured in non strip-copy mode
+        const auto colour = !m_bRadiosityStripCopyMode && m_bRadiosityDebug
+            ? 0xFFFFFFFF
+            : uint32(intensity) << 24;
+
+        for (int32 i = 0; i < renderPasses; i++) {
+            auto* const v0 = &aRadiosityVertexBuffer[uiTempBufferVerticesStored + 0];
+            v0->x             = 0.0f;
+            v0->y             = 0.0f;
+            v0->z             = 0.0f;
+            v0->rhw           = recipNearClip;
+            v0->emissiveColor = colour;
+            v0->u             = 0.0f;
+            v0->v             = 0.0f;
+
+            auto* const v1 = &aRadiosityVertexBuffer[uiTempBufferVerticesStored + 1];
+            v1->x             = SCREEN_WIDTH;
+            v1->y             = SCREEN_HEIGHT;
+            v1->z             = 0.0f;
+            v1->rhw           = recipNearClip;
+            v1->emissiveColor = colour;
+            v1->u             = float(width) / rasterWidth;
+            v1->v             = float(height) / rasterHeight;
+
+            uiTempBufferVerticesStored += 2;
+        }
+    }
+
+    if (uiTempBufferVerticesStored > 2) {
+        RwIm2DRenderPrimitive(rwPRIMTYPETRISTRIP, aRadiosityVertexBuffer, uiTempBufferVerticesStored);
+    }
+    uiTempBufferVerticesStored = 0;
+
+    RwRenderStateSet(rwRENDERSTATEFOGENABLE,         RWRSTATE(FALSE));
+    RwRenderStateSet(rwRENDERSTATEZTESTENABLE,       RWRSTATE(TRUE));
+    RwRenderStateSet(rwRENDERSTATEZWRITEENABLE,      RWRSTATE(TRUE));
+    RwRenderStateSet(rwRENDERSTATETEXTURERASTER,     RWRSTATE(NULL));
+    RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, RWRSTATE(FALSE));
+    RwRenderStateSet(rwRENDERSTATESRCBLEND,          RWRSTATE(rwBLENDSRCALPHA));
+    RwRenderStateSet(rwRENDERSTATEDESTBLEND,         RWRSTATE(rwBLENDINVSRCALPHA));
 }
 
 // 0x700BE0

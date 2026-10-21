@@ -57,7 +57,7 @@ void CFont::InjectHooks() {
     RH_ScopedInstall(GetCharacterSize, 0x719750);
     RH_ScopedInstall(LoadFontValues, 0x7187C0);
     // Install("", "GetScriptLetterSize", 0x719670, &GetScriptLetterSize);
-    RH_ScopedInstall(FindSubFontCharacter, 0x7192C0);
+    RH_ScopedInstall(FindSubFontCharacter, 0x7192C0, { .StackArgumentsToPreserve = 2, .PreserveRegisters = true });
     RH_ScopedGlobalInstall(GetLetterIdPropValue, 0x718770);
 }
 
@@ -221,7 +221,7 @@ void CFont::PrintChar(float x, float y, uint8 character) {
 
         const float u3 = u0 + 0.0625f - 0.001f;
 
-        if (RenderState.m_fSlant > 0.0f) {
+        if (RenderState.m_fSlant != 0.0f) {
             // Slanted text (The shear itself is applied by `RenderFontBuffer`)
             CSprite2d::AddToBuffer(
                 CRect{
@@ -642,7 +642,7 @@ void CFont::RenderFontBuffer() {
             letter = FindSubFontCharacter(letter, RenderState.m_nFontStyle);
         }
 
-        if (RenderState.m_fSlant > 0.0f) { // Shear the line
+        if (RenderState.m_fSlant != 0.0f) { // Shear the line
             y = (RenderState.m_vSlanRefPoint.x - x) * RenderState.m_fSlant + RenderState.m_vSlanRefPoint.y;
         }
 
@@ -899,7 +899,7 @@ void CFont::GetTextRect(CRect* rect, float x, float y, const GxtChar* text) {
     }
     else if (m_bFontRightAlign) {
         rect->left = m_fRightJustifyWrap - 4.0f;
-        rect->right = x;
+        rect->right = x + 4.0f;
     }
     else {
         rect->left = x - 4.0f;
