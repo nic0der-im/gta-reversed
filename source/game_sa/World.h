@@ -206,9 +206,9 @@ public:
 
     static void RemoveStaticObjects();
 
-    static CEntity* TestSphereAgainstWorld(CVector sphereCenter, float sphereRadius, CEntity* ignoreEntity, bool buildings, bool vehicles, bool peds, bool objects, bool dummies, bool doCameraIgnoreCheck);
+    static CEntity* TestSphereAgainstWorld(CVector sphereCenter, float sphereRadius, const CEntity* ignoreEntity, bool buildings, bool vehicles, bool peds, bool objects, bool dummies, bool doCameraIgnoreCheck);
     template<typename PtrListType>
-    static CEntity* TestSphereAgainstSectorList(PtrListType& ptrList, CVector sphereCenter, float sphereRadius, CEntity* ignoreEntity, bool doCameraIgnoreCheck);
+    static CEntity* TestSphereAgainstSectorList(PtrListType& ptrList, CVector sphereCenter, float sphereRadius, const CEntity* ignoreEntity, bool doCameraIgnoreCheck);
 
     static void TestForBuildingsOnTopOfEachOther();
     template<typename PtrListType>
@@ -400,6 +400,9 @@ public:
         return CVector{ xy, FindGroundZForCoord(xy.x, xy.y) };
     }
 };
+
+// 0xB9B250
+extern std::array<CColPoint, 32>& gaTempSphereColPoints;
 
 // 0x407260
 inline CSector& CWorld::GetSector(int32 x, int32 y) {

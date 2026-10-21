@@ -2319,7 +2319,7 @@ bool CEntity::IsEntityOccluded() {
 }
 
 // in header
-inline float CEntity::GetBoundRadius() const {
+float CEntity::GetBoundRadius() const {
     return GetModelInfo()->GetColModel()->GetBoundingSphere().m_fRadius;
 }
 

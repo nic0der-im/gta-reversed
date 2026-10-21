@@ -24,6 +24,7 @@ void CGarage::InjectHooks() {
     RH_ScopedOverloadedInstall(IsPointInsideGarage, "CVector-float", 0x4487D0, bool(CGarage::*)(CVector, float), { .Reversed = false });
     RH_ScopedInstall(Update, 0x44AA50, { .Reversed = false });
     RH_ScopedInstall(IsGarageEmpty, 0x44A9C0, { .Reversed = false });
+    RH_ScopedInstall(FindDoorsWithGarage, 0x449FF0, { .Reversed = false });
 }
 
 // 0x4479F0
@@ -280,4 +281,9 @@ void CStoredCar::StoreCar(CVehicle* vehicle) {
 // 0x447E40
 CVehicle* CStoredCar::RestoreCar() {
     return plugin::CallMethodAndReturn<CVehicle*, 0x447E40, CStoredCar*>(this);
+}
+
+// 0x449FF0
+void CGarage::FindDoorsWithGarage(CObject** ppFirstDoor, CObject** ppSecondDoor) {
+    plugin::CallMethod<0x449FF0, CGarage*, CObject**, CObject**>(this, ppFirstDoor, ppSecondDoor);
 }

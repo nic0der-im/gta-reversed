@@ -111,6 +111,21 @@ inline const ReversibleBugFix CDamageManager_GetLightStatus_IncorrectStatusCheck
     .Description = "Fixes incorrect use of `LIGHT_REAR_LEFT` instead of `LIGHT_REAR_RIGHT` for checking light status",
     .Credit      = "aeaeo"
 };
+inline const ReversibleBugFix CPedGeometryAnalyser_ComputeRouteRoundSphere_IncorrectDetourPosition{
+    .Name        = "CPedGeometryAnalyser::ComputeRouteRoundSphere - Incorrect detour position",
+    .Description = "Fix incorrect calculation of detour position in `CPedGeometryAnalyser::ComputeRouteRoundSphere` due to the direction being calculated in 3D instead of 2D (Sometimes giving points that would lead the ped to go into the sphere, instead of around it)",
+    .Credit      = "Pirulax"
+};
+inline const ReversibleBugFix CPedGeometryAnalyser_IsEntityBlockingTarget_IncorrectRadiusCheck{
+    .Name        = "CPedGeometryAnalyser::IsEntityBlockingTarget - Incorrect radius check",
+    .Description = "Fix incorrect radius check in `CPedGeometryAnalyser::IsEntityBlockingTarget`",
+    .Credit      = "Pirulax"
+};
+inline const ReversibleBugFix CPedGeometryAnalyser_ComputeRouteRoundSphere_AmbigousDetourTarget{
+    .Name        = "CPedGeometryAnalyser::ComputeRouteRoundSphere - Fix ambiguous detour target",
+    .Description = "Fix missing setting of detour target when the ped is on the edge of the sphere in `CPedGeometryAnalyser::ComputeRouteRoundSphere`",
+    .Credit      = "Pirulax"
+};
 inline const ReversibleBugFix CTaskSimpleSlideToCoord_Constructor_UninitializedTimer{
     .Name        = "CTaskSimpleSlideToCoord - Uninitialized timer",
     .Description = "The constructor without an anim doesn't initialize the timer, so `ProcessPed` never starts the 2 second timeout, "
