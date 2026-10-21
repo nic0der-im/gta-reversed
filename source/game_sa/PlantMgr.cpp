@@ -9,10 +9,10 @@
 #include "ProcObjectMan.h"
 
 // 0x5DD100 (todo: move)
-static void AtomicCreatePrelitIfNeeded(RpAtomic* atomic) {
+static RpAtomic* AtomicCreatePrelitIfNeeded(RpAtomic* atomic) {
     auto* const src = atomic->geometry;
     if (src->flags & rpGEOMETRYPRELIT) {
-        return;
+        return atomic;
     }
 
     const auto numVertices  = src->numVertices;
@@ -40,6 +40,8 @@ static void AtomicCreatePrelitIfNeeded(RpAtomic* atomic) {
     RpGeometryUnlock(dst);
     dst->flags |= rpGEOMETRYPOSITIONS;
     RpAtomicSetGeometry(atomic, dst, rpATOMICSAMEBOUNDINGSPHERE);
+
+    return atomic;
 }
 
 // 0x5DD1E0 (do not hook! it has retarded calling conv)

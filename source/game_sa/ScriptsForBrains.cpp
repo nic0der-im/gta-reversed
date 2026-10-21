@@ -127,15 +127,6 @@ void CScriptsForBrains::MarkAttractorScriptBrainWithThisNameAsNoLongerNeeded(con
     }
 }
 
-// 0x46B3D0
-bool CScriptsForBrains::IsObjectWithinBrainActivationRange(CObject* entity, const CVector& point) {
-    const auto& e = m_aScriptForBrains[entity->m_nStreamedScriptBrainToLoad];
-    if (e.m_TypeOfBrain != 1) {
-        return false;
-    }
-    return (point - entity->GetPosition()).Magnitude() < e.m_ObjectBrainActivationRadius;
-}
-
 // 0x46B270
 void CScriptsForBrains::StartNewStreamedScriptBrain(uint8 index, CEntity* entity, bool bHasAScriptBrain) {
     const auto& e = m_aScriptForBrains[index];
@@ -239,8 +230,13 @@ bool CScriptsForBrains::HasAttractorScriptBrainWithThisNameLoaded(const char* na
     return false;
 }
 
+// 0x46B3D0
 bool CScriptsForBrains::IsObjectWithinBrainActivationRange(CObject* entity, const CVector& point) {
-    NOTSA_UNREACHABLE();
+    const auto& e = m_aScriptForBrains[entity->m_nStreamedScriptBrainToLoad];
+    if (e.m_TypeOfBrain != 1) {
+        return false;
+    }
+    return (point - entity->GetPosition()).Magnitude() < e.m_ObjectBrainActivationRadius;
 }
 
 int16 CScriptsForBrains::GetIndexOfScriptBrainWithThisName(const char* name, int8 type) {

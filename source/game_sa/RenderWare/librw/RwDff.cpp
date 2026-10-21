@@ -984,6 +984,9 @@ RwInt32 _rpMaterialListAppendMaterial(RpMaterialList* matList, RpMaterial* mater
     }
 
     matList->materials[matList->numMaterials] = material;
+    // The list takes its own reference (retail `_rpMaterialListAppendMaterial`, 0x74E350);
+    // callers that created the material drop theirs with `RpMaterialDestroy`.
+    material->refCount++;
     return matList->numMaterials++;
 }
 
@@ -1033,10 +1036,13 @@ RpMaterialList* _rpMaterialListStreamRead(RwStream* stream, RpMaterialList* matL
             goto fail;
         }
         if (RpMaterial* material = RpMaterialStreamRead(stream)) {
-            if (_rpMaterialListAppendMaterial(matList, material) >= 0) {
+            const bool appended = _rpMaterialListAppendMaterial(matList, material) >= 0;
+            // The list keeps its own reference now, so drop the reader's one (retail
+            // `_rpMaterialListStreamRead`, 0x74E600, does the same).
+            RpMaterialDestroy(material);
+            if (appended) {
                 continue;
             }
-            RpMaterialDestroy(material);
         }
         goto fail;
     }

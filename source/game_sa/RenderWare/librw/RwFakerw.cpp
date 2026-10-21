@@ -160,9 +160,19 @@ int32 PluginRegistry::Register(
         return 0;
     }
 
-    const size_t offset = (m_plugins.empty() ? (size_t)baseSize : m_end + 3) & ~size_t{3};
+    // 64-bit port: the game sizes plugin slots for 32-bit pointers (for example the env/spec
+    // material plugins register `4` bytes for a `RwTexture*`/material-data pointer). The native
+    // plugin callbacks store full 64-bit pointers there, so every slot is padded to pointer
+    // alignment and at least `sizeof(void*)` bytes; otherwise such a write clobbers the next
+    // plugin's slot (or the end of the object's allocation). The registered size stays the
+    // logical one, so the callbacks and stream readers see exactly what retail passes them.
+    constexpr size_t kSlotAlign = alignof(void*);
+    const size_t start  = m_plugins.empty() ? (size_t)baseSize : m_end;
+    const size_t offset = (start + (kSlotAlign - 1)) & ~(kSlotAlign - 1);
+    const size_t stored = std::max<size_t>((size_t)size, kSlotAlign);
+
     m_base = m_plugins.empty() ? (size_t)baseSize : m_base;
-    m_end  = offset + size;
+    m_end  = offset + ((stored + (kSlotAlign - 1)) & ~(kSlotAlign - 1));
 
     m_plugins.push_back({ (int32)offset, size, pluginID, constructCB, destructCB, copyCB });
     return (int32)offset;
