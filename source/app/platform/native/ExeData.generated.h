@@ -1,7 +1,7 @@
 //! @file ExeData.generated.h
 //! The executable's CRT static-initializer effects, ready to replay into `ExeGlobals`.
 //!
-//! GENERATED FILE - DO NOT EDIT. Regenerate with `python3 scripts/native/gen_exedata.py`.
+//! GENERATED FILE - DO NOT EDIT. Regenerate with `python3 tools/native/gen_exedata.py`.
 //! Source: the `__xi_a..__xi_z` table (`0x8A4000..0x8A5A10`, 1667 entries) of `gta_sa.exe`.
 
 #pragma once
