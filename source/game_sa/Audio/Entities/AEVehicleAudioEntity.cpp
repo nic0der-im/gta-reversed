@@ -2576,6 +2576,10 @@ void CAEVehicleAudioEntity::ProcessMovingParts(tVehicleParams& vp) {
 float CAEVehicleAudioEntity::GetVolForPlayerEngineSound(tVehicleParams& vp, eVehicleEngineSoundType st) const noexcept {
     const auto& cfg = s_Config.PlayerEngine;
 
+    if (st == AE_SOUND_PLAYER_OFF) { // 0x4F5DB1
+        return GetVolForPlayerEngineSound(vp, AE_SOUND_CAR_ID);
+    }
+
     float volume = [&]{
         switch (st) {
         case AE_SOUND_CAR_REV:
@@ -2583,7 +2587,7 @@ float CAEVehicleAudioEntity::GetVolForPlayerEngineSound(tVehicleParams& vp, eVeh
         case AE_SOUND_CAR_ID:
             return vp.Vehicle->GetModelIndex() == MODEL_CADDY
                 ? cfg.ID.VolMin - 30.f
-                : lerp(cfg.ID.VolMin, cfg.ID.VolMax, vp.RealRevsRatio);
+                : lerp(cfg.ID.VolMin, cfg.ID.VolMax, vp.SpeedRatio);
         case AE_SOUND_PLAYER_CRZ:
             return m_IsSingleGear
                 ? cfg.SingleGearVolume
@@ -2592,8 +2596,6 @@ float CAEVehicleAudioEntity::GetVolForPlayerEngineSound(tVehicleParams& vp, eVeh
             return m_IsSingleGear
                 ? cfg.SingleGearVolume
                 : lerp(cfg.AC.VolMin, cfg.AC.VolMax, m_AuGear / (float)(cfg.MaxAuGear)); // NOTE: May be wrong
-        case AE_SOUND_PLAYER_OFF:
-            return GetVolForPlayerEngineSound(vp, AE_SOUND_CAR_ID);
         default:
             return 0.f;
         }
@@ -2626,8 +2628,8 @@ float CAEVehicleAudioEntity::GetFreqForPlayerEngineSound(tVehicleParams& vp, eVe
     auto* const cfg = &s_Config.PlayerEngine;
 
     float f;
-    if (st == AE_SOUND_CAR_ID && vp.Vehicle->GetModelId() == MODEL_CADDY) { // Moved out here to simplify logic...
-        f = 0.f;
+    if (st == AE_SOUND_CAR_ID && vp.Vehicle->GetModelId() == MODEL_CADDY) { // 0x4F8213 - Moved out here to simplify logic...
+        f = 1.f;
     } else {
         // 0x4F80A6 - Calculate z move speed factor
         auto zf = vp.ZOverSpeed <= 0.f
@@ -2646,7 +2648,7 @@ float CAEVehicleAudioEntity::GetFreqForPlayerEngineSound(tVehicleParams& vp, eVe
         if (m_AuSettings.VehicleAudioType == AE_BIKE) {
             auto* const bike = vp.Vehicle->AsBike();
 
-            bf = std::sin(bike->GetRideAnimData()->LeanAngle) * cfg->FrqBikeLeanFactor;
+            bf = std::abs(std::sin(bike->GetRideAnimData()->LeanAngle)) * cfg->FrqBikeLeanFactor;
             if (bike->bikeFlags.bPlayerBoost) {
                 bf += cfg->FrqPlayerBikeBoostOffset;
             }
@@ -2690,7 +2692,7 @@ float CAEVehicleAudioEntity::GetFreqForPlayerEngineSound(tVehicleParams& vp, eVe
         f *= ((gf * zf) + 1.f) * (bf + 1.f);
     }
 
-    if (vp.Vehicle->m_bUnderwater) {
+    if (GetVehicle()->vehicleFlags.bIsDrowning) { // 0x4F82E8
         f *= s_Config.FreqUnderwaterFactor;
     }
 
@@ -2718,7 +2720,7 @@ void CAEVehicleAudioEntity::ProcessPlayerVehicleEngine(tVehicleParams& vp) {
 
     auto* const gear = &vp.Transmission->m_aGears[vp.RealGear];
     vp.RealRevsRatio = vp.RealGear
-        ? invLerp(gear->ChangeDownVelocity, gear->MaxVelocity, vp.AbsSpeed)
+        ? std::clamp(invLerp(gear->ChangeDownVelocity, gear->MaxVelocity, vp.AbsSpeed), 0.f, 1.f)
         : 0.f;
 
     vp.WheelSpin     = vp.Vehicle->m_fWheelSpinForAudio;
@@ -2774,7 +2776,7 @@ void CAEVehicleAudioEntity::ProcessPlayerVehicleEngine(tVehicleParams& vp) {
         } else {
             assert(vp.NumGears == vp.Transmission->m_nNumberOfGears);
             assert(vp.NumGears > 0);
-            m_AuGear = std::clamp<uint8>(std::min(vp.RealGear, m_AuGear), 1, vp.NumGears - 1);
+            m_AuGear = (uint8)(std::min<int32>({ std::max<uint8>(vp.RealGear, 1), m_AuGear, vp.NumGears - 1 })); // 0x4FC003
         }
         RequestEngineSound(AE_SOUND_PLAYER_AC);
         m_State = eAEState::PLAYER_AC_FULL;
@@ -3137,11 +3139,11 @@ auto GetAircraftDistantSoundVolume(const CPhysical* v, float baseVol) {
     if (distSq <= sq(48.f)) {
         return -100.f;
     }
-    auto vol = baseVol;
-    if (distSq <= 128.f) {
-        vol += invLerp(48.f, 128.f, std::sqrtf(distSq)); // NB: I think this should be substracted (The closer the plane is, the less volume the distant sound should have)
+    auto vol = CAEAudioUtility::AudioLog10(baseVol) * 20.f;
+    if (distSq < sq(128.f)) {
+        vol += CAEAudioUtility::AudioLog10(invLerp(48.f, 128.f, std::sqrtf(distSq))) * 20.f; // NB: I think this should be substracted (The closer the plane is, the less volume the distant sound should have)
     }
-    return CAEAudioUtility::AudioLog10(vol) * 20.f + 8.f;
+    return vol + 8.f;
 }
 
 // notsa - See 0x4FE5E5
@@ -3400,7 +3402,7 @@ void CAEVehicleAudioEntity::ProcessDummyOrPlayerProp(tVehicleParams& vp, bool is
         AE_SOUND_AIRCRAFT_DISTANT,
         SND_BANK_SLOT_VEHICLE_GEN,
         16,
-        GetAircraftDistantSoundVolume(plane, propStalledVol), // <- 0x4FDC90
+        propStalledVol + GetAircraftDistantSoundVolume(plane, propSpeedFactor), // <- 0x4FDC90
         1.f
     );
 }
@@ -3766,7 +3768,7 @@ void CAEVehicleAudioEntity::ProcessDummySeaPlane(tVehicleParams& vp) {
         AE_SOUND_AIRCRAFT_NEAR,
         SND_BANK_SLOT_VEHICLE_GEN,
         17,
-        GetAircraftDistantSoundVolume(plane, 0.f),
+        CAEAudioUtility::AudioLog10(GetDummyRCRotorSpeedFactor(plane->m_EngineSpeed / 0.22f)) * 20.f + 8.f, // 0x4FF82D
         1.f
     );
 }

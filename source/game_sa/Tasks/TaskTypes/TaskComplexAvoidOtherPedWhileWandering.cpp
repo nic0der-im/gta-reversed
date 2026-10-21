@@ -184,7 +184,7 @@ CColSphere CTaskComplexAvoidOtherPedWhileWandering::ComputeSphere(PedsToAvoidArr
     center /= (float)numPeds;
 
     // Step 2: Find max 2D[!] distance [this is going to be the radius]
-    float maxDist2DSq{FLT_MIN};
+    float maxDist2DSq{0.f};
     for (CPed* ped : accountedPeds) {
         if (!ped) {
             continue;

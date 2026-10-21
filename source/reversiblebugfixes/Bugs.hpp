@@ -59,6 +59,11 @@ inline const ReversibleBugFix CCarCtrl_RemoveDistantCars_UseAfterFree{
     .Description = "Fix user-after-free of vehicles (possibly) deleted by PossiblyRemoveVehicle",
     .Credit      = "Pirulax"
 };
+inline const ReversibleBugFix CCover_ProcessedBuildings_UseAfterFree{
+    .Name        = "CCover processed buildings Use-After-Free",
+    .Description = "Register references to the buildings in `CCover::m_ListOfProcessedBuildings`, and don't leave dangling (permanent) buildings in it on shutdown",
+    .Credit      = "Contributors"
+};
 inline const ReversibleBugFix CAEVehicleAudioEntity_PlayBicycleSound_VolumeFix{
     .Name        = "CAEVehicleAudioEntity::PlayBicycleSound Volume fix",
     .Description = "Original code didn't account for event base volume",
@@ -111,5 +116,12 @@ inline const ReversibleBugFix CTaskSimpleSlideToCoord_Constructor_UninitializedT
     .Description = "The constructor without an anim doesn't initialize the timer, so `ProcessPed` never starts the 2 second timeout, "
                    "and a ped that can't reach the target position or heading slides forever",
     .Credit      = "W4liss0n"
+};
+inline const ReversibleBugFix CVehicleModelInfo_SetClump_DirtMaterialsNeverFound{
+    .Name            = "Vehicle dirt levels",
+    .Description     = "The game never fills `CVehicleModelInfo::m_apDirtMaterials`, so every vehicle is rendered with the maximum dirt "
+                       "regardless of its dirt level. The fix fills it with the materials that use the `vehiclegrunge256` texture (like SilentPatch does)",
+    .Credit          = "SilentPatch Contributors, W4liss0n",
+    .RequiresRestart = true
 };
 };
