@@ -45,10 +45,10 @@ public:
     void SetDefault();
     void From(const CDecision& rhs);
     void Set(
-        notsa::mdarray<int32, MAX_NUM_CHOICES>&    tasks,
-        notsa::mdarray<float, MAX_NUM_CHOICES, 4>& probs,
-        notsa::mdarray<int32, MAX_NUM_CHOICES, 2>& bools,
-        notsa::mdarray<float, MAX_NUM_CHOICES, 6>& facialProbs
+        const notsa::mdarray<int32, MAX_NUM_CHOICES>&    tasks,
+        const notsa::mdarray<float, MAX_NUM_CHOICES, 4>& probs,
+        const notsa::mdarray<int32, MAX_NUM_CHOICES, 2>& bools,
+        const notsa::mdarray<float, MAX_NUM_CHOICES, 6>& facialProbs //!< Unused by the exe
     );
 };
 

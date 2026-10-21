@@ -7,7 +7,7 @@ void CDecision::InjectHooks() {
     RH_ScopedCategory("DecisionMakers");
 
     RH_ScopedInstall(SetDefault, 0x600530);
-    RH_ScopedInstall(Set, 0x600570, { .Reversed = false });
+    RH_ScopedInstall(Set, 0x600570);
     //RH_ScopedInstall(Add, 0x600600, { .Reversed = false });
     RH_ScopedInstall(From, 0x6006B0);
     //RH_ScopedInstall(HasResponse, 0x600710, { .Reversed = false });
@@ -33,12 +33,19 @@ void CDecision::From(const CDecision& rhs) {
 
 // 0x600570
 void CDecision::Set(
-    notsa::mdarray<int32, MAX_NUM_CHOICES>&    tasks,
-    notsa::mdarray<float, MAX_NUM_CHOICES, 4>& probs,
-    notsa::mdarray<int32, MAX_NUM_CHOICES, 2>& bools,
-    notsa::mdarray<float, MAX_NUM_CHOICES, 6>& facialProbs
+    const notsa::mdarray<int32, MAX_NUM_CHOICES>&    tasks,
+    const notsa::mdarray<float, MAX_NUM_CHOICES, 4>& probs,
+    const notsa::mdarray<int32, MAX_NUM_CHOICES, 2>& bools,
+    const notsa::mdarray<float, MAX_NUM_CHOICES, 6>& /*facialProbs*/ // Unused by the exe
 ) {
-    plugin::CallMethod<0x600570>(this, &tasks, &probs, &bools, &facialProbs);
+    for (int32 i = 0; i < MAX_NUM_CHOICES; i++) {
+        m_Tasks[i] = static_cast<eTaskType>(tasks[i]);
+        for (size_t j = 0; j < m_Probs[i].size(); j++) {
+            m_Probs[i][j] = static_cast<uint8>(probs[i][j]); // Truncated (exe: `__ftol2`), not rounded
+        }
+        m_Bools[i][0] = bools[i][0] != 0;
+        m_Bools[i][1] = bools[i][1] != 0;
+    }
 }
 
 /*
