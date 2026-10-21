@@ -33,16 +33,35 @@ glyphs for Im2D) and `CFont::ProcessCurrentString` (text layout + that queue). B
 `FontRenderStateBuf`, which `CFont::InitPerFrame` resets every frame; the Im2D backend itself is
 B3.
 
-The next boundary is **audio, not rendering**: the main loop runs `FrontendIdle` →
-`CAudioEngine::Service` → `CAESoundManager::Service` → `CAESound::UpdateParameters`, which
-SIGSEGVs (139, `EXC_BAD_ACCESS` at 0x0) at `+332` on an unchecked virtual call. The retail code
-wraps that call in SEH (`source/game_sa/Audio/AESound.cpp:259-268`); the native branch has no
-SEH and no null/Dangling guard, so this is a B4 audio work item.
+The next boundary was **audio, not rendering**, and it was not an audio bug: the main loop runs
+`FrontendIdle` → `CAudioEngine::Service` → `CAESoundManager::Service` → `CAESound::UpdateParameters`,
+which SIGSEGV'd (`EXC_BAD_ACCESS` at 0x0) on the `m_AudioEntity->UpdateParameters(this, curPlayPos)`
+virtual call (`ldr x8, [x8]` with `x8 == 0`): the audio entity object's vtable pointer was null.
 
-`Rw: stub RpWorldAddCamera` / `RpWorldAddLight` / `RtAnimRegisterInterpolationScheme` still log;
-they are no-ops and do not gate startup.
+`CAudioEngine` lives at 0xB6BC90 through a `StaticRef`, so natively it is zero-filled `ExeGlobals`
+storage. Its constructor (`0x84D5D0: mov ecx, 0xB6BC90 ; call 0x507670`) was one of the constructor
+rows `ApplyExeData()` leaves unapplied, so `m_FrontendAE`, `m_ScriptAE`, `m_CollisionAE`,
+`m_PedlessSpeechAE` and `m_DoorAE` were never constructed. Their only initial state is the vtable,
+so every virtual call they receive jumped through address 0. `ApplyManualExeDataEntry` now runs
+`::new (&AudioEngine) CAudioEngine{}` for that row (`ExeData.manual.cpp`).
 
-Observed run (`timeout 220`, 2026-10-21):
+`CAESound::UpdateParameters` also gets a portable counterpart of the retail SEH guard: retail wraps
+`m_PhysicalEntity->GetPosition()` in `__try/__except` because the entity can be stale. The native
+branch validates the pointer with `IsEntityPointerValid` (the repo's pool-based dangling-pointer
+check) and performs the handler's `StopSound()` when it fails (`AESound.cpp:259-269`).
+
+The frontend loop now runs. `Rw: stub RpWorldAddCamera` / `RpWorldAddLight` /
+`RtAnimRegisterInterpolationScheme` still log; they are no-ops and do not gate startup. The
+frontend draws nothing yet (Im2D is B3), and OpenAL rejects the soft loop points of streaming
+sounds (`AL_LOOP_POINTS_SOFT`, `OALSource.cpp:128`), which is a B4 item and not fatal.
+
+The next boundary is therefore **rendering (B3)**, not a crash: with the loop stable, what is left
+before the menu is visible is the Im2D/text backend (`CFont::RenderFontBuffer`,
+`CFont::ProcessCurrentString`, the two log-once no-ops above) and the GL pipelines for the 3D
+scene. On the B2 side, 96 constructor rows remain unapplied; they are objects nobody has called a
+virtual on yet, so they are only noticed when a subsystem starts using one.
+
+Observed run (`timeout 190`, 2026-10-21):
 
 ```
 [info]    Rw: engine started (640x448 window)
@@ -56,7 +75,9 @@ Observed run (`timeout 220`, 2026-10-21):
 [info]    OpenAL: OpenAL Soft (OpenAL Soft), 1.1 ALSOFT 1.24.3
 [debug]   Initialised SoundManager
 [warning] Native: CFont::RenderFontBuffer is a no-op until the Im2D backend (plan B3)
-# SIGSEGV (139) in CAESound::UpdateParameters
+[warning] Native: CFont::ProcessCurrentString is a no-op until the Im2D backend (plan B3)
+… frontend loop for the remaining ~74 s …
+EXIT=124 (killed by `timeout`, no crash)
 ```
 
 | Address | Symbol | Hit by |
@@ -219,7 +240,7 @@ missing - both produce the same table), and emits
 
 `notsa::native::ApplyExeData()` (called from `main` right after `ExeGlobals::ReportOverlaps()`)
 replays the table through `ExeGlobals`; the startup log line is
-`ExeData: applied 1513 rows (18200 bytes), 4 manual, 54 skipped, 97 constructors not applied, 3 unhandled`.
+`ExeData: applied 1513 rows (18200 bytes), 5 manual, 54 skipped, 96 constructors not applied, 3 unhandled`.
 
 ### How an entry is decoded
 
@@ -256,6 +277,7 @@ is kept as `ZeroFill` because it clears a region explicitly.
 | entry | global | what runs |
 | --- | --- | --- |
 | `0x84D920` | `CControllerConfigManager` (`0xB70198`) | our reversed constructor (`ControllerConfigManager.cpp:80`) |
+| `0x84D5D0` | `CAudioEngine` (`0xB6BC90`) | compiler-generated constructor (`AudioEngine.h:42`); only its audio entity members' vtables need it |
 | `0x84E1F0` | `CPad::Pads` (`0xB73458`, 2 x 0x134) | our reversed `CPad::CPad` (`Pad.cpp:125`) |
 | `0x84E9B0` | `CWorld::ms_aSectors` (`0xB7D0B8`) | clear; element constructor `0x564040` only zeroes |
 | `0x84E9E0` | `CWorld::ms_aRepeatSectors` (`0xB992B8`) | clear; `0x563190` only clears three inline list heads |

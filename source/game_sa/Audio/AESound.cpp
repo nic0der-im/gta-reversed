@@ -257,8 +257,15 @@ void CAESound::UpdateParameters(int16 curPlayPos) {
             // `m_PhysicalEntity->GetPosition()` with the stack
             // CAESoundManager::Service <- CAudioEngine::Service <- Idle.
 #ifdef NOTSA_NATIVE
-            // No SEH on native platforms - There's no way to catch the AV here yet
-            SetPosition(m_PhysicalEntity->GetPosition());
+            // No SEH on native platforms, so instead of catching the AV that the stale pointer
+            // would cause, validate the entity against its pool first (`IsEntityPointerValid`,
+            // 0x533310, reversed here) and do what the retail `__except` handler does: gracefully
+            // stop the sound.
+            if (IsEntityPointerValid(m_PhysicalEntity)) {
+                SetPosition(m_PhysicalEntity->GetPosition());
+            } else {
+                StopSound();
+            }
 #else
             __try {
                 SetPosition(m_PhysicalEntity->GetPosition());

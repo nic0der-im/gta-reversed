@@ -11,6 +11,7 @@
 #include "app/platform/native/ExeData.manual.h"
 #include "app/platform/native/ExeGlobals.h"
 
+#include "AudioEngine.h"
 #include "ControllerConfigManager.h"
 #include "Gangs.h"
 #include "Pad.h"
@@ -168,7 +169,18 @@ bool ApplyManualExeDataEntry(const ExeDataEntry& e) {
         // constructor is reversed (`ControllerConfigManager.cpp:80`), and its whole call tree is
         // in-repo code, so run it.
         if (e.Addr == 0xB70198) {
-            ::new (static_cast<void*>(&ControlsManager)) CControllerConfigManager{};
+            ::new (static_cast<void*>(&ControlsManager)) CControllerConfigManager{};;
+            return true;
+        }
+
+        // 0x84D5D0: `mov ecx, 0x00B6BC90; call 0x00507670`. `CAudioEngine`'s default constructor is
+        // compiler-generated (`AudioEngine.h:42`) and all it does is construct its audio entity
+        // members. Those are abstract-ish objects whose only initial state is their vtable, so the
+        // zero-filled storage is not enough: leaving it unconstructed makes every
+        // `CAEAudioEntity::UpdateParameters` call jump through a null vtable
+        // (`CAESound::UpdateParameters` faulted at `ldr x8, [x8]` with `x8 == 0`).
+        if (e.Addr == 0xB6BC90) {
+            ::new (static_cast<void*>(&AudioEngine)) CAudioEngine{};
             return true;
         }
         break;
