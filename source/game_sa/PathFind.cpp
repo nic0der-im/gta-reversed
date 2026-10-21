@@ -665,7 +665,16 @@ void CPathFind::LoadPathFindData(RwStream* stream, int32 areaId) {
     auto numNodes = m_anNumNodes[areaId];
     if (numNodes) {
         m_pPathNodes[areaId] = new CPathNode[numNodes];
+#ifdef NOTSA_NATIVE
+        // The file has the 32 bit layout, while `CPathNode` is bigger on native (64 bit) builds - read through a mirror.
+        std::vector<CPathNodeDisk> diskNodes(numNodes);
+        RwStreamRead(stream, diskNodes.data(), sizeof(CPathNodeDisk) * numNodes);
+        for (auto i = 0u; i < numNodes; ++i) {
+            CPathNodeDiskToNode(diskNodes[i], m_pPathNodes[areaId][i]);
+        }
+#else
         RwStreamRead(stream, m_pPathNodes[areaId], sizeof(CPathNode) * numNodes);
+#endif
     } else {
         m_pPathNodes[areaId] = new CPathNode[1];
     }

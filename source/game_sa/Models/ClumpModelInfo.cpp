@@ -11,6 +11,10 @@
 #include "CustomBuildingRenderer.h"
 #include "CarFXRenderer.h"
 
+#ifdef NOTSA_NATIVE
+#include "pipelines/SAPipelines.h"
+#endif
+
 void CClumpModelInfo::InjectHooks()
 {
     RH_ScopedVirtualClass(CClumpModelInfo, 0x85BD30, 17);
@@ -236,6 +240,15 @@ RpAtomic* CClumpModelInfo::SetAtomicRendererCB(RpAtomic* atomic, void* renderFun
 
 RpAtomic* CClumpModelInfo::AtomicSetupLightingCB(RpAtomic* atomic, void* data)
 {
+#ifdef NOTSA_NATIVE
+    // Skinned atomics (peds) are drawn by the GL3 skin pipeline; this is the only place that
+    // assigns `Kind::Ped`. Every other kind keeps its existing setup below.
+    if (RpSkinGeometryGetSkin(RpAtomicGetGeometry(atomic))) {
+        atomic->pipeline = notsa::native::sapipelines::GetPipeline(notsa::native::sapipelines::Kind::Ped);
+        return atomic;
+    }
+#endif
+
     if (CCustomBuildingRenderer::IsCBPCPipelineAttached(atomic))
     {
         CCustomBuildingRenderer::AtomicSetup(atomic);

@@ -10,4 +10,10 @@ void UnreversedCall(uintptr_t addr, const char* kind) {
     spdlog::shutdown();
     std::abort();
 }
+
+void UnreversedScriptCommand(uint16_t command, const char* name) {
+    spdlog::critical("Unreversed script command 0x{:04X} ({})", command, name);
+    spdlog::shutdown();
+    std::abort();
+}
 } // namespace notsa::native

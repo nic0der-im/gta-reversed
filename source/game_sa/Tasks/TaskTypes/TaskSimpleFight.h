@@ -22,20 +22,20 @@ enum eFightAttackType : int8 {
 
 class NOTSA_EXPORT_VTABLE CMeleeInfo {
 public:
-    AssocGroupId m_nAnimGroup;
-    float  m_fRanges;
-    std::array<float, 5> m_fHit;
-    std::array<float, 5> m_fChain;
-    std::array<float, 5> m_fRadius;
-    float  m_fGroundLoop;
-    int32  ABlockHit;
-    int32  ABlockChain;
-    uint8  m_nHitLevel;
-    int32  m_nDamage;
-    int32  field_58;
-    std::array<int32, 5> m_Hit;
-    std::array<int32, 5> m_AltHit;
-    uint16 m_wFlags;
+    AssocGroupId         m_nAnimGroup;      // 0x00
+    float                m_fRanges;         // 0x04
+    std::array<float, 5> m_fHit;            // 0x08 - AKA `FireTime`; When the move connects
+    std::array<float, 5> m_fChain;          // 0x1C - AKA `ComboTime`; When the next move of the combo may start
+    std::array<float, 5> m_fRadius;         // 0x30
+    float                m_fGroundLoop;     // 0x44
+    float                m_fBlockLoopStart; // 0x48 - AKA `ABlockHit`
+    float                m_fBlockLoopEnd;   // 0x4C - AKA `ABlockChain`
+    std::array<int8, 5>  m_nHitLevel;       // 0x50 - Per move (See `GetHitLevel`)
+    std::array<uint8, 5> m_nDamage;         // 0x55 - Per move
+    uint8                m_Padding[2];      // 0x5A - AKA `field_58` (Not used)
+    std::array<int32, 5> m_Hit;             // 0x5C - Per move sound (See `GetHitSound`)
+    std::array<int32, 5> m_AltHit;          // 0x70 - Per move alternative sound (See `GetHitSound`)
+    uint16               m_wFlags;          // 0x84
 };
 VALIDATE_SIZE(CMeleeInfo, 0x88);
 
@@ -58,6 +58,7 @@ public:
     uint8                  m_nLastCommand;
 
     static inline auto& m_aComboData = StaticRef<std::array<CMeleeInfo, MELEE_COMBO_NUM - MELEE_COMBO_UNARMED_1>>(0xC170D0); // One for each combo in `melee.dat`, `MELEE_COMBO_UNARMED_1` being the first
+    static inline auto& m_aHitOffset = StaticRef<std::array<CVector, 7>>(0xC177D0); // Per hit level offset (The `START_LEVELS` section of `melee.dat`)
 
 public:
     static constexpr auto Type = eTaskType::TASK_SIMPLE_FIGHT;
@@ -92,8 +93,8 @@ public:
     void GetAvailableComboSet(CPed* ped, int8);
     void GetComboType(char*);
     AssocGroupId GetComboAnimGroupID();
-    void GetHitLevel(const char*);
-    void GetHitSound(int32);
+    static uint8 GetHitLevel(const char* level);
+    static int16 GetHitSound(int32 id);
     void GetRange();
     void GetStrikeDamage(CPed* ped);
 

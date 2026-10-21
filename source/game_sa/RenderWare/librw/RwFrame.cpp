@@ -66,6 +66,50 @@ void SetSubtreeRoot(RwFrame* frame, RwFrame* root) {
     }
 }
 
+//! Clone of `src` and of its whole subtree, as built by `_rwFrameCloneAndLinkClones`.
+//!
+//! While the link is up every original points at its clone through `root`, and every clone
+//! points at the root of the clone tree. That is how RenderWare maps the objects of an original
+//! clump onto their clones (`RpClumpClone` walks `RpAtomicGetFrame(atomic)->root`);
+//! `_rwFramePurgeClone` restores the originals' half of the link.
+RwFrame* CloneFrame(RwFrame* src, RwFrame* cloneRoot) {
+    RwFrame* const frame = RwFrameCreate();
+    if (!frame) {
+        return nullptr;
+    }
+
+    if (!cloneRoot) {
+        cloneRoot = frame;
+    }
+
+    frame->object.type         = src->object.type;
+    frame->object.subType      = src->object.subType;
+    frame->object.flags        = src->object.flags;
+    frame->object.privateFlags = src->object.privateFlags;
+
+    frame->modelling = src->modelling;
+
+    frame->root = cloneRoot;
+    src->root   = frame; // Remember the clone until `_rwFramePurgeClone`.
+
+    // RenderWare prepends the cloned children, so the clone's child list comes out reversed;
+    // nothing reads that order (hierarchy indices live in the plugin data).
+    for (RwFrame* child = src->child; child; child = child->next) {
+        RwFrame* const clone = CloneFrame(child, cloneRoot);
+        if (!clone) {
+            RwFrameDestroyHierarchy(frame);
+            return nullptr;
+        }
+
+        clone->next          = frame->child;
+        frame->child         = clone;
+        clone->object.parent = frame;
+    }
+
+    g_framePlugins.Copy(frame, src, sizeof(RwFrame));
+    return frame;
+}
+
 } // namespace
 
 RwFrame* RwFrameCreate() {
@@ -111,6 +155,34 @@ RwBool RwFrameDestroy(RwFrame* frame) {
     while (!notsa::fakerw::ListEmpty(frame->objectList)) {
         auto* link = frame->objectList.link.next;
         notsa::fakerw::ListRemove(*link);
+    }
+
+    notsa::fakerw::FreeObject(frame, sizeof(RwFrame), g_framePlugins);
+    return TRUE;
+}
+
+RwBool RwFrameDestroyHierarchy(RwFrame* frame) {
+    if (!frame) {
+        return FALSE;
+    }
+
+    // RenderWare requires the caller to hand over a whole hierarchy; detach it from whatever it
+    // hangs from so the parent's child list never keeps a dangling pointer.
+    if (frame->object.parent) {
+        RwFrameRemoveChild(frame);
+    }
+
+    // Children first: `frame` must not be released while they still point at it.
+    while (frame->child) {
+        RwFrameDestroyHierarchy(frame->child);
+    }
+
+    while (!notsa::fakerw::ListEmpty(frame->objectList)) {
+        auto* const object = static_cast<RwObjectHasFrame*>(
+            rwLLLinkGetData(frame->objectList.link.next, RwObjectHasFrame, lFrame)
+        );
+        object->object.parent = nullptr;
+        notsa::fakerw::ListRemove(object->lFrame);
     }
 
     notsa::fakerw::FreeObject(frame, sizeof(RwFrame), g_framePlugins);
@@ -170,6 +242,14 @@ RwFrame* RwFrameUpdateObjects(RwFrame* frame) {
     return frame;
 }
 
+RwFrame* RwFrameGetRoot(const RwFrame* frame) {
+    if (!frame) {
+        return nullptr;
+    }
+    // `root` is the top of the tree; it only points elsewhere while a clone link is up.
+    return frame->root ? frame->root : const_cast<RwFrame*>(frame);
+}
+
 RwMatrix* RwFrameGetLTM(RwFrame* frame) {
     if (!frame) {
         return nullptr;
@@ -192,6 +272,15 @@ RwFrame* RwFrameTranslate(RwFrame* frame, const RwV3d* v, RwOpCombineType combin
         return nullptr;
     }
     RwMatrixTranslate(&frame->modelling, v, combine);
+    UpdateHierarchy(frame);
+    return frame;
+}
+
+RwFrame* RwFrameScale(RwFrame* frame, const RwV3d* v, RwOpCombineType combine) {
+    if (!frame) {
+        return nullptr;
+    }
+    RwMatrixScale(&frame->modelling, v, combine);
     UpdateHierarchy(frame);
     return frame;
 }
@@ -327,8 +416,47 @@ void _rwObjectHasFrameReleaseFrame(void* object) {
 }
 
 RwFrame* _rwFrameCloneAndLinkClones(RwFrame* root) {
-    // Cloning is only used by `RpClumpClone`, which is a stub natively.
+    if (!root) {
+        return nullptr;
+    }
+
+    RwFrame* const clone = CloneFrame(root, nullptr);
+    if (!clone) {
+        // `CloneFrame` links as it goes; drop the links of the frames it already visited.
+        RwFrame* const hierarchyRoot = FindRoot(root);
+        SetSubtreeRoot(hierarchyRoot, hierarchyRoot);
+        return nullptr;
+    }
+
+    // The clone tree starts clean: nothing in it is dirty and its LTMs follow its own matrices.
+    clone->object.privateFlags &= ~(rwFRAMEPRIVATESUBTREESYNCLTM | rwFRAMEPRIVATESUBTREESYNCOBJ);
+    UpdateLTM(clone, nullptr);
+    return clone;
+}
+
+RwFrame* _rwFramePurgeClone(RwFrame* root) {
+    if (!root) {
+        return nullptr;
+    }
+
+    // Every original in the hierarchy still points at its clone; the hierarchy root is what they
+    // all must point at again. The clone tree itself stays alive and belongs to the caller, which
+    // is what `RpClumpClone` adopts as the frame hierarchy of the cloned clump.
+    RwFrame* const hierarchyRoot = FindRoot(root);
+    SetSubtreeRoot(hierarchyRoot, hierarchyRoot);
     return root;
+}
+
+RwFrame* RwFrameCloneHierarchy(RwFrame* root) {
+    RwFrame* const clone = _rwFrameCloneAndLinkClones(root);
+    if (clone) {
+        _rwFramePurgeClone(root);
+    }
+    return clone;
+}
+
+notsa::fakerw::PluginRegistry& notsa::fakerw::FramePlugins() {
+    return g_framePlugins;
 }
 
 #endif // NOTSA_NATIVE

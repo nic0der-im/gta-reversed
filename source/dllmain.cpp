@@ -3,26 +3,12 @@
 #include <app_debug.h>
 #include "extensions/CommandLine.h"
 #include "extensions/debug.hpp"
-#include "extensions/Configuration.hpp"
+#include "extensions/Configs/ConfigLoader.h"
 #include "InjectHooksMain.h"
 
-static constexpr auto DEFAULT_INI_FILENAME = "gta-reversed.ini";
-
-#include "extensions/Configs/FastLoader.hpp"
-#include "extensions/Configs/Miscellaneous.hpp"
 #include "dllmain.h"
 
 HMODULE s_HandleOfDLL{};
-
-void LoadConfigurations() {
-    // Firstly load the INI into the memory.
-    g_ConfigurationMgr.Load(DEFAULT_INI_FILENAME);
-
-    // Then load all specific configurations.
-    g_FastLoaderConfig.Load();
-    g_MiscConfig.Load();
-    // ...
-}
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
     switch (ul_reason_for_call) {
@@ -45,7 +31,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         if (CommandLine::s_WaitForDebugger) {
             notsa::debug::WaitForDebugger();
         }
-        LoadConfigurations();
+        notsa::LoadConfigurations();
 
         ReversibleHooks::RHManager::CreateInstance();
         InjectHooksMain();

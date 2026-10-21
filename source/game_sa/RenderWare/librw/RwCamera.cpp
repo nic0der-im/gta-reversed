@@ -458,6 +458,14 @@ RwRaster* GetGameRaster(rw::Raster* raster) {
     return it != g_rasterOwners.end() ? it->second : nullptr;
 }
 
+rw::Camera* GetLibrwCamera(RwCamera* camera) {
+    if (!camera) {
+        return nullptr;
+    }
+    auto* mirror = EnsureMirror(camera);
+    return mirror ? mirror->camera : nullptr;
+}
+
 } // namespace notsa::fakerw
 
 #endif // NOTSA_NATIVE

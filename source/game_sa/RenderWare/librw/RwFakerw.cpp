@@ -5,7 +5,6 @@
 #include "RwFakerw.h"
 
 #include "pipelines/SAPipelines.h"
-#include "plugins/RwPlugins.h"
 
 #include <unordered_set>
 
@@ -28,6 +27,11 @@ RwGlobals* g_globals    = nullptr;
 std::unordered_set<std::string> g_reported;
 
 namespace {
+
+//! Byte offset into `stream` for every stream type this layer creates.
+int32 StreamPosition(const RwStream* stream) {
+    return stream->type == rwSTREAMMEMORY ? (int32)stream->Type.memory.position : stream->position;
+}
 
 // Defaults, used when the game passes no memory functions (it always does in practice).
 void* DefaultMalloc(size_t size, RwUInt32) { return std::malloc(size); }
@@ -164,15 +168,108 @@ int32 PluginRegistry::Register(
     return (int32)offset;
 }
 
+const PluginRegistry::Entry* PluginRegistry::FindData(uint32 pluginID) const {
+    for (const auto& e : m_plugins) {
+        if (e.id == pluginID) {
+            return &e;
+        }
+    }
+    return nullptr;
+}
+
+const PluginRegistry::StreamEntry* PluginRegistry::FindStream(uint32 pluginID) const {
+    for (const auto& e : m_streams) {
+        if (e.id == pluginID) {
+            return &e;
+        }
+    }
+    return nullptr;
+}
+
+PluginRegistry::StreamEntry* PluginRegistry::FindStream(uint32 pluginID) {
+    for (auto& e : m_streams) {
+        if (e.id == pluginID) {
+            return &e;
+        }
+    }
+    return nullptr;
+}
+
 int32 PluginRegistry::RegisterStream(
-    uint32,
-    RwPluginDataChunkReadCallBack,
-    RwPluginDataChunkWriteCallBack,
-    RwPluginDataChunkGetSizeCallBack
+    uint32                           pluginID,
+    RwPluginDataChunkReadCallBack    readCB,
+    RwPluginDataChunkWriteCallBack   writeCB,
+    RwPluginDataChunkGetSizeCallBack getSizeCB
 ) {
-    // Stream callbacks would be dispatched by the DFF/TXD reader, which does not exist yet.
-    Stub("plugin stream registration");
-    return 0;
+    if (auto* entry = FindStream(pluginID)) {
+        entry->read    = readCB;
+        entry->write   = writeCB;
+        entry->getSize = getSizeCB;
+    } else {
+        m_streams.push_back({ pluginID, readCB, writeCB, getSizeCB });
+    }
+
+    // The callbacks are usually registered right after the data plugin of the same ID.
+    const auto* data = FindData(pluginID);
+    return data ? data->offset : 0;
+}
+
+bool PluginRegistry::StreamReadExtension(RwStream* stream, void* object) const {
+    if (!stream) {
+        return false;
+    }
+
+    // Chunk header: type, length and library ID, three dwords each.
+    constexpr RwUInt32 kChunkHeaderSize = sizeof(RwUInt32) * 3;
+
+    RwUInt32 remaining = 0;
+    if (!RwStreamFindChunk(stream, rwID_EXTENSION, &remaining, nullptr)) {
+        // No extension chunk: this object has no plugin data in the file.
+        return true;
+    }
+
+    while (remaining >= kChunkHeaderSize) {
+        RwChunkHeaderInfo header{};
+        if (!RwStreamReadChunkHeaderInfo(stream, &header)) {
+            return false;
+        }
+        remaining -= kChunkHeaderSize;
+
+        if (header.length > remaining) {
+            NOTSA_LOG_ERR("Rw: plugin chunk 0x{:X} overruns its extension chunk", (uint32)header.type);
+            return false;
+        }
+
+        if (const auto* entry = FindStream(header.type); entry && entry->read) {
+            const auto* data = FindData(header.type);
+            const auto  offset = data ? data->offset : 0;
+            const auto  size   = data ? data->size   : 0;
+
+            const int32 before = StreamPosition(stream);
+            if (!entry->read(stream, (RwInt32)header.length, object, offset, size)) {
+                return false;
+            }
+
+            // A reader may leave part of its chunk unread (the retail 2d-effect reader does when
+            // a section size is unknown). Skip the rest, or the next chunk header would be read
+            // from the middle of this one.
+            const int32 consumed = StreamPosition(stream) - before;
+            if (consumed < 0 || (RwUInt32)consumed > header.length) {
+                NOTSA_LOG_ERR("Rw: plugin 0x{:X} read past its chunk", (uint32)header.type);
+                return false;
+            }
+            if (!RwStreamSkip(stream, header.length - (RwUInt32)consumed)) {
+                return false;
+            }
+        } else if (!RwStreamSkip(stream, header.length)) {
+            return false;
+        }
+
+        remaining -= header.length;
+    }
+
+    // The game writes no trailing data inside the chunk; anything left over is padding.
+    return remaining == 0 || RwStreamSkip(stream, remaining) != nullptr;
 }
 
 size_t PluginRegistry::TotalSize(size_t baseSize) const {
@@ -254,9 +351,6 @@ RwBool RwEngineInit(const RwMemoryFunctions* memFuncs, RwUInt32 initFlags, RwUIn
     }
 
     RegisterLibrwPlugins();
-    // Rockstar's DFF/TXD chunks (NodeName, Collision, 2dEffect, pipelines, breakable,
-    // extra vertex colours, env/spec materials). Must run before any DFF/TXD is streamed.
-    notsa::fakerw::plugins::RegisterRockstarPlugins();
 
     g_globals = static_cast<RwGlobals*>(Malloc(sizeof(RwGlobals)));
     if (!g_globals) {

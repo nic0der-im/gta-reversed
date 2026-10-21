@@ -94,10 +94,8 @@ void CColModel::AllocateData(int32 numSpheres, int32 numBoxes, int32 numLines, i
     // BUG?: Seems like it could clip the last 3 bytes of vertices array
     //  const auto trianglesOffset = (vertsOffset + vertsSize) & 0xFFFFFFFC; // Align the offset to 4 bytes boundary
 
-    auto* pTrisStart = reinterpret_cast<void*>(vertsOffset + vertsSize);
-    auto space = trianglesSize + 4;
-    auto* pAlignedAddress = std::align(4, trianglesSize, pTrisStart, space); // 4 bytes aligned address
-    const auto trianglesOffset = reinterpret_cast<uint32>(pAlignedAddress);
+    const auto trisStart       = static_cast<uintptr_t>(vertsOffset + vertsSize);
+    const auto trianglesOffset = static_cast<uint32>((trisStart + 3) & ~uintptr_t{ 3 }); // 4 bytes aligned offset
     assert(trianglesOffset && trianglesOffset >= (vertsOffset + vertsSize)); // Just to make sure that the alignment works properly
 
     AllocateData(trianglesOffset + trianglesSize);

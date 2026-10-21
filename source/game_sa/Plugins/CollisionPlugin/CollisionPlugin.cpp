@@ -33,28 +33,32 @@ static void* ClumpCollisionCopyConstructor(void* dstObject, const void* srcObjec
 // internal
 // 0x41B1D0
 static RwStream* ClumpCollisionStreamRead(RwStream* stream, RwInt32 binaryLength, void* object, RwInt32 offsetInObject, RwInt32 sizeInObject) {
-    return plugin::CallAndReturn<RwStream*, 0x41B1D0, RwStream*, RwInt32, void*, RwInt32, RwInt32>(stream, binaryLength, object, offsetInObject, sizeInObject);
-
-    // incomplete
     CMemoryMgr::LockScratchPad();
-    RwStreamRead(stream, &PC_Scratch, binaryLength);
-    CColModel* model = new CColModel();
+    RwStreamRead(stream, PC_Scratch, binaryLength);
 
-    switch (*(uint32*)PC_Scratch) {
+    auto* model = new CColModel();
+
+    // The collision data starts past the 0x20 byte chunk header, except for the
+    // unrecognized-fourCC path, which passes the buffer unshifted (retail quirk).
+    switch (*reinterpret_cast<uint32*>(&PC_Scratch[0])) {
     case MakeFourCC("COLL"):
-        CFileLoader::LoadCollisionModel((uint8*)(&PC_Scratch[32]), *model);
+        CFileLoader::LoadCollisionModel(reinterpret_cast<uint8*>(&PC_Scratch[0x20]), *model);
         break;
     case MakeFourCC("COL2"):
-        CFileLoader::LoadCollisionModelVer2((uint8*)(&PC_Scratch[32]), (PC_Scratch[4] - 24), *model, nullptr);
+        CFileLoader::LoadCollisionModelVer2(reinterpret_cast<uint8*>(&PC_Scratch[0x20]), *reinterpret_cast<uint32*>(&PC_Scratch[4]) - 0x18, *model, nullptr);
         break;
     case MakeFourCC("COL3"):
-        CFileLoader::LoadCollisionModelVer3((uint8*)(&PC_Scratch[32]), (PC_Scratch[4] - 24), *model, nullptr);
+        CFileLoader::LoadCollisionModelVer3(reinterpret_cast<uint8*>(&PC_Scratch[0x20]), *reinterpret_cast<uint32*>(&PC_Scratch[4]) - 0x18, *model, nullptr);
+        break;
+    default:
+        CFileLoader::LoadCollisionModel(reinterpret_cast<uint8*>(&PC_Scratch[0]), *model);
         break;
     }
 
     model->MakeMultipleAlloc();
     CCollisionPlugin::ms_currentModel->SetColModel(model, true);
     CCollisionPlugin::ms_currentModel->bDontWriteZBuffer = true;
+
     CMemoryMgr::ReleaseScratchPad();
     return stream;
 }

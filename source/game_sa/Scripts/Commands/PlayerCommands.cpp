@@ -456,6 +456,48 @@ bool HasPlayerBoughtItem(uint32 itemId) {
     return CShopping::HasPlayerBought(itemId);
 }
 
+/// LISTEN_TO_PLAYER_GROUP_COMMANDS(07CB)
+void ListenToPlayerGroupCommands(CPed& ped, bool listen) {
+    ped.bDoesntListenToPlayerGroupCommands = !listen;
+}
+
+/// IS_2PLAYER_GAME_GOING_ON(0800)
+bool Is2PlayerGameGoingOn() {
+    return CGameLogic::IsCoopGameGoingOn();
+}
+
+/// GET_TOTAL_NUMBER_OF_PEDS_KILLED_BY_PLAYER(0806)
+int32 GetTotalNumberOfPedsKilledByPlayer(uint32 playerIdx) {
+    return CDarkel::FindTotalPedsKilledByPlayer(playerIdx);
+}
+
+/// GET_CITY_PLAYER_IS_IN(0842)
+eLevelName GetCityPlayerIsIn(CPlayerPed& player) {
+    UNUSED(player); // Original ignores the player argument as well
+    return CTheZones::m_CurrLevel;
+}
+
+/// GIVE_PLAYER_CLOTHES_OUTSIDE_SHOP(087B)
+void GivePlayerClothesOutsideShop(CPlayerPed& player, const char* textureName, const char* modelName, eClothesTexturePart bodyPart) {
+    player.GetClothesDesc()->SetTextureAndModel(textureName, modelName, bodyPart);
+    CShopping::SetPlayerHasBought(CKeyGen::GetUppercaseKey(textureName));
+}
+
+/// SET_PLAYER_CYCLE_WEAPON_BUTTON(0992)
+void SetPlayerCycleWeaponButton(uint32 playerIdx, bool enable) {
+    CPad::GetPad(playerIdx)->bDisablePlayerCycleWeapon = !enable;
+}
+
+/// IS_PLAYER_CONTROL_ON(09E7)
+bool IsPlayerControlOn(uint32 playerIdx) {
+    return !CPad::GetPad(playerIdx)->bPlayerSafe;
+}
+
+/// IS_PLAYER_USING_JETPACK(0A0C)
+bool IsPlayerUsingJetpack(CPlayerPed& player) {
+    return player.GetIntelligence()->GetTaskJetPack() != nullptr;
+}
+
 };
 
 void notsa::script::commands::player::RegisterHandlers() {
@@ -525,6 +567,14 @@ void notsa::script::commands::player::RegisterHandlers() {
     REGISTER_COMMAND_HANDLER(COMMAND_SET_PLAYER_FIRE_BUTTON, SetPlayerFireButton);
     REGISTER_COMMAND_HANDLER(COMMAND_SET_PLAYER_JUMP_BUTTON, SetPlayerJumpButton);
     REGISTER_COMMAND_HANDLER(COMMAND_HAS_PLAYER_BOUGHT_ITEM, HasPlayerBoughtItem);
+    REGISTER_COMMAND_HANDLER(COMMAND_LISTEN_TO_PLAYER_GROUP_COMMANDS, ListenToPlayerGroupCommands);
+    REGISTER_COMMAND_HANDLER(COMMAND_IS_2PLAYER_GAME_GOING_ON, Is2PlayerGameGoingOn);
+    REGISTER_COMMAND_HANDLER(COMMAND_GET_TOTAL_NUMBER_OF_PEDS_KILLED_BY_PLAYER, GetTotalNumberOfPedsKilledByPlayer);
+    REGISTER_COMMAND_HANDLER(COMMAND_GET_CITY_PLAYER_IS_IN, GetCityPlayerIsIn);
+    REGISTER_COMMAND_HANDLER(COMMAND_GIVE_PLAYER_CLOTHES_OUTSIDE_SHOP, GivePlayerClothesOutsideShop);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_PLAYER_CYCLE_WEAPON_BUTTON, SetPlayerCycleWeaponButton);
+    REGISTER_COMMAND_HANDLER(COMMAND_IS_PLAYER_CONTROL_ON, IsPlayerControlOn);
+    REGISTER_COMMAND_HANDLER(COMMAND_IS_PLAYER_USING_JETPACK, IsPlayerUsingJetpack);
 
     // -----------------------------[ NOP ]-----------------------------
     REGISTER_COMMAND_NOP(COMMAND_GIVE_REMOTE_CONTROLLED_CAR_TO_PLAYER);

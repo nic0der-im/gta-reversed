@@ -6,6 +6,10 @@
 #include "Hud.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
 
+#ifdef NOTSA_NATIVE
+#include "app/platform/native/Unreversed.h"
+#endif
+
 static notsa::log_ptr logger;
 
 //static auto logger = NOTSA_MAKE_LOGGER("script");
@@ -903,7 +907,12 @@ OpcodeResult CRunningScript::ProcessOneCommand() {
     if (const auto handler = CustomCommandHandlerOf((eScriptCommands)(op.Command))) {
         return std::invoke(handler, this);
     } else {
+#ifdef NOTSA_NATIVE
+        // There's no executable to fall back to: report the missing handler and abort
+        notsa::native::UnreversedScriptCommand(op.Command, notsa::script::GetScriptCommandName((eScriptCommands)(op.Command)).data());
+#else
         return std::invoke(s_OriginalCommandHandlerTable[(size_t)op.Command / 100], this, (eScriptCommands)(op.Command));
+#endif
     }
 }
 

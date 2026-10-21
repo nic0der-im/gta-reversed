@@ -317,6 +317,16 @@ void CCutsceneMgr::Initialise() {
 
 // 0x4D5D10
 bool CCutsceneMgr::IsCutsceneSkipButtonBeingPressed() {
+#ifdef NOTSA_NATIVE
+    // Dev harness: `GTASA_SKIP_CUTSCENES=1` skips every cutscene, without requiring any input
+    static const bool skipCutscenes = [] {
+        const auto env = std::getenv("GTASA_SKIP_CUTSCENES");
+        return env && std::string_view{env} == "1";
+    }();
+    if (skipCutscenes) {
+        return true;
+    }
+#endif
     const auto pad = CPad::GetPad(0);
     return pad->IsCrossPressed()
         || pad->IsMouseLButtonPressed()

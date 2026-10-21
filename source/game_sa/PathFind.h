@@ -179,6 +179,65 @@ public:
 };
 VALIDATE_SIZE(CPathNode, 0x1C);
 
+#ifdef NOTSA_NATIVE
+/*!
+* @brief The 32 bit on-disk layout of `CPathNode` (As found in `data/paths/nodes*.dat`).
+*
+* Native builds are 64 bit, where `CPathNode` is 0x28 bytes because `m_next` and `m_prev` are 8 bytes each,
+* so the nodes can't be streamed in directly anymore.
+*
+* The flags are a raw `uint32` (The upper byte is unused by the original struct) because packing
+* wouldn't lay out a bitfield block the same way on every compiler.
+*/
+#pragma pack(push, 1)
+struct CPathNodeDisk {
+    uint32                m_next, m_prev; ///< Not read from disk - Built at runtime (`AddNodeToList`)
+    CompressedLargeVector m_vPos;
+    int16                 m_totalDistFromOrigin;
+    int16                 m_wBaseLinkId;
+    uint16                m_wAreaId;
+    uint16                m_wNodeId;
+    uint8                 m_nPathWidth;
+    uint8                 m_nFloodFill;
+    uint32                m_flags; ///< The bitfields of `CPathNode`: `m_nNumLinks` in the low 4 bits, `m_nBehaviourType` in bits 28-31
+};
+#pragma pack(pop)
+static_assert(sizeof(CPathNodeDisk) == 0x1C);
+
+//! Copy a node read from disk into its in-memory (64 bit) counterpart.
+inline void CPathNodeDiskToNode(const CPathNodeDisk& disk, CPathNode& node) {
+    node.m_next                = nullptr;
+    node.m_prev                = nullptr;
+    node.m_vPos                = disk.m_vPos;
+    node.m_totalDistFromOrigin = disk.m_totalDistFromOrigin;
+    node.m_wBaseLinkId         = disk.m_wBaseLinkId;
+    node.m_wAreaId             = disk.m_wAreaId;
+    node.m_wNodeId             = disk.m_wNodeId;
+    node.m_nPathWidth          = disk.m_nPathWidth;
+    node.m_nFloodFill          = disk.m_nFloodFill;
+
+    // byte 0
+    node.m_nNumLinks     = (disk.m_flags >> 0)  & 0xF;
+    node.m_onDeadEnd     = (disk.m_flags >> 4)  & 0x1;
+    node.m_isSwitchedOff = (disk.m_flags >> 5)  & 0x1;
+    node.m_bRoadBlocks   = (disk.m_flags >> 6)  & 0x1;
+    node.m_bWaterNode    = (disk.m_flags >> 7)  & 0x1;
+
+    // byte 1
+    node.m_isSwitchedOffOriginal = (disk.m_flags >> 8)  & 0x1;
+    node.unk1                    = (disk.m_flags >> 9)  & 0x1;
+    node.m_bDontWander           = (disk.m_flags >> 10) & 0x1;
+    node.unk2                    = (disk.m_flags >> 11) & 0x1;
+    node.m_nSpeedLimit           = (disk.m_flags >> 12) & 0x3;
+    node.unk3                    = (disk.m_flags >> 14) & 0x1;
+    node.unk4                    = (disk.m_flags >> 15) & 0x1;
+
+    // byte 2
+    node.m_nSpawnProbability = (disk.m_flags >> 16) & 0xF;
+    node.m_nBehaviourType    = (disk.m_flags >> 20) & 0xF;
+}
+#endif
+
 class CPathFind {
     static constexpr auto NUM_TOTAL_PATH_NODE_AREAS = NUM_PATH_MAP_AREAS + NUM_PATH_INTERIOR_AREAS;
 public:

@@ -1046,6 +1046,60 @@ void RenderPed(RpAtomic* atomic, GeometryCache& cache) {
     }
 }
 
+//! Retail's D3D9 pipelines enable only `rpLIGHTLIGHTATOMICS` lights for atomics
+//! (`_rwD3D9LightsGlobalEnable(rpLIGHTLIGHTATOMICS)` in the custom object pipelines).
+//! librw's `lightingCB()` enumerates the whole world, which would also feed the shaders the
+//! three directionals `app_light.cpp` creates with flags `0` (they only drive render state).
+//! Build the `WorldLights` here with that flag test applied.
+void ApplyWorldLights() {
+    rw::Light* directionals[8];
+    rw::Light* locals[8];
+    rw::WorldLights lights;
+
+    lights.numAmbients     = 0;
+    lights.ambient.red     = 0.0f;
+    lights.ambient.green   = 0.0f;
+    lights.ambient.blue    = 0.0f;
+    lights.ambient.alpha   = 1.0f;
+    lights.numDirectionals = 0;
+    lights.directionals    = directionals;
+    lights.numLocals       = 0;
+    lights.locals          = locals;
+
+    rw::World* const world = rw::engine->currentWorld;
+
+    FORLIST(lnk, world->globalLights) {
+        rw::Light* const light = rw::Light::fromWorld(lnk);
+        if (!(light->getFlags() & rw::Light::LIGHTATOMICS)) {
+            continue;
+        }
+        if (light->getType() == rw::Light::AMBIENT) {
+            lights.ambient.red   += light->color.red;
+            lights.ambient.green += light->color.green;
+            lights.ambient.blue  += light->color.blue;
+            lights.numAmbients++;
+        } else if (light->getType() == rw::Light::DIRECTIONAL) {
+            if (lights.numDirectionals < 8) {
+                lights.directionals[lights.numDirectionals++] = light;
+            }
+        }
+    }
+
+    lights.numLocals = 0;
+    FORLIST(lnk, world->localLights) {
+        rw::Light* const light = rw::Light::fromWorld(lnk);
+        if (!(light->getFlags() & rw::Light::LIGHTATOMICS)) {
+            continue;
+        }
+        if (lights.numLocals >= 8) {
+            break;
+        }
+        lights.locals[lights.numLocals++] = light;
+    }
+
+    rw::gl3::setLights(&lights);
+}
+
 } // namespace
 
 //-----------------------------------------------------------------------------
@@ -1244,7 +1298,7 @@ void RenderAtomic(RpAtomic* atomic) {
     rw::gl3::setWorldMatrix(&world);
 
     if (rw::engine && rw::engine->currentWorld) {
-        rw::gl3::lightingCB();
+        ApplyWorldLights();
     } else {
         static const rw::WorldLights emptyLights{};
         rw::gl3::setLights(const_cast<rw::WorldLights*>(&emptyLights));

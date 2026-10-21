@@ -4,10 +4,13 @@
 
 #include <SDL3/SDL.h>
 
+#include <cstdlib>
 #include <filesystem>
+#include <string_view>
 
 #include "app/platform/native/ExeData.generated.h"
 #include "app/platform/native/ExeGlobals.h"
+#include "app/platform/native/NativeCrash.h"
 #include "app/platform/native/NativeGameDir.h"
 #include "app/platform/native/NativeInput.h"
 #include "app/platform/native/VideoPlayerNative.h"
@@ -21,6 +24,7 @@
 #include "MenuManager.h"
 #include "Game.h"
 #include "extensions/utility.hpp"
+#include "extensions/Configs/ConfigLoader.h"
 #include "extensions/Configs/FastLoader.hpp"
 
 namespace fs = std::filesystem;
@@ -35,6 +39,15 @@ namespace {
 
 constexpr auto NO_FOREGROUND_PAUSE = true;
 constexpr auto NATIVE_CMD_SHOW     = 1; // `SW_SHOWNORMAL` equivalent
+
+//! `GTASA_NEW_GAME=1` starts a new game as soon as the frontend is idle, skipping the menu input.
+bool IsNewGameRequested() {
+    static const bool requested = [] {
+        const auto env = std::getenv("GTASA_NEW_GAME");
+        return env && std::string_view{env} == "1";
+    }();
+    return requested;
+}
 
 // Code from winmain, 0x748DCF (Without any Win32/DirectShow/video mode specific parts)
 bool ProcessGameLogic(int32 nCmdShow) {
@@ -173,6 +186,14 @@ bool ProcessGameLogic(int32 nCmdShow) {
             g_FastLoaderConfig.TriedLoadingSaveGame = true;
         } else {
             RsEventHandler(rsFRONTENDIDLE, nullptr);
+
+            // Dev harness: `GTASA_NEW_GAME=1` starts a new game without any menu input.
+            static bool startedNewGame = false;
+            if (IsNewGameRequested() && !startedNewGame) {
+                startedNewGame = true;
+                NOTSA_LOG_INFO("Native: GTASA_NEW_GAME -> starting a new game");
+                FrontEndMenuManager.SimulateGameLoad(true, 0);
+            }
         }
         if (FrontEndMenuManager.m_bMenuActive && !FrontEndMenuManager.m_bLoadingData) {
             break;
@@ -290,6 +311,18 @@ int32 NativeMain(int argc, char** argv) {
     notsa::native::ExeGlobals::ReportOverlaps();
     notsa::native::ApplyExeData(); // Replays the executable's CRT static initializers
 
+    // 3b. Configurations (`gta-reversed.ini` is optional) and the dev harness switches.
+    notsa::LoadConfigurations();
+    if (IsNewGameRequested()) {
+        // Nothing is shown before the game itself: no splash screens, no movies, no loading tune.
+        g_FastLoaderConfig.NoEAX          = true;
+        g_FastLoaderConfig.NoNVidia       = true;
+        g_FastLoaderConfig.NoLogo         = true;
+        g_FastLoaderConfig.NoTitleOrIntro = true;
+        g_FastLoaderConfig.NoLoadingTune  = true;
+        g_FastLoaderConfig.SaveGameToLoad = -2; // A new game never auto-loads a save slot
+    }
+
     // 4. Neutral part of `NOTSA_WinMain`.
     if (rsEVENTERROR == RsEventHandler(rsINITIALIZE, nullptr)) {
         return 1;
@@ -370,6 +403,7 @@ int32 NativeMain(int argc, char** argv) {
 } // namespace
 
 int main(int argc, char** argv) {
+    notsa::native::InstallCrashHandler();
     return NativeMain(argc, argv);
 }
 

@@ -44,6 +44,11 @@ void* Malloc(size_t size);
 void* Realloc(void* p, size_t size);
 void  Free(void* p);
 
+//! Moves a stream (`whence`: 0 = set, 1 = current, 2 = end). Defined in `RwStream.cpp`, which
+//! is the only place that knows the stream layout. Used by readers that rewind over a chunk
+//! header they already consumed.
+RwBool SeekRwStream(RwStream* stream, int32 offset, int32 whence);
+
 //-----------------------------------------------------------------------------
 // Engine
 //-----------------------------------------------------------------------------
@@ -100,13 +105,23 @@ public:
         RwPluginObjectCopy        copyCB
     );
 
-    //! Stream callbacks are registered but never dispatched: no DFF/TXD reader exists yet.
+    //! Registers the stream callbacks of the plugin identified by `pluginID`. Returns the byte
+    //! offset of the data plugin registered with the same ID (`0` when there is none, which is
+    //! also the offset of a zero-sized plugin registered by `Register`).
     int32 RegisterStream(
         uint32                           pluginID,
         RwPluginDataChunkReadCallBack    readCB,
         RwPluginDataChunkWriteCallBack   writeCB,
         RwPluginDataChunkGetSizeCallBack getSizeCB
     );
+
+    //! Reads the `rwID_EXTENSION` chunk found in `stream`, dispatching every subchunk to the
+    //! read callback of the plugin registered with its ID. Subchunks of unknown plugins are
+    //! skipped. `object` is the game object the plugin data belongs to.
+    //!
+    //! Returns `false` when the chunk contents could not be read. When the stream has no
+    //! extension chunk at all there is nothing to dispatch and the call succeeds.
+    bool StreamReadExtension(RwStream* stream, void* object) const;
 
     //! Bytes needed for one object: `baseSize` plus every registered plugin.
     size_t TotalSize(size_t baseSize) const;
@@ -125,10 +140,31 @@ private:
         RwPluginObjectCopy        copy;
     };
 
-    std::vector<Entry> m_plugins;
-    size_t             m_base = 0;
-    size_t             m_end  = 0;
+    struct StreamEntry {
+        uint32                           id;
+        RwPluginDataChunkReadCallBack    read;
+        RwPluginDataChunkWriteCallBack   write;
+        RwPluginDataChunkGetSizeCallBack getSize;
+    };
+
+    const Entry*       FindData(uint32 pluginID) const;
+    const StreamEntry* FindStream(uint32 pluginID) const;
+    StreamEntry*       FindStream(uint32 pluginID);
+
+    std::vector<Entry>       m_plugins;
+    std::vector<StreamEntry> m_streams;
+    size_t                   m_base = 0;
+    size_t                   m_end  = 0;
 };
+
+//! The registry of the object type that carries plugin data. The stream readers in `RwDff.cpp`
+//! dispatch `rwID_EXTENSION` chunks through these, so they must be the same instances the
+//! game's plugins register with (`RpGeometryRegisterPluginStream`, `RwFrameRegisterPlugin`, ...).
+PluginRegistry& MaterialPlugins();
+PluginRegistry& GeometryPlugins();
+PluginRegistry& AtomicPlugins();
+PluginRegistry& ClumpPlugins();
+PluginRegistry& FramePlugins();
 
 //! Zeroed allocation of `baseSize` bytes plus the plugin area described by `registry`.
 void* AllocObject(size_t baseSize, const PluginRegistry& registry);
@@ -173,6 +209,11 @@ inline void ListRemove(RwLLLink& link) {
 inline rw::V3d ToLibrw(const RwV3d& v) { return {v.x, v.y, v.z}; }
 inline rw::V2d ToLibrw(const RwV2d& v) { return {v.x, v.y}; }
 
+//! Both structs declare their corners in the same order (`sup` first), so keep it.
+inline rw::BBox ToLibrw(const RwBBox& box) {
+    return { ToLibrw(box.sup), ToLibrw(box.inf) };
+}
+
 inline rw::Matrix ToLibrw(const RwMatrix& m) {
     rw::Matrix out{};
     out.right = ToLibrw(m.right);
@@ -190,6 +231,20 @@ rw::Raster* GetLibrwRaster(RwRaster* raster);
 
 //! Game raster behind a librw raster (null when the raster was not created by this layer).
 RwRaster* GetGameRaster(rw::Raster* raster);
+
+//! librw world behind a game world (null when the world was not created by this layer).
+rw::World* GetLibrwWorld(RpWorld* world);
+
+//! Game world behind a librw world (null when the world was not created by this layer).
+RpWorld* GetGameWorld(rw::World* world);
+
+//! librw light behind a game light, refreshed from the authoritative game struct (null when the
+//! light has no mirror). Defined in `RwLight.cpp`.
+rw::Light* GetLibrwLight(RpLight* light);
+
+//! librw camera behind a game camera, creating its mirror on demand (null on allocation
+//! failure). Defined in `RwCamera.cpp`.
+rw::Camera* GetLibrwCamera(RwCamera* camera);
 
 } // namespace notsa::fakerw
 

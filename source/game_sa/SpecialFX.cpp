@@ -1,4 +1,5 @@
 #include "StdInc.h"
+#include <extensions/utility.hpp>
 #include "MotionBlurStreaks.h"
 #include "Checkpoints.h"
 #include "SpecialFX.h"
@@ -92,7 +93,7 @@ void CSpecialFX::AddWeaponStreak(eWeaponType weaponType) {
         *LTM      = *RwFrameGetLTM(RpAtomicGetFrame(plyr->m_pWeaponObject));
         attachMat = CMatrix(LTM, false);
         CMotionBlurStreaks::RegisterStreak(
-            reinterpret_cast<uint32>(plyr->m_pWeaponObject),
+            notsa::PtrToId(plyr->m_pWeaponObject),
             100,
             100,
             100,

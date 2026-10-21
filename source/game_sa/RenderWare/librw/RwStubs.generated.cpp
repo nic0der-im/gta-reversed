@@ -47,125 +47,6 @@ RwChar * rwPLUGIN_ERRFUNC(RwInt32 code,...) {
     return {};
 }
 
-void RpHAnimHierarchySetFreeListCreateParams(RwInt32 blockSize, RwInt32 numBlocksToPrealloc) {
-    notsa::fakerw::Stub("RpHAnimHierarchySetFreeListCreateParams");
-}
-
-RpHAnimHierarchy* RpHAnimHierarchyCreate(RwInt32 numNodes, RwUInt32* nodeFlags, RwInt32* nodeIDs, RpHAnimHierarchyFlag flags, RwInt32 maxInterpKeyFrameSize) {
-    notsa::fakerw::Stub("RpHAnimHierarchyCreate");
-    return {};
-}
-
-RpHAnimHierarchy* RpHAnimHierarchyCreateFromHierarchy(RpHAnimHierarchy* hierarchy, RpHAnimHierarchyFlag flags, RwInt32 maxInterpKeyFrameSize) {
-    notsa::fakerw::Stub("RpHAnimHierarchyCreateFromHierarchy");
-    return {};
-}
-
-RpHAnimHierarchy* RpHAnimHierarchyDestroy(RpHAnimHierarchy* hierarchy) {
-    notsa::fakerw::Stub("RpHAnimHierarchyDestroy");
-    return {};
-}
-
-RpHAnimHierarchy* RpHAnimHierarchyCreateSubHierarchy(RpHAnimHierarchy* parentHierarchy, RwInt32 startNode, RpHAnimHierarchyFlag flags, RwInt32 maxInterpKeyFrameSize) {
-    notsa::fakerw::Stub("RpHAnimHierarchyCreateSubHierarchy");
-    return {};
-}
-
-RpHAnimHierarchy* RpHAnimHierarchyAttach(RpHAnimHierarchy* hierarchy) {
-    notsa::fakerw::Stub("RpHAnimHierarchyAttach");
-    return {};
-}
-
-RpHAnimHierarchy* RpHAnimHierarchyDetach(RpHAnimHierarchy* hierarchy) {
-    notsa::fakerw::Stub("RpHAnimHierarchyDetach");
-    return {};
-}
-
-RpHAnimHierarchy* RpHAnimHierarchyAttachFrameIndex(RpHAnimHierarchy* hierarchy, RwInt32 nodeIndex) {
-    notsa::fakerw::Stub("RpHAnimHierarchyAttachFrameIndex");
-    return {};
-}
-
-RpHAnimHierarchy* RpHAnimHierarchyDetachFrameIndex(RpHAnimHierarchy* hierarchy, RwInt32 nodeIndex) {
-    notsa::fakerw::Stub("RpHAnimHierarchyDetachFrameIndex");
-    return {};
-}
-
-RwBool RpHAnimFrameSetHierarchy(RwFrame* frame, RpHAnimHierarchy* hierarchy) {
-    notsa::fakerw::Stub("RpHAnimFrameSetHierarchy");
-    return {};
-}
-
-RpHAnimHierarchy* RpHAnimFrameGetHierarchy(RwFrame* frame) {
-    notsa::fakerw::Stub("RpHAnimFrameGetHierarchy");
-    return {};
-}
-
-RwMatrix* RpHAnimHierarchyGetMatrixArray(RpHAnimHierarchy* hierarchy) {
-    notsa::fakerw::Stub("RpHAnimHierarchyGetMatrixArray");
-    return {};
-}
-
-RwMatrix* RpHAnimHierarchyGetNodeMatrix(RpHAnimHierarchy* hierarchy, RwInt32 nodeID) {
-    notsa::fakerw::Stub("RpHAnimHierarchyGetNodeMatrix");
-    return {};
-}
-
-RwBool RpHAnimHierarchyUpdateMatrices(RpHAnimHierarchy* hierarchy) {
-    notsa::fakerw::Stub("RpHAnimHierarchyUpdateMatrices");
-    return {};
-}
-
-RwInt32 RpHAnimIDGetIndex(RpHAnimHierarchy* hierarchy, RwInt32 ID) {
-    notsa::fakerw::Stub("RpHAnimIDGetIndex");
-    return {};
-}
-
-void RpHAnimKeyFrameApply(void* matrix, void* voidIFrame) {
-    notsa::fakerw::Stub("RpHAnimKeyFrameApply");
-}
-
-void RpHAnimKeyFrameBlend(void* voidOut, void* voidIn1, void* voidIn2, RwReal alpha) {
-    notsa::fakerw::Stub("RpHAnimKeyFrameBlend");
-}
-
-void RpHAnimKeyFrameInterpolate(void* voidOut, void* voidIn1, void* voidIn2, RwReal time, void* customData) {
-    notsa::fakerw::Stub("RpHAnimKeyFrameInterpolate");
-}
-
-void RpHAnimKeyFrameAdd(void* voidOut, void* voidIn1, void* voidIn2) {
-    notsa::fakerw::Stub("RpHAnimKeyFrameAdd");
-}
-
-void RpHAnimKeyFrameMulRecip(void* voidFrame, void* voidStart) {
-    notsa::fakerw::Stub("RpHAnimKeyFrameMulRecip");
-}
-
-RtAnimAnimation* RpHAnimKeyFrameStreamRead(RwStream* stream, RtAnimAnimation* animation) {
-    notsa::fakerw::Stub("RpHAnimKeyFrameStreamRead");
-    return {};
-}
-
-RwBool RpHAnimKeyFrameStreamWrite(const RtAnimAnimation* animation, RwStream* stream) {
-    notsa::fakerw::Stub("RpHAnimKeyFrameStreamWrite");
-    return {};
-}
-
-RwInt32 RpHAnimKeyFrameStreamGetSize(const RtAnimAnimation* animation) {
-    notsa::fakerw::Stub("RpHAnimKeyFrameStreamGetSize");
-    return {};
-}
-
-RwBool RpHAnimFrameSetID(RwFrame* frame, RwInt32 id) {
-    notsa::fakerw::Stub("RpHAnimFrameSetID");
-    return {};
-}
-
-RwInt32 RpHAnimFrameGetID(RwFrame* frame) {
-    notsa::fakerw::Stub("RpHAnimFrameGetID");
-    return {};
-}
-
 void RpMatFXMaterialDataSetFreeListCreateParams(RwInt32 blockSize, RwInt32 numBlocksToPrealloc) {
     notsa::fakerw::Stub("RpMatFXMaterialDataSetFreeListCreateParams");
 }
@@ -322,110 +203,6 @@ const RpMaterial* RpMatFXMaterialGetUVTransformMatrices(const RpMaterial* materi
 
 RxPipeline* RpMatFXGetD3D9Pipeline(RpMatFXD3D9Pipeline d3d9Pipeline) {
     notsa::fakerw::Stub("RpMatFXGetD3D9Pipeline");
-    return {};
-}
-
-void RpSkinSetFreeListCreateParams(RwInt32 blockSize, RwInt32 numBlocksToPrealloc) {
-    notsa::fakerw::Stub("RpSkinSetFreeListCreateParams");
-}
-
-RpAtomic* RpSkinAtomicSetHAnimHierarchy(RpAtomic* atomic, RpHAnimHierarchy* hierarchy) {
-    notsa::fakerw::Stub("RpSkinAtomicSetHAnimHierarchy");
-    return {};
-}
-
-RpHAnimHierarchy* RpSkinAtomicGetHAnimHierarchy(const RpAtomic* atomic) {
-    notsa::fakerw::Stub("RpSkinAtomicGetHAnimHierarchy");
-    return {};
-}
-
-RpGeometry* RpSkinGeometrySetSkin(RpGeometry* geometry, RpSkin* skin) {
-    notsa::fakerw::Stub("RpSkinGeometrySetSkin");
-    return {};
-}
-
-RpSkin* RpSkinGeometryGetSkin(RpGeometry* geometry) {
-    notsa::fakerw::Stub("RpSkinGeometryGetSkin");
-    return {};
-}
-
-RpSkin* RpSkinCreate(RwUInt32 numVertices, RwUInt32 numBones, RwMatrixWeights* vertexWeights, RwUInt32* vertexIndices, RwMatrix* inverseMatrices) {
-    notsa::fakerw::Stub("RpSkinCreate");
-    return {};
-}
-
-RpSkin* RpSkinDestroy(RpSkin* skin) {
-    notsa::fakerw::Stub("RpSkinDestroy");
-    return {};
-}
-
-RwUInt32 RpSkinGetNumBones(RpSkin* skin) {
-    notsa::fakerw::Stub("RpSkinGetNumBones");
-    return {};
-}
-
-RwMatrixWeights* RpSkinGetVertexBoneWeights(RpSkin* skin) {
-    notsa::fakerw::Stub("RpSkinGetVertexBoneWeights");
-    return {};
-}
-
-const RwUInt32* RpSkinGetVertexBoneIndices(RpSkin* skin) {
-    notsa::fakerw::Stub("RpSkinGetVertexBoneIndices");
-    return {};
-}
-
-const RwMatrix* RpSkinGetSkinToBoneMatrices(RpSkin* skin) {
-    notsa::fakerw::Stub("RpSkinGetSkinToBoneMatrices");
-    return {};
-}
-
-RwBool RpSkinIsSplit(RpSkin* skin) {
-    notsa::fakerw::Stub("RpSkinIsSplit");
-    return {};
-}
-
-RpAtomic* RpSkinAtomicSetType(RpAtomic* atomic, RpSkinType type) {
-    notsa::fakerw::Stub("RpSkinAtomicSetType");
-    return {};
-}
-
-RpSkinType RpSkinAtomicGetType(RpAtomic* atomic) {
-    notsa::fakerw::Stub("RpSkinAtomicGetType");
-    return {};
-}
-
-RpGeometry* _rpSkinInitialize(RpGeometry* geometry) {
-    notsa::fakerw::Stub("_rpSkinInitialize");
-    return {};
-}
-
-RpGeometry* _rpSkinDeinitialize(RpGeometry* geometry) {
-    notsa::fakerw::Stub("_rpSkinDeinitialize");
-    return {};
-}
-
-RwUInt8* _rpSkinGetMeshBoneRemapIndices(RpSkin* skin) {
-    notsa::fakerw::Stub("_rpSkinGetMeshBoneRemapIndices");
-    return {};
-}
-
-RwUInt8* _rpSkinGetMeshBoneRLECount(RpSkin* skin) {
-    notsa::fakerw::Stub("_rpSkinGetMeshBoneRLECount");
-    return {};
-}
-
-RwUInt8* _rpSkinGetMeshBoneRLE(RpSkin* skin) {
-    notsa::fakerw::Stub("_rpSkinGetMeshBoneRLE");
-    return {};
-}
-
-RpSkin* _rpSkinSplitDataCreate(RpSkin* skin, RwUInt32 boneLimit, RwUInt32 numMatrices, RwUInt32 numMeshes, RwUInt32 numRLE) {
-    notsa::fakerw::Stub("_rpSkinSplitDataCreate");
-    return {};
-}
-
-RwBool _rpSkinSplitDataDestroy(RpSkin* skin) {
-    notsa::fakerw::Stub("_rpSkinSplitDataDestroy");
     return {};
 }
 
@@ -717,68 +494,13 @@ RwUInt32 RpMaterialStreamGetSize(const RpMaterial* material) {
     return {};
 }
 
-RpMaterial* RpMaterialStreamRead(RwStream* stream) {
-    notsa::fakerw::Stub("RpMaterialStreamRead");
-    return {};
-}
-
 const RpMaterial* RpMaterialStreamWrite(const RpMaterial* material, RwStream* stream) {
     notsa::fakerw::Stub("RpMaterialStreamWrite");
     return {};
 }
 
-RpMaterialChunkInfo* _rpMaterialChunkInfoRead(RwStream* stream, RpMaterialChunkInfo* materialChunkInfo, RwInt32* bytesRead) {
-    notsa::fakerw::Stub("_rpMaterialChunkInfoRead");
-    return {};
-}
-
-RpMaterialList* _rpMaterialListInitialize(RpMaterialList* matList) {
-    notsa::fakerw::Stub("_rpMaterialListInitialize");
-    return {};
-}
-
-RpMaterialList* _rpMaterialListDeinitialize(RpMaterialList* matList) {
-    notsa::fakerw::Stub("_rpMaterialListDeinitialize");
-    return {};
-}
-
-RpMaterial** _rpMaterialListAlloc(RwUInt32 count) {
-    notsa::fakerw::Stub("_rpMaterialListAlloc");
-    return {};
-}
-
-RpMaterial* _rpMaterialListGetMaterial(const RpMaterialList* matList, RwInt32 matIndex) {
-    notsa::fakerw::Stub("_rpMaterialListGetMaterial");
-    return {};
-}
-
-RpMaterialList* _rpMaterialListSetSize(RpMaterialList* matList, RwInt32 size) {
-    notsa::fakerw::Stub("_rpMaterialListSetSize");
-    return {};
-}
-
-RpMaterialList* _rpMaterialListCopy(RpMaterialList* matListOut, const RpMaterialList* matListIn) {
-    notsa::fakerw::Stub("_rpMaterialListCopy");
-    return {};
-}
-
-RwInt32 _rpMaterialListAppendMaterial(RpMaterialList* matList, RpMaterial* material) {
-    notsa::fakerw::Stub("_rpMaterialListAppendMaterial");
-    return {};
-}
-
-RwInt32 _rpMaterialListFindMaterialIndex(const RpMaterialList* matList, const RpMaterial* material) {
-    notsa::fakerw::Stub("_rpMaterialListFindMaterialIndex");
-    return {};
-}
-
 RwUInt32 _rpMaterialListStreamGetSize(const RpMaterialList* matList) {
     notsa::fakerw::Stub("_rpMaterialListStreamGetSize");
-    return {};
-}
-
-RpMaterialList* _rpMaterialListStreamRead(RwStream* stream, RpMaterialList* matList) {
-    notsa::fakerw::Stub("_rpMaterialListStreamRead");
     return {};
 }
 
@@ -794,11 +516,6 @@ void* _rpMeshOpen(void* instance, RwInt32 offset, RwInt32 size) {
 
 void* _rpMeshClose(void* instance, RwInt32 offset, RwInt32 size) {
     notsa::fakerw::Stub("_rpMeshClose");
-    return {};
-}
-
-RwInt16 _rpMeshGetNextSerialNumber(void) {
-    notsa::fakerw::Stub("_rpMeshGetNextSerialNumber");
     return {};
 }
 
@@ -829,11 +546,6 @@ RpMeshHeader* _rpMeshHeaderForAllMeshes(RpMeshHeader* meshHeader, RpMeshCallBack
 
 RwStream* _rpMeshWrite(const RpMeshHeader* meshHeader, const void* object, RwStream* stream, const RpMaterialList* matList) {
     notsa::fakerw::Stub("_rpMeshWrite");
-    return {};
-}
-
-RpMeshHeader* _rpMeshRead(RwStream* stream, const void* object, const RpMaterialList* matList) {
-    notsa::fakerw::Stub("_rpMeshRead");
     return {};
 }
 
@@ -941,21 +653,6 @@ RpGeometry* RpGeometryCreateSpace(RwReal radius) {
     return {};
 }
 
-const RpMorphTarget* RpMorphTargetCalcBoundingSphere(const RpMorphTarget* morphTarget, RwSphere* boundingSphere) {
-    notsa::fakerw::Stub("RpMorphTargetCalcBoundingSphere");
-    return {};
-}
-
-RwInt32 RpGeometryAddMorphTargets(RpGeometry* geometry, RwInt32 mtcount) {
-    notsa::fakerw::Stub("RpGeometryAddMorphTargets");
-    return {};
-}
-
-RwInt32 RpGeometryAddMorphTarget(RpGeometry* geometry) {
-    notsa::fakerw::Stub("RpGeometryAddMorphTarget");
-    return {};
-}
-
 RpGeometry* RpGeometryRemoveMorphTarget(RpGeometry* geometry, RwInt32 morphTarget) {
     notsa::fakerw::Stub("RpGeometryRemoveMorphTarget");
     return {};
@@ -966,33 +663,8 @@ const RpGeometry* RpGeometryTriangleSetVertexIndices(const RpGeometry* geometry,
     return {};
 }
 
-RpGeometry* RpGeometryTriangleSetMaterial(RpGeometry* geometry, RpTriangle* triangle, RpMaterial* material) {
-    notsa::fakerw::Stub("RpGeometryTriangleSetMaterial");
-    return {};
-}
-
 const RpGeometry* RpGeometryTriangleGetVertexIndices(const RpGeometry* geometry, const RpTriangle* triangle, RwUInt16* vert1, RwUInt16* vert2, RwUInt16* vert3) {
     notsa::fakerw::Stub("RpGeometryTriangleGetVertexIndices");
-    return {};
-}
-
-RpMaterial* RpGeometryTriangleGetMaterial(const RpGeometry* geometry, const RpTriangle* triangle) {
-    notsa::fakerw::Stub("RpGeometryTriangleGetMaterial");
-    return {};
-}
-
-RpGeometry* RpGeometryLock(RpGeometry* geometry, RwInt32 lockMode) {
-    notsa::fakerw::Stub("RpGeometryLock");
-    return {};
-}
-
-RpGeometry* RpGeometryUnlock(RpGeometry* geometry) {
-    notsa::fakerw::Stub("RpGeometryUnlock");
-    return {};
-}
-
-const RpGeometry* RpGeometryForAllMeshes(const RpGeometry* geometry, RpMeshCallBack fpCallBack, void* data) {
-    notsa::fakerw::Stub("RpGeometryForAllMeshes");
     return {};
 }
 
@@ -1018,16 +690,6 @@ RwUInt32 RpGeometryStreamGetSize(const RpGeometry* geometry) {
 
 const RpGeometry* RpGeometryStreamWrite(const RpGeometry* geometry, RwStream* stream) {
     notsa::fakerw::Stub("RpGeometryStreamWrite");
-    return {};
-}
-
-RpGeometry* RpGeometryStreamRead(RwStream* stream) {
-    notsa::fakerw::Stub("RpGeometryStreamRead");
-    return {};
-}
-
-RpGeometryChunkInfo* _rpGeometryChunkInfoRead(RwStream* stream, RpGeometryChunkInfo* geometryChunkInfo, RwInt32* bytesRead) {
-    notsa::fakerw::Stub("_rpGeometryChunkInfoRead");
     return {};
 }
 
@@ -1075,28 +737,8 @@ void RpLightSetFreeListCreateParams(RwInt32 blockSize, RwInt32 numBlocksToPreall
     notsa::fakerw::Stub("RpLightSetFreeListCreateParams");
 }
 
-RwReal RpLightGetConeAngle(const RpLight* light) {
-    notsa::fakerw::Stub("RpLightGetConeAngle");
-    return {};
-}
-
-RpLight* RpLightSetConeAngle(RpLight* ight, RwReal angle) {
-    notsa::fakerw::Stub("RpLightSetConeAngle");
-    return {};
-}
-
 RwUInt32 RpLightStreamGetSize(const RpLight* light) {
     notsa::fakerw::Stub("RpLightStreamGetSize");
-    return {};
-}
-
-RpLight* RpLightStreamRead(RwStream* stream) {
-    notsa::fakerw::Stub("RpLightStreamRead");
-    return {};
-}
-
-RpLightChunkInfo* _rpLightChunkInfoRead(RwStream* stream, RpLightChunkInfo* lightChunkInfo, RwInt32* bytesRead) {
-    notsa::fakerw::Stub("_rpLightChunkInfoRead");
     return {};
 }
 
@@ -1117,11 +759,6 @@ RwInt32 RpLightSetStreamAlwaysCallBack(RwUInt32 pluginID, RwPluginDataChunkAlway
 
 RwInt32 RpLightGetPluginOffset(RwUInt32 pluginID) {
     notsa::fakerw::Stub("RpLightGetPluginOffset");
-    return {};
-}
-
-RwBool RpLightValidatePlugins(const RpLight* light) {
-    notsa::fakerw::Stub("RpLightValidatePlugins");
     return {};
 }
 
@@ -1178,10 +815,6 @@ const RwSphere* RpAtomicGetWorldBoundingSphere(RpAtomic* atomic) {
     return {};
 }
 
-void RpClumpGtaCancelStream() {
-    notsa::fakerw::Stub("RpClumpGtaCancelStream");
-}
-
 RpClump* RpClumpForAllLights(RpClump* clump, RpLightCallBack callback, void* data) {
     notsa::fakerw::Stub("RpClumpForAllLights");
     return {};
@@ -1214,11 +847,6 @@ RpClump* RpClumpRemoveCamera(RpClump* clump, RwCamera* camera) {
 
 RpClump* RpClumpAddCamera(RpClump* clump, RwCamera* camera) {
     notsa::fakerw::Stub("RpClumpAddCamera");
-    return {};
-}
-
-RpClump* RpClumpClone(RpClump* clump) {
-    notsa::fakerw::Stub("RpClumpClone");
     return {};
 }
 
@@ -1262,11 +890,6 @@ RwUInt32 RpAtomicStreamGetSize(RpAtomic* atomic) {
     return {};
 }
 
-RpAtomic* RpAtomicStreamRead(RwStream* stream) {
-    notsa::fakerw::Stub("RpAtomicStreamRead");
-    return {};
-}
-
 RpAtomic* RpAtomicStreamWrite(RpAtomic* atomic, RwStream* stream) {
     notsa::fakerw::Stub("RpAtomicStreamWrite");
     return {};
@@ -1277,18 +900,8 @@ RwUInt32 RpClumpStreamGetSize(RpClump* clump) {
     return {};
 }
 
-RpClump* RpClumpStreamRead(RwStream* stream) {
-    notsa::fakerw::Stub("RpClumpStreamRead");
-    return {};
-}
-
 RpClump* RpClumpStreamWrite(RpClump* clump, RwStream* stream) {
     notsa::fakerw::Stub("RpClumpStreamWrite");
-    return {};
-}
-
-RpClumpChunkInfo* _rpClumpChunkInfoRead(RwStream* stream, RpClumpChunkInfo* clumpChunkInfo, RwInt32* bytesRead) {
-    notsa::fakerw::Stub("_rpClumpChunkInfoRead");
     return {};
 }
 
@@ -1611,11 +1224,6 @@ const RpGeometry* RpGeometryIsCorrectlySorted(const RpGeometry* geometry, RwBool
     return {};
 }
 
-RpGeometry* RpGeometrySortByMaterial(const RpGeometry* geometry, RpGeometrySortByMaterialCallBack callback) {
-    notsa::fakerw::Stub("RpGeometrySortByMaterial");
-    return {};
-}
-
 void RpTieSetFreeListCreateParams(RwInt32 blockSize, RwInt32 numBlocksToPrealloc) {
     notsa::fakerw::Stub("RpTieSetFreeListCreateParams");
 }
@@ -1659,11 +1267,6 @@ RpWorld* RpClumpGetWorld(const RpClump* clump) {
     return {};
 }
 
-RpWorld* RpLightGetWorld(const RpLight* light) {
-    notsa::fakerw::Stub("RpLightGetWorld");
-    return {};
-}
-
 RwCamera* RwCameraForAllClumpsInFrustum(RwCamera* camera, void* data) {
     notsa::fakerw::Stub("RwCameraForAllClumpsInFrustum");
     return {};
@@ -1676,11 +1279,6 @@ RwCamera* RwCameraForAllAtomicsInFrustum(RwCamera* camera, RpAtomicCallBack call
 
 RwCamera* RwCameraForAllSectorsInFrustum(RwCamera* camera, RpWorldSectorCallBack callBack, void* data) {
     notsa::fakerw::Stub("RwCameraForAllSectorsInFrustum");
-    return {};
-}
-
-RpLight* RpLightForAllWorldSectors(RpLight* light, RpWorldSectorCallBack callback, void* data) {
-    notsa::fakerw::Stub("RpLightForAllWorldSectors");
     return {};
 }
 
@@ -1736,137 +1334,6 @@ RpWorldChunkInfo* _rpWorldChunkInfoRead(RwStream* stream, RpWorldChunkInfo* worl
 
 void _rwD3D9EnableClippingIfNeeded(void *object, RwUInt32 type) {
     notsa::fakerw::Stub("_rwD3D9EnableClippingIfNeeded");
-}
-
-void RtAnimAnimationFreeListCreateParams(RwInt32 blockSize, RwInt32 numBlocksToPrealloc) {
-    notsa::fakerw::Stub("RtAnimAnimationFreeListCreateParams");
-}
-
-RwBool RtAnimRegisterInterpolationScheme(RtAnimInterpolatorInfo* interpolatorInfo) {
-    notsa::fakerw::Stub("RtAnimRegisterInterpolationScheme");
-    return {};
-}
-
-RtAnimInterpolatorInfo* RtAnimGetInterpolatorInfo(RwInt32 typeID) {
-    notsa::fakerw::Stub("RtAnimGetInterpolatorInfo");
-    return {};
-}
-
-RtAnimAnimation* RtAnimAnimationCreate(RwInt32 typeID, RwInt32 numFrames, RwInt32 flags, RwReal duration) {
-    notsa::fakerw::Stub("RtAnimAnimationCreate");
-    return {};
-}
-
-RwBool RtAnimAnimationDestroy(RtAnimAnimation* animation) {
-    notsa::fakerw::Stub("RtAnimAnimationDestroy");
-    return {};
-}
-
-RtAnimAnimation* RtAnimAnimationRead(const RwChar* filename) {
-    notsa::fakerw::Stub("RtAnimAnimationRead");
-    return {};
-}
-
-RwBool RtAnimAnimationWrite(const RtAnimAnimation* animation, const RwChar* filename) {
-    notsa::fakerw::Stub("RtAnimAnimationWrite");
-    return {};
-}
-
-RtAnimAnimation* RtAnimAnimationStreamRead(RwStream* stream) {
-    notsa::fakerw::Stub("RtAnimAnimationStreamRead");
-    return {};
-}
-
-RwBool RtAnimAnimationStreamWrite(const RtAnimAnimation* animation, RwStream* stream) {
-    notsa::fakerw::Stub("RtAnimAnimationStreamWrite");
-    return {};
-}
-
-RwInt32 RtAnimAnimationStreamGetSize(const RtAnimAnimation* animation) {
-    notsa::fakerw::Stub("RtAnimAnimationStreamGetSize");
-    return {};
-}
-
-RwUInt32 RtAnimAnimationGetNumNodes(const RtAnimAnimation* animation) {
-    notsa::fakerw::Stub("RtAnimAnimationGetNumNodes");
-    return {};
-}
-
-RtAnimInterpolator* RtAnimInterpolatorCreate(RwInt32 numNodes, RwInt32 maxInterpKeyFrameSize) {
-    notsa::fakerw::Stub("RtAnimInterpolatorCreate");
-    return {};
-}
-
-void RtAnimInterpolatorDestroy(RtAnimInterpolator* anim) {
-    notsa::fakerw::Stub("RtAnimInterpolatorDestroy");
-}
-
-RwBool RtAnimInterpolatorSetCurrentAnim(RtAnimInterpolator *animI, RtAnimAnimation *anim) {
-    notsa::fakerw::Stub("RtAnimInterpolatorSetCurrentAnim");
-    return {};
-}
-
-RwBool RtAnimInterpolatorSetKeyFrameCallBacks(RtAnimInterpolator* anim, RwInt32 keyFrameTypeID) {
-    notsa::fakerw::Stub("RtAnimInterpolatorSetKeyFrameCallBacks");
-    return {};
-}
-
-void RtAnimInterpolatorSetAnimLoopCallBack(RtAnimInterpolator* anim, RtAnimCallBack callBack, void* data) {
-    notsa::fakerw::Stub("RtAnimInterpolatorSetAnimLoopCallBack");
-}
-
-void RtAnimInterpolatorSetAnimCallBack(RtAnimInterpolator* anim, RtAnimCallBack callBack, RwReal time, void* data) {
-    notsa::fakerw::Stub("RtAnimInterpolatorSetAnimCallBack");
-}
-
-RwBool RtAnimInterpolatorCopy(RtAnimInterpolator* outAnim, RtAnimInterpolator* inAnim) {
-    notsa::fakerw::Stub("RtAnimInterpolatorCopy");
-    return {};
-}
-
-RwBool RtAnimInterpolatorSubAnimTime(RtAnimInterpolator* anim, RwReal time) {
-    notsa::fakerw::Stub("RtAnimInterpolatorSubAnimTime");
-    return {};
-}
-
-RwBool RtAnimInterpolatorAddAnimTime(RtAnimInterpolator* anim, RwReal time) {
-    notsa::fakerw::Stub("RtAnimInterpolatorAddAnimTime");
-    return {};
-}
-
-RwBool RtAnimInterpolatorSetCurrentTime(RtAnimInterpolator* anim, RwReal time) {
-    notsa::fakerw::Stub("RtAnimInterpolatorSetCurrentTime");
-    return {};
-}
-
-RwBool RtAnimAnimationMakeDelta(RtAnimAnimation* animation, RwInt32 numNodes, RwReal time) {
-    notsa::fakerw::Stub("RtAnimAnimationMakeDelta");
-    return {};
-}
-
-RwBool RtAnimInterpolatorBlend(RtAnimInterpolator* outAnim, RtAnimInterpolator* inAnim1, RtAnimInterpolator* inAnim2, RwReal alpha) {
-    notsa::fakerw::Stub("RtAnimInterpolatorBlend");
-    return {};
-}
-
-RwBool RtAnimInterpolatorAddTogether(RtAnimInterpolator* outAnim, RtAnimInterpolator* inAnim1, RtAnimInterpolator* inAnim2) {
-    notsa::fakerw::Stub("RtAnimInterpolatorAddTogether");
-    return {};
-}
-
-RtAnimInterpolator* RtAnimInterpolatorCreateSubInterpolator(RtAnimInterpolator* parentAnim, RwInt32 startNode, RwInt32 numNodes, RwInt32 maxInterpKeyFrameSize) {
-    notsa::fakerw::Stub("RtAnimInterpolatorCreateSubInterpolator");
-    return {};
-}
-
-RwBool RtAnimInterpolatorBlendSubInterpolator(RtAnimInterpolator* outAnim, RtAnimInterpolator* inAnim1, RtAnimInterpolator* inAnim2, RwReal alpha) {
-    notsa::fakerw::Stub("RtAnimInterpolatorBlendSubInterpolator");
-    return {};
-}
-
-RwBool RtAnimInterpolatorAddSubInterpolator(RtAnimInterpolator* outAnim, RtAnimInterpolator* mainAnim, RtAnimInterpolator* subAnim) {
-    notsa::fakerw::Stub("RtAnimInterpolatorAddSubInterpolator");
-    return {};
 }
 
 RwImage* RtBMPImageWrite(RwImage* image, const RwChar* imageName) {
@@ -2589,28 +2056,8 @@ RwRaster* RwRasterReadMaskedRaster(const RwChar* filename, const RwChar* masknam
     return {};
 }
 
-RwFrame* RwFrameScale(RwFrame* frame, const RwV3d* v, RwOpCombineType combine) {
-    notsa::fakerw::Stub("RwFrameScale");
-    return {};
-}
-
-RwFrame* RwFrameCloneHierarchy(RwFrame* root) {
-    notsa::fakerw::Stub("RwFrameCloneHierarchy");
-    return {};
-}
-
-RwBool RwFrameDestroyHierarchy(RwFrame* frame) {
-    notsa::fakerw::Stub("RwFrameDestroyHierarchy");
-    return {};
-}
-
 RwFrame* RwFrameAddChildNoUpdate(RwFrame* parent, RwFrame* child) {
     notsa::fakerw::Stub("RwFrameAddChildNoUpdate");
-    return {};
-}
-
-RwFrame* RwFrameGetRoot(const RwFrame* frame) {
-    notsa::fakerw::Stub("RwFrameGetRoot");
     return {};
 }
 
@@ -2640,11 +2087,6 @@ RwInt32 RwFrameGetPluginOffset(RwUInt32 pluginID) {
 
 RwBool RwFrameValidatePlugins(const RwFrame* frame) {
     notsa::fakerw::Stub("RwFrameValidatePlugins");
-    return {};
-}
-
-RwFrame* _rwFramePurgeClone(RwFrame* root) {
-    notsa::fakerw::Stub("_rwFramePurgeClone");
     return {};
 }
 
@@ -2716,18 +2158,8 @@ RwBool _rwFrameListFindFrame(const rwFrameList* frameList, const RwFrame* frame,
     return {};
 }
 
-rwFrameList* _rwFrameListDeinitialize(rwFrameList* frameList) {
-    notsa::fakerw::Stub("_rwFrameListDeinitialize");
-    return {};
-}
-
 RwUInt32 _rwFrameListStreamGetSize(const rwFrameList* frameList) {
     notsa::fakerw::Stub("_rwFrameListStreamGetSize");
-    return {};
-}
-
-rwFrameList* _rwFrameListStreamRead(RwStream* stream, rwFrameList* fl) {
-    notsa::fakerw::Stub("_rwFrameListStreamRead");
     return {};
 }
 
@@ -3185,16 +2617,6 @@ RwStream* RwStreamReadInt16(RwStream* stream, RwInt16* ints, RwUInt32 numBytes) 
 
 RwTexture* GetFirstTextureCallback(RwTexture* texture, void* data) {
     notsa::fakerw::Stub("GetFirstTextureCallback");
-    return {};
-}
-
-bool RpClumpGtaStreamRead1(RwStream* stream) {
-    notsa::fakerw::Stub("RpClumpGtaStreamRead1");
-    return {};
-}
-
-RpClump* RpClumpGtaStreamRead2(RwStream* stream) {
-    notsa::fakerw::Stub("RpClumpGtaStreamRead2");
     return {};
 }
 

@@ -10,8 +10,8 @@
 //! The Rp world layer.
 //!
 //! These are real containers on the game structs (so pointers are valid, plugin data exists and
-//! iterators work), but nothing is fed to librw yet: DFF/TXD streaming and rendering are later
-//! slices. Functions that would only matter for rendering log `Rw: stub`.
+//! iterators work). The clump/atomic/geometry/mesh containers are filled by the DFF reader in
+//! `RwDff.cpp`; what is still missing here is the streaming of worlds themselves.
 
 namespace {
 
@@ -19,16 +19,44 @@ notsa::fakerw::PluginRegistry g_worldPlugins;
 notsa::fakerw::PluginRegistry g_atomicPlugins;
 notsa::fakerw::PluginRegistry g_clumpPlugins;
 notsa::fakerw::PluginRegistry g_geometryPlugins;
-notsa::fakerw::PluginRegistry g_lightPlugins;
 notsa::fakerw::PluginRegistry g_materialPlugins;
 
 std::unordered_map<RpWorld*, rw::World*> g_worldMirrors;
 
-rw::BBox ToLibrw(const RwBBox& box) {
-    return { notsa::fakerw::ToLibrw(box.inf), notsa::fakerw::ToLibrw(box.sup) };
+} // namespace
+
+namespace notsa::fakerw {
+
+//! One registry per object type. The game's plugin attach functions register their data and
+//! stream callbacks here; `RwDff.cpp` dispatches the `rwID_EXTENSION` chunks through them.
+PluginRegistry& MaterialPlugins() { return g_materialPlugins; }
+PluginRegistry& GeometryPlugins() { return g_geometryPlugins; }
+PluginRegistry& AtomicPlugins()    { return g_atomicPlugins; }
+PluginRegistry& ClumpPlugins()     { return g_clumpPlugins; }
+
+rw::World* GetLibrwWorld(RpWorld* world) {
+    if (!world) {
+        return nullptr;
+    }
+    const auto it = g_worldMirrors.find(world);
+    return it != g_worldMirrors.end() ? it->second : nullptr;
 }
 
-} // namespace
+RpWorld* GetGameWorld(rw::World* world) {
+    if (!world) {
+        return nullptr;
+    }
+    for (const auto& [gameWorld, mirror] : g_worldMirrors) {
+        if (mirror == world) {
+            return gameWorld;
+        }
+    }
+    return nullptr;
+}
+
+} // namespace notsa::fakerw
+
+
 
 //-----------------------------------------------------------------------------
 // Plugin attach
@@ -36,24 +64,6 @@ rw::BBox ToLibrw(const RwBBox& box) {
 
 RwBool RpWorldPluginAttach() {
     // librw's world is part of the engine; nothing to attach.
-    return TRUE;
-}
-
-RwBool RpSkinPluginAttach() {
-    static bool attached = false;
-    if (!attached) {
-        rw::registerSkinPlugin();
-        attached = true;
-    }
-    return TRUE;
-}
-
-RwBool RpHAnimPluginAttach() {
-    static bool attached = false;
-    if (!attached) {
-        rw::registerHAnimPlugin();
-        attached = true;
-    }
     return TRUE;
 }
 
@@ -84,11 +94,6 @@ RwBool RpAnisotPluginAttach() {
     return TRUE;
 }
 
-RwBool RtAnimInitialize() {
-    // librw needs no separate animation initialisation.
-    return TRUE;
-}
-
 //-----------------------------------------------------------------------------
 // World
 //-----------------------------------------------------------------------------
@@ -108,7 +113,7 @@ RpWorld* RpWorldCreate(RwBBox* boundingBox) {
     notsa::fakerw::ListInit(world->lightList);
     notsa::fakerw::ListInit(world->directionalLightList);
 
-    auto librwBox = ToLibrw(world->boundingBox);
+    auto librwBox = notsa::fakerw::ToLibrw(world->boundingBox);
     if (auto* librwWorld = rw::World::create(&librwBox)) {
         g_worldMirrors.emplace(world, librwWorld);
     }
@@ -117,10 +122,36 @@ RpWorld* RpWorldCreate(RwBBox* boundingBox) {
     return world;
 }
 
+namespace {
+
+//! Unlinks every light of `world` from the world lists, both the game ones and the librw ones,
+//! so a light that outlives its world never points into freed storage.
+void DetachLights(RpWorld* world) {
+    auto* librwWorld = notsa::fakerw::GetLibrwWorld(world);
+    const auto DetachList = [librwWorld](RwLinkList& list) {
+        for (RwLLLink* link = list.link.next; link != &list.link;) {
+            RwLLLink* next = link->next;
+            auto* light = rwLLLinkGetData(link, RpLight, inWorld);
+            if (auto* librwLight = notsa::fakerw::GetLibrwLight(light); librwLight && librwLight->world == librwWorld) {
+                librwLight->world->removeLight(librwLight);
+            }
+            notsa::fakerw::ListRemove(light->inWorld);
+            link = next;
+        }
+    };
+
+    DetachList(world->directionalLightList);
+    DetachList(world->lightList);
+}
+
+} // namespace
+
 RwBool RpWorldDestroy(RpWorld* world) {
     if (!world) {
         return FALSE;
     }
+
+    DetachLights(world);
 
     if (const auto it = g_worldMirrors.find(world); it != g_worldMirrors.end()) {
         it->second->destroy();
@@ -132,116 +163,95 @@ RwBool RpWorldDestroy(RpWorld* world) {
 }
 
 RpWorld* RpWorldAddCamera(RpWorld* world, RwCamera* camera) {
-    // The camera is presented through its own librw mirror; the world camera list is only used
-    // by the (not yet implemented) world renderer.
-    UNUSED(camera);
-    notsa::fakerw::Stub("RpWorldAddCamera");
+    if (!world || !camera) {
+        return world;
+    }
+
+    auto* librwWorld  = notsa::fakerw::GetLibrwWorld(world);
+    auto* librwCamera = notsa::fakerw::GetLibrwCamera(camera);
+    if (!librwWorld || !librwCamera) {
+        return world;
+    }
+
+    // `Camera::beginUpdate` copies this into `engine->currentWorld`, which is the world the SA
+    // pipelines ask `rw::gl3::lightingCB()` to enumerate the lights of.
+    if (librwCamera->world != librwWorld) {
+        if (librwCamera->world) {
+            librwCamera->world->removeCamera(librwCamera);
+        }
+        librwWorld->addCamera(librwCamera);
+    }
     return world;
 }
 
 RpWorld* RpWorldRemoveCamera(RpWorld* world, RwCamera* camera) {
-    UNUSED(camera);
-    notsa::fakerw::Stub("RpWorldRemoveCamera");
+    if (!world || !camera) {
+        return world;
+    }
+
+    auto* librwWorld  = notsa::fakerw::GetLibrwWorld(world);
+    auto* librwCamera = notsa::fakerw::GetLibrwCamera(camera);
+    if (librwWorld && librwCamera && librwCamera->world == librwWorld) {
+        librwWorld->removeCamera(librwCamera);
+    }
     return world;
 }
 
 RpWorld* RpWorldAddLight(RpWorld* world, RpLight* light) {
-    UNUSED(light);
-    notsa::fakerw::Stub("RpWorldAddLight");
+    if (!world || !light) {
+        return world;
+    }
+
+    // Game-side membership: retail keeps ambient/directional lights (no position, so no world
+    // sector tie) in `directionalLightList` and positioned ones in `lightList`. `inWorld`
+    // belongs to one of the two lists, so its link doubles as the membership marker.
+    if (!light->inWorld.next) {
+        auto& list = rwObjectGetSubType(light) < rpLIGHTPOSITIONINGSTART
+            ? world->directionalLightList
+            : world->lightList;
+        notsa::fakerw::ListAppend(list, light->inWorld);
+    }
+
+    if (auto* librwWorld = notsa::fakerw::GetLibrwWorld(world)) {
+        // Refreshes the mirror from the game struct first: the game rotates the light's frame
+        // before adding it, and `lightingCB()` wants the resulting direction.
+        if (auto* librwLight = notsa::fakerw::GetLibrwLight(light)) {
+            if (librwLight->world != librwWorld) {
+                if (librwLight->world) {
+                    librwLight->world->removeLight(librwLight);
+                }
+                librwWorld->addLight(librwLight);
+            }
+        }
+    }
     return world;
 }
 
 RpWorld* RpWorldRemoveLight(RpWorld* world, RpLight* light) {
-    UNUSED(light);
-    notsa::fakerw::Stub("RpWorldRemoveLight");
+    if (!world || !light) {
+        return world;
+    }
+
+    if (light->inWorld.next) {
+        notsa::fakerw::ListRemove(light->inWorld);
+    }
+
+    if (auto* librwWorld = notsa::fakerw::GetLibrwWorld(world)) {
+        if (auto* librwLight = notsa::fakerw::GetLibrwLight(light)) {
+            if (librwLight->world == librwWorld) {
+                librwWorld->removeLight(librwLight);
+            }
+        }
+    }
     return world;
-}
-
-//-----------------------------------------------------------------------------
-// Lights
-//-----------------------------------------------------------------------------
-
-RpLight* RpLightCreate(RwInt32 type) {
-    auto* light = static_cast<RpLight*>(notsa::fakerw::AllocObject(sizeof(RpLight), g_lightPlugins));
-    if (!light) {
-        return nullptr;
-    }
-
-    rwObjectInitialize(&light->object.object, rwID_LIGHT, (RwUInt8)type);
-    light->radius        = 1.0f;
-    light->color         = { 1.0f, 1.0f, 1.0f, 1.0f };
-    light->minusCosAngle = -1.0f;
-    notsa::fakerw::ListInit(light->WorldSectorsInLight);
-
-    g_lightPlugins.Construct(light, sizeof(RpLight));
-    return light;
-}
-
-RwBool RpLightDestroy(RpLight* light) {
-    if (!light) {
-        return FALSE;
-    }
-    if (light->object.object.parent) {
-        _rwObjectHasFrameSetFrame(light, nullptr);
-    }
-    notsa::fakerw::FreeObject(light, sizeof(RpLight), g_lightPlugins);
-    return TRUE;
-}
-
-RpLight* RpLightSetColor(RpLight* light, const RwRGBAReal* color) {
-    if (light && color) {
-        light->color = *color;
-    }
-    return light;
-}
-
-RpLight* RpLightSetRadius(RpLight* light, RwReal radius) {
-    if (light) {
-        light->radius = radius;
-    }
-    return light;
 }
 
 //-----------------------------------------------------------------------------
 // Materials
 //-----------------------------------------------------------------------------
-
-RpMaterial* RpMaterialCreate() {
-    auto* material = static_cast<RpMaterial*>(notsa::fakerw::AllocObject(sizeof(RpMaterial), g_materialPlugins));
-    if (!material) {
-        return nullptr;
-    }
-
-    material->texture      = nullptr;
-    material->color        = { 255, 255, 255, 255 };
-    material->pipeline     = nullptr;
-    material->surfaceProps = { 1.0f, 1.0f, 1.0f };
-    material->refCount     = 0;
-
-    g_materialPlugins.Construct(material, sizeof(RpMaterial));
-    return material;
-}
-
-RwBool RpMaterialDestroy(RpMaterial* material) {
-    if (!material) {
-        return FALSE;
-    }
-
-    if (material->refCount > 0) {
-        material->refCount--;
-        return TRUE;
-    }
-
-    notsa::fakerw::FreeObject(material, sizeof(RpMaterial), g_materialPlugins);
-    return TRUE;
-}
-
-RpMaterial* RpMaterialSetTexture(RpMaterial* material, RwTexture* texture) {
-    if (material) {
-        material->texture = texture;
-    }
-    return material;
-}
+//
+// `RpMaterialCreate/Destroy/SetTexture` and the material list live in `RwDff.cpp` with the
+// stream reader that builds them.
 
 RwInt32 RpMaterialRegisterPlugin(
     RwInt32                   size,
@@ -265,88 +275,9 @@ RwInt32 RpMaterialRegisterPluginStream(
 //-----------------------------------------------------------------------------
 // Geometry
 //-----------------------------------------------------------------------------
-
-RpGeometry* RpGeometryCreate(RwInt32 numVert, RwInt32 numTriangles, RwUInt32 format) {
-    auto* geometry = static_cast<RpGeometry*>(notsa::fakerw::AllocObject(sizeof(RpGeometry), g_geometryPlugins));
-    if (!geometry) {
-        return nullptr;
-    }
-
-    rwObjectInitialize(&geometry->object, rwID_GEOMETRY, 0);
-    geometry->flags          = format;
-    geometry->numVertices    = numVert;
-    geometry->numTriangles   = numTriangles;
-    geometry->numMorphTargets = 1;
-    geometry->refCount       = 0;
-
-    if (numTriangles > 0) {
-        geometry->triangles = static_cast<RpTriangle*>(
-            notsa::fakerw::Malloc(sizeof(RpTriangle) * (size_t)numTriangles)
-        );
-        if (geometry->triangles) {
-            std::memset(geometry->triangles, 0, sizeof(RpTriangle) * (size_t)numTriangles);
-        }
-    }
-
-    geometry->morphTarget = static_cast<RpMorphTarget*>(notsa::fakerw::Malloc(sizeof(RpMorphTarget)));
-    if (geometry->morphTarget) {
-        std::memset(geometry->morphTarget, 0, sizeof(RpMorphTarget));
-        geometry->morphTarget->parentGeom = geometry;
-
-        if (numVert > 0) {
-            geometry->morphTarget->verts = static_cast<RwV3d*>(
-                notsa::fakerw::Malloc(sizeof(RwV3d) * (size_t)numVert)
-            );
-            geometry->morphTarget->normals = static_cast<RwV3d*>(
-                notsa::fakerw::Malloc(sizeof(RwV3d) * (size_t)numVert)
-            );
-            if (geometry->morphTarget->verts) {
-                std::memset(geometry->morphTarget->verts, 0, sizeof(RwV3d) * (size_t)numVert);
-            }
-            if (geometry->morphTarget->normals) {
-                std::memset(geometry->morphTarget->normals, 0, sizeof(RwV3d) * (size_t)numVert);
-            }
-        }
-    }
-
-    g_geometryPlugins.Construct(geometry, sizeof(RpGeometry));
-    return geometry;
-}
-
-RwBool RpGeometryDestroy(RpGeometry* geometry) {
-    if (!geometry) {
-        return FALSE;
-    }
-
-    // The SA pipelines cache GL buffers per geometry; drop them before the struct is freed.
-    notsa::native::sapipelines::ForgetGeometry(geometry);
-
-    // Plugins must be destructed before the storage is released.
-    g_geometryPlugins.Destruct(geometry, sizeof(RpGeometry));
-
-    if (geometry->morphTarget) {
-        notsa::fakerw::Free(geometry->morphTarget->verts);
-        notsa::fakerw::Free(geometry->morphTarget->normals);
-        notsa::fakerw::Free(geometry->morphTarget);
-    }
-    notsa::fakerw::Free(geometry->triangles);
-
-    notsa::fakerw::Free(geometry);
-    return TRUE;
-}
-
-RpGeometry* RpGeometryForAllMaterials(RpGeometry* geometry, RpMaterialCallBack fpCallBack, void* data) {
-    if (!geometry || !fpCallBack) {
-        return geometry;
-    }
-
-    for (RwInt32 i = 0; i < geometry->matList.numMaterials; i++) {
-        if (!fpCallBack(geometry->matList.materials[i], data)) {
-            return nullptr;
-        }
-    }
-    return geometry;
-}
+//
+// `RpGeometryCreate/Destroy` and the rest of the geometry machinery live in `RwDff.cpp` next
+// to the stream reader that fills them.
 
 RwInt32 RpGeometryRegisterPlugin(
     RwInt32                   size,
@@ -377,7 +308,7 @@ RpAtomic* RpAtomicCreate(void) {
         return nullptr;
     }
 
-    rwObjectInitialize(&atomic->object.object, rwID_ATOMIC, 0);
+    rwObjectInitialize(&atomic->object.object, rpATOMIC, 0);
     atomic->object.sync       = nullptr;
     atomic->geometry          = nullptr;
     atomic->clump             = nullptr;
@@ -400,8 +331,9 @@ RwBool RpAtomicDestroy(RpAtomic* atomic) {
     if (atomic->clump) {
         RpClumpRemoveAtomic(atomic->clump, atomic);
     }
-    if (atomic->geometry && atomic->geometry->refCount > 0) {
-        atomic->geometry->refCount--;
+    if (atomic->geometry) {
+        RpGeometryDestroy(atomic->geometry);
+        atomic->geometry = nullptr;
     }
 
     notsa::fakerw::FreeObject(atomic, sizeof(RpAtomic), g_atomicPlugins);
@@ -446,36 +378,24 @@ RwBool RpAtomicInstance(RpAtomic* atomic) {
 }
 
 RpAtomic* RpAtomicSetGeometry(RpAtomic* atomic, RpGeometry* geometry, RwUInt32 flags) {
-    UNUSED(flags);
-    if (atomic) {
-        atomic->geometry = geometry;
-        if (geometry) {
-            geometry->refCount++;
-        }
-    }
-    return atomic;
-}
-
-RpAtomic* RpAtomicClone(RpAtomic* atomic) {
     if (!atomic) {
         return nullptr;
     }
 
-    auto* clone = RpAtomicCreate();
-    if (!clone) {
-        return nullptr;
+    if (atomic->geometry && atomic->geometry != geometry) {
+        RpGeometryDestroy(atomic->geometry);
     }
 
-    clone->geometry       = atomic->geometry;
-    clone->boundingSphere = atomic->boundingSphere;
-    clone->worldBoundingSphere = atomic->worldBoundingSphere;
-    clone->renderCallBack = atomic->renderCallBack;
-    if (clone->geometry) {
-        clone->geometry->refCount++;
-    }
+    atomic->geometry = geometry;
+    if (geometry) {
+        geometry->refCount++;
 
-    g_atomicPlugins.Copy(clone, atomic, sizeof(RpAtomic));
-    return clone;
+        if (!(flags & rpATOMICSAMEBOUNDINGSPHERE) && geometry->morphTarget) {
+            atomic->boundingSphere = geometry->morphTarget[0].boundingSphere;
+            atomic->object.object.privateFlags |= rpATOMICPRIVATEWORLDBOUNDDIRTY;
+        }
+    }
+    return atomic;
 }
 
 RwInt32 RpAtomicRegisterPlugin(
@@ -507,7 +427,7 @@ RpClump* RpClumpCreate(void) {
         return nullptr;
     }
 
-    rwObjectInitialize(&clump->object, rwID_CLUMP, 0);
+    rwObjectInitialize(&clump->object, rpCLUMP, 0);
     notsa::fakerw::ListInit(clump->atomicList);
     notsa::fakerw::ListInit(clump->lightList);
     notsa::fakerw::ListInit(clump->cameraList);
@@ -524,6 +444,13 @@ RwBool RpClumpDestroy(RpClump* clump) {
     while (!notsa::fakerw::ListEmpty(clump->atomicList)) {
         auto* atomic = rwLLLinkGetData(clump->atomicList.link.next, RpAtomic, inClumpLink);
         RpClumpRemoveAtomic(clump, atomic);
+        RpAtomicDestroy(atomic);
+    }
+
+    // The clump owns its frame hierarchy (retail `RpClumpDestroy`, 0x74A310).
+    if (auto* frame = static_cast<RwFrame*>(clump->object.parent)) {
+        clump->object.parent = nullptr;
+        RwFrameDestroyHierarchy(frame);
     }
 
     notsa::fakerw::FreeObject(clump, sizeof(RpClump), g_clumpPlugins);

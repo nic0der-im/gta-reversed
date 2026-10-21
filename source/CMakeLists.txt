@@ -133,6 +133,9 @@ if (${RE_PROJECT}_NATIVE)
     # (`this->Class::Class()` constructor calls in the hook wrappers, typed anonymous unions, ...)
     target_compile_options(${RE_PROJECT_LIB_NAME} PRIVATE
         "$<$<OR:$<CXX_COMPILER_ID:AppleClang,Clang,GCC>,$<CXX_COMPILER_ID:GNU>>:-fms-extensions;-Wno-microsoft-explicit-constructor-call;-Wno-microsoft-anon-tag;-Wno-ignored-attributes>"
+        # No debug info: the crash handler's backtrace resolves through the symbol table,
+        # and full `-g` at `-O3` doubled the build time of every wave.
+        "$<$<OR:$<CXX_COMPILER_ID:AppleClang,Clang,GCC>,$<CXX_COMPILER_ID:GNU>>:-g0>"
     )
 endif()
 

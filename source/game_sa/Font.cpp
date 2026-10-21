@@ -746,7 +746,12 @@ void CFont::DrawFonts() {
 // 0x719B40
 // Queues a `[start, end)` range of `text` to be laid out at (x, y) - `RenderFontBuffer` draws it later
 static void QueueString(float x, float y, GxtChar* start, GxtChar* end, float spacing) {
+#ifdef NOTSA_NATIVE
+    // TODO(re): 0x719B40 queues glyphs into `FontRenderStateBuf`; until it is reversed, text is not drawn.
+    (void)(x), (void)(y), (void)(start), (void)(end), (void)(spacing);
+#else
     plugin::Call<0x719B40, float, float, GxtChar*, GxtChar*, float>(x, y, start, end, spacing);
+#endif
 }
 
 // 0x71A220

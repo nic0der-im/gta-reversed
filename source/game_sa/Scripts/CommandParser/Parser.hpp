@@ -5,6 +5,10 @@
 #include "ReadArg.hpp"
 #include "RunningScript.h"
 
+#ifdef NOTSA_NATIVE
+#include "app/platform/native/Unreversed.h"
+#endif
+
 #ifdef NOTSA_WITH_SCRIPT_COMMAND_HOOKS
 #include <reversiblehooks/ReversibleHook/ScriptCommandHook.h>
 #endif
@@ -67,8 +71,13 @@ inline OpcodeResult CollectArgsAndCall(CRunningScript* S, eScriptCommands comman
 //! If this ever gets called, that means that the command is used after all, and shouldn't be hooked as unimplemented.
 inline auto NotImplemented(CRunningScript& S, eScriptCommands cmd) {
     NOTSA_LOG_DEBUG("[{}][IP: {:#x} + {:#x}]: Unimplemented command has been called! [ID: {:04X}; Name: {}]", S.m_szName, LOG_PTR(S.m_BaseIP), LOG_PTR(S.m_IP - S.m_BaseIP), (unsigned)(cmd), GetScriptCommandName(cmd));
+#ifdef NOTSA_NATIVE
+    // There's no executable to fall back to: report the missing handler and abort
+    notsa::native::UnreversedScriptCommand((uint16_t)(cmd), GetScriptCommandName(cmd).data());
+#else
     NOTSA_DEBUGBREAK(); // Something went horribly wrong here, and the game will crash after this [if the function is supposed to take/return any arguments], so better stop here.
     return OR_INTERRUPT; // Vanilla SA behavior
+#endif
 }
 
 template<eScriptCommands Command, auto* CommandFn>

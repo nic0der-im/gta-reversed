@@ -24,14 +24,6 @@
 //!   * `RwTexDictionaryFindNamedTexture` — `0x7F39F0`
 //!   * `RwTextureStreamRead` — `0x8046E0`
 
-namespace notsa::fakerw {
-
-//! Absolute/relative stream movement, used by the librw bridge below. Defined in `RwStream.cpp`
-//! because only that file knows the stream layout.
-RwBool SeekRwStream(RwStream* stream, int32 offset, int32 whence);
-
-} // namespace notsa::fakerw
-
 namespace {
 
 namespace fakerw = notsa::fakerw;

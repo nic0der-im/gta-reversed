@@ -10,7 +10,36 @@
 
 // 0x5DD100 (todo: move)
 static void AtomicCreatePrelitIfNeeded(RpAtomic* atomic) {
-    plugin::Call<0x5DD100, RpAtomic*>(atomic);
+    auto* const src = atomic->geometry;
+    if (src->flags & rpGEOMETRYPRELIT) {
+        return;
+    }
+
+    const auto numVertices  = src->numVertices;
+    const auto numTriangles = src->numTriangles;
+
+    auto* const dst = RpGeometryCreate(
+        numVertices,
+        numTriangles,
+        rpGEOMETRYTRISTRIP | rpGEOMETRYTEXTURED | rpGEOMETRYPRELIT
+    );
+
+    std::memcpy(dst->morphTarget->verts, src->morphTarget->verts, sizeof(RwV3d)      * (size_t)numVertices);
+    std::memcpy(dst->texCoords[0],      src->texCoords[0],      sizeof(RwTexCoords) * (size_t)numVertices);
+    std::memcpy(dst->triangles,         src->triangles,         sizeof(RpTriangle)  * (size_t)numTriangles);
+
+    // Rebuild the destination's material list (A fresh geometry has none)
+    for (auto i = 0; i < numTriangles; i++) {
+        RpGeometryTriangleSetMaterial(
+            dst,
+            &dst->triangles[i],
+            RpGeometryTriangleGetMaterial(src, &src->triangles[i])
+        );
+    }
+
+    RpGeometryUnlock(dst);
+    dst->flags |= rpGEOMETRYPOSITIONS;
+    RpAtomicSetGeometry(atomic, dst, rpATOMICSAMEBOUNDINGSPHERE);
 }
 
 // 0x5DD1E0 (do not hook! it has retarded calling conv)
