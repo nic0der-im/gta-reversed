@@ -8,8 +8,12 @@ namespace notsa::native {
 * @brief Backing storage for the game executable's globals in the native build.
 *
 * Every `StaticRef` in the native build gets zero-initialized storage from here, mimicking
-* the executable's `.bss` before its CRT static initialization runs. The real initializers
-* are implemented separately (`RunExeStaticInitializers`).
+* the executable's `.data` section before its CRT static initialization runs. The real
+* initializers are implemented separately, by `ApplyExeData()`.
+*
+* Storage is reserved per requested address, as before. An initializer write may reserve more
+* than a later `StaticRef` type asks for (the buffer then grows, keeping its contents), and
+* `ReportOverlaps` lists the addresses where several types alias the same executable data.
 */
 struct ExeGlobals {
     /*!
@@ -20,6 +24,21 @@ struct ExeGlobals {
     * @return Zero-initialized storage of at least `size` bytes.
     */
     static void* Get(uintptr_t addr, size_t size, size_t align);
+
+    /*!
+    * @brief Make sure at least `size` bytes at `addr` are reserved and return them.
+    */
+    static void* Ensure(uintptr_t addr, size_t size);
+
+    /*!
+    * @brief Copy `size` bytes of `data` into the executable global at `addr`.
+    */
+    static void Write(uintptr_t addr, const void* data, size_t size);
+
+    /*!
+    * @brief Zero `size` bytes at `addr`.
+    */
+    static void ZeroFill(uintptr_t addr, size_t size);
 
     /*!
     * @brief Log a warning for every pair of allocated globals whose `[addr, addr + size)` ranges overlap.

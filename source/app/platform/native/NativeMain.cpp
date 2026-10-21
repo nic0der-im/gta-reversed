@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <string>
 
+#include "app/platform/native/ExeData.generated.h"
 #include "app/platform/native/ExeGlobals.h"
 #include "app/platform/native/NativePath.h"
 #include "app/platform/native/VideoPlayerNative.h"
@@ -294,6 +295,7 @@ int32 NativeMain(int argc, char** argv) {
     notsa::ScopeGuard cleanupLogging{ [] { notsa::Logging::DestroyInstance(); } };
 
     notsa::native::ExeGlobals::ReportOverlaps();
+    notsa::native::ApplyExeData(); // Replays the executable's CRT static initializers
 
     // 4. Neutral part of `NOTSA_WinMain`.
     if (rsEVENTERROR == RsEventHandler(rsINITIALIZE, nullptr)) {
