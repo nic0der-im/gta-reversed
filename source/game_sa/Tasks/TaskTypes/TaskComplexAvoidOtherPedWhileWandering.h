@@ -46,6 +46,9 @@ public:
 
     auto GetPedToAvoid() const { return m_PedToAvoid; }
 
+    // NOTSA
+    void SetWantsToQuit() { m_WantsToQuit = true; }
+
 private:
     friend void InjectHooksMain();
     static void InjectHooks();

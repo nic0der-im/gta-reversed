@@ -32,12 +32,12 @@ public:
     std::array<CVector, NUM_ROPE_SEGMENTS> m_aSpeed;
     uint32     m_nId; // Id of the object this rope was registered for (see `CRopes::RegisterRope`)
     float      m_fGroundZ;
-    float      m_fMass;
-    float      m_fTotalLength;
+    float      m_fRopeLength;     // Total length of the rope (10/20/50/68 - see `CRopes::RegisterRope`)
+    float      m_fSegmentLength;  // Length of one segment (`m_fRopeLength / (NUM_ROPE_SEGMENTS - 1)`)
     CEntity*   m_pRopeHolder;
     CEntity*   m_pAttachedEntity;
     CEntity*   m_pRopeAttachObject;
-    float      m_fSegmentLength;
+    float      m_fLengthFraction; // Fraction of the rope's length that is in use, clamped to [0.01, 0.9]
     uint32     m_nTime;
     uint8      m_nSegments;
     eRopeType  m_nType;
@@ -50,7 +50,7 @@ public:
     void ReleasePickedUpObject();
     bool DoControlsApply() const;
     void CreateHookObjectForRope();
-    int8 UpdateWeightInRope(float a2, float a3, float a4, int32 a5, float* a6);
+    int8 UpdateWeightInRope(float x, float y, float z, int32 a5, float* out);
     void Remove();
     void Render();
     void PickUpObject(CEntity* obj);

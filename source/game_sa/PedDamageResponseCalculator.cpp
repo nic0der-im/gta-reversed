@@ -2,13 +2,14 @@
 
 #include <reversiblebugfixes/Bugs.hpp>
 #include "PedDamageResponseCalculator.h"
+#include "PedStats.h"
 
 void CPedDamageResponseCalculator::InjectHooks() {
     RH_ScopedClass(CPedDamageResponseCalculator);
     RH_ScopedCategoryGlobal();
 
     RH_ScopedInstall(Constructor, 0x4AD3F0);
-    RH_ScopedInstall(AccountForPedDamageStats, 0x4AD430, { .Reversed = false });
+    RH_ScopedInstall(AccountForPedDamageStats, 0x4AD430);
     RH_ScopedInstall(AccountForPedArmour, 0x4AD550, { .Reversed = false });
     RH_ScopedInstall(ComputeWillForceDeath, 0x4AD610, { .Reversed = false });
     RH_ScopedInstall(ComputeWillKillPed, 0x4B3210);
@@ -33,11 +34,79 @@ CPedDamageResponseCalculator* CPedDamageResponseCalculator::Constructor(CEntity*
 /*!
  *
  * @param ped
- * @param response
+ * @param response Not used.
  * @addr 0x4AD430
  */
 void CPedDamageResponseCalculator::AccountForPedDamageStats(CPed* ped, CPedDamageResponse& response) {
-    plugin::CallMethod<0x4AD430, CPedDamageResponseCalculator*, CPed*, CPedDamageResponse&>(this, ped, response);
+    UNUSED(response);
+
+#ifdef FIX_BUGS
+    if (!ped) { // Original would fault on `ped->IsPlayer()`
+        return;
+    }
+#endif
+
+    //! Whether the damage factor is the one published by the stealth kill task (See `CTaskSimpleStealthKill::ManageAnim`)
+    const bool isStealthKillFactor = m_fDamageFactor == ms_damageFactor;
+
+    if (ped->IsPlayer()) {
+        m_fDamageFactor *= 0.33f;
+    } else {
+        m_fDamageFactor *= ped->m_pStats->m_fDefendWeakness;
+    }
+
+    // Note: Argument order matters for NaN (The original compares `12.5 < dmg`, so a NaN damage factor is kept as-is)
+    const auto ScaleDamageFactor = [this] {
+        m_fDamageFactor = std::min(m_fDamageFactor * 0.1f, 12.5f);
+    };
+
+    // Hit by a player ped
+    if (m_pDamager
+        && m_pDamager->GetIsTypePed()
+        && m_pDamager->AsPed()->IsPlayer()
+    ) {
+        if (!CPedGroups::AreInSameGroup(ped, m_pDamager->AsPed())) {
+            return;
+        }
+        if (m_weaponType == WEAPON_EXPLOSION) {
+            return;
+        }
+        if (m_weaponType == WEAPON_FLAMETHROWER) {
+            return;
+        }
+        if (isStealthKillFactor) {
+            return;
+        }
+        ScaleDamageFactor();
+        return;
+    }
+
+    // Player hit by someone who is friendly with them
+    if (ped->IsPlayer()) {
+        if (!m_pDamager) {
+            return;
+        }
+        if (m_pDamager->GetIsTypePed() && CPedIntelligence::AreFriends(*ped, *m_pDamager->AsPed())) {
+            ScaleDamageFactor();
+            return;
+        }
+    }
+
+    // Mission ped hit by another ped
+    if (!m_pDamager || !m_pDamager->GetIsTypePed()) {
+        return;
+    }
+    if (!ped->IsCreatedBy(PED_MISSION)) {
+        return;
+    }
+    if (!CPedGroups::AreInSameGroup(ped, m_pDamager->AsPed())) {
+        return;
+    }
+    if (m_weaponType == WEAPON_EXPLOSION || m_weaponType == WEAPON_FLAMETHROWER) {
+        return;
+    }
+
+    ScaleDamageFactor();
 }
 
 /*!

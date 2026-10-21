@@ -708,13 +708,13 @@ void CObject::SetRemapTexture(RwTexture* remapTexture, int16 txdIndex) {
 // 0x59F380
 float CObject::GetRopeHeight() {
     const auto ropeIndex = CRopes::FindRope(notsa::PtrToId(this));
-    return CRopes::GetRope(ropeIndex).m_fSegmentLength;
+    return CRopes::GetRope(ropeIndex).m_fLengthFraction;
 }
 
 // 0x59F3A0
 void CObject::SetRopeHeight(float height) {
     const auto ropeIndex = CRopes::FindRope(notsa::PtrToId(this));
-    CRopes::GetRope(ropeIndex).m_fSegmentLength = height;
+    CRopes::GetRope(ropeIndex).m_fLengthFraction = height;
 }
 
 // 0x59F3C0
@@ -1382,8 +1382,8 @@ void CObject::ProcessControlLogic() {
         auto fRopeLengthChange = 0.0F;
         if (iRopeInd >= 0) {
             auto& rope = CRopes::GetRope(iRopeInd);
-            nSegments = static_cast<uint8>(rope.m_fSegmentLength * 32.0F);
-            fRopeLengthChange = rope.m_fMass * rope.m_fSegmentLength - static_cast<float>(nSegments) * rope.m_fTotalLength;
+            nSegments = static_cast<uint8>(rope.m_fLengthFraction * 32.0F);
+            fRopeLengthChange = rope.m_fRopeLength * rope.m_fLengthFraction - static_cast<float>(nSegments) * rope.m_fSegmentLength;
         }
 
         if (m_nModelIndex == ModelIndices::MI_MAGNOCRANE) {

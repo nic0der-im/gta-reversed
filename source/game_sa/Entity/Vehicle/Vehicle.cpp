@@ -215,8 +215,8 @@ void CVehicle::InjectHooks() {
     // RH_ScopedInstall(GetPlaneWeaponFiringStatus, 0x6E3440);
     // RH_ScopedInstall(ProcessWeapons, 0x6E3950);
     RH_ScopedInstall(DoFixedMachineGuns, 0x73F400);
-    RH_ScopedInstall(FireFixedMachineGuns, 0x73DF00, { .Reversed = false });
-    RH_ScopedInstall(DoDriveByShootings, 0x741FD0, { .Reversed = false });
+    RH_ScopedInstall(FireFixedMachineGuns, 0x73DF00);
+    RH_ScopedInstall(DoDriveByShootings, 0x741FD0);
     RH_ScopedInstall(ReleasePickedUpEntityWithWinch, 0x6D3CB0);
     RH_ScopedInstall(PickUpEntityWithWinch, 0x6D3CD0);
     RH_ScopedInstall(QueryPickedUpEntityWithWinch, 0x6D3CF0);
@@ -229,7 +229,7 @@ void CVehicle::InjectHooks() {
     RH_ScopedGlobalInstall(IsVehiclePointerValid, 0x6E38F0);
     // RH_ScopedGlobalInstall(RemoveUpgradeCB, 0x6D3300);
     // RH_ScopedGlobalInstall(FindUpgradeCB, 0x6D3370);
-    RH_ScopedGlobalOverloadedInstall(RemoveObjectsCB, "Object", 0x6D33B0, RwObject*(*)(RwObject*, void*), { .Reversed = false });
+    RH_ScopedGlobalOverloadedInstall(RemoveObjectsCB, "Object", 0x6D33B0, RwObject*(*)(RwObject*, void*));
     RH_ScopedGlobalOverloadedInstall(RemoveObjectsCB, "Frame", 0x6D3420, RwFrame*(*)(RwFrame*, void*));
     RH_ScopedGlobalInstall(CopyObjectsCB, 0x6D3450);
     // RH_ScopedGlobalInstall(FindReplacementUpgradeCB, 0x6D3490);
@@ -2285,7 +2285,34 @@ RpAtomic* FindUpgradeCB(RpAtomic* atomic, void* data) {
 
 // 0x6D33B0
 RwObject* RemoveObjectsCB(RwObject* object, void* data) {
-    return plugin::CallAndReturn<RwObject *, 0x6D33B0, RwObject*, void*>(object, data);
+    if (RwObjectGetType(object) != rpATOMIC) {
+        return object;
+    }
+
+    const auto atomic = reinterpret_cast<RpAtomic*>(object);
+    const auto id     = CVisibilityPlugins::GetAtomicId(atomic);
+
+    *static_cast<uint32*>(data) = static_cast<uint32>(id);
+
+    if (id & eAtomicComponentFlag::ATOMIC_UPGRADE) {
+        return object;
+    }
+
+    auto* const mi    = CVisibilityPlugins::GetModelInfo(atomic);
+    auto* const frame = RpAtomicGetFrame(atomic);
+
+    RpClumpRemoveAtomic(atomic->clump, atomic);
+    RpAtomicDestroy(atomic);
+
+    if (!CVisibilityPlugins::GetFrameHierarchyId(frame)) {
+        RwFrameDestroy(frame);
+    }
+
+    if (mi) {
+        mi->RemoveRef();
+    }
+
+    return object;
 }
 
 // 0x6D3420
@@ -2528,8 +2555,8 @@ void CVehicle::UpdateWinch() {
         const auto baseLen = (eRopeType)m_ropeType == eRopeType::MAGNET ? -0.2f : -0.6f;
         if (const auto ropeIdx = CRopes::FindRope(ropeID); ropeIdx >= 0) { // Inverted condition
             const auto& rope = CRopes::GetRope(ropeIdx);
-            const auto segCount = (uint32)(rope.m_fSegmentLength * 32.f);
-            return { (rope.m_fMass * rope.m_fSegmentLength) - ((float)segCount * rope.m_fTotalLength) + baseLen, segCount };
+            const auto segCount = (uint32)(rope.m_fLengthFraction * 32.f);
+            return { (rope.m_fRopeLength * rope.m_fLengthFraction) - ((float)segCount * rope.m_fSegmentLength) + baseLen, segCount };
         }
         return { baseLen, 0 };
     };
@@ -2597,12 +2624,12 @@ CEntity* CVehicle::QueryPickedUpEntityWithWinch() const {
 
 // 0x6D3D10
 float CVehicle::GetRopeHeightForHeli() const {
-    return CRopes::GetRope(GetRopeID()).m_fSegmentLength;
+    return CRopes::GetRope(GetRopeID()).m_fLengthFraction;
 }
 
 // 0x6D3D30
 void CVehicle::SetRopeHeightForHeli(float height) const {
-    CRopes::GetRope(GetRopeID()).m_fSegmentLength = height;
+    CRopes::GetRope(GetRopeID()).m_fLengthFraction = height;
 }
 
 // 0x6D3D60
@@ -5483,12 +5510,166 @@ void CVehicle::DoFixedMachineGuns() {
 
 // 0x73DF00
 void CVehicle::FireFixedMachineGuns() {
-    plugin::CallMethod<0x73DF00, CVehicle*>(this);
+    const auto now = CTimer::GetTimeInMS();
+    if (now <= m_nGunFiringTime + 150) {
+        return;
+    }
+
+    // The guns fire horizontally along the vehicle's forward direction
+    const auto& forward = m_matrix->GetForward();
+    const auto  len     = std::sqrt(forward.x * forward.x + forward.y * forward.y);
+    const auto  invLen  = 1.0f / (len < 0.1f ? 0.1f : len);
+
+    const CVector dir = {
+        forward.x * invLen * 60.0f,
+        forward.y * invLen * 60.0f,
+        0.0f
+    };
+
+    m_nGunFiringTime = now;
+
+    const auto FireGun = [&](float muzzleSideOffset) {
+        CVector start = m_matrix->TransformPoint({ muzzleSideOffset, 2.5f, 1.0f });
+        CVector end   = { start.x + dir.x, start.y + dir.y, start.z };
+
+        end.x += (float)((rand() & 0xFF) - 0x80) * 0.015f;
+        end.y += (float)((rand() & 0xFF) - 0x80) * 0.015f;
+        end.z += (float)((rand() & 0xFF) - 0x80) * 0.02f;
+
+        CWeapon::DoTankDoomAiming(this, m_pDriver, &start, &end);
+        FireOneInstantHitRound(start, end, 15);
+    };
+    FireGun(2.0f);
+    FireGun(-2.0f);
+
+    AudioEngine.ReportWeaponEvent(AE_WEAPON_FIRE_PLANE, WEAPON_M4, this);
+
+    if (--m_nAmmoInClip == 0) {
+        m_nAmmoInClip    = 20;
+        m_nGunFiringTime = CTimer::GetTimeInMS() + 1400;
+    }
 }
 
 // 0x741FD0
 void CVehicle::DoDriveByShootings() {
-    plugin::CallMethod<0x741FD0, CVehicle*>(this);
+    CPed* const driver = m_pDriver;
+    if (!driver || !driver->IsPlayer()) {
+        return;
+    }
+
+    const auto pinfo = driver->AsPlayer()->GetPlayerInfoForThisPlayerPed();
+    if (!pinfo || !pinfo->m_bCanDoDriveBy) {
+        return;
+    }
+
+    CPad* const pad = driver->AsPlayer()->GetPadFromPlayer();
+    if (!pad) {
+        return;
+    }
+
+    auto& weapon = driver->GetWeaponInSlot(driver->m_nActiveWeaponSlot);
+    const auto* const wInfo = CWeaponInfo::GetWeaponInfo(weapon.GetType(), eWeaponSkill::STD);
+    if (wInfo->m_nSlot != (int32)eWeaponSlot::SMG) {
+        return;
+    }
+
+    const bool bCarGunFired = m_nVehicleType == VEHICLE_TYPE_BMX
+        ? pad->GetCarGunFired() == 1
+        : pad->GetCarGunFired() != 0;
+
+    const auto rideData = GetRideAnimData();
+    const bool bOnBike  = rideData != nullptr;
+
+    auto group = ANIM_GROUP_DEFAULT;
+    AnimationId animLookLeft{}, animLookRight{}, animLookFwd{};
+    if (bOnBike) {
+        group         = rideData->AnimGroup;
+        animLookLeft  = ANIM_ID_BIKE_DRIVEBYLHS;
+        animLookRight = ANIM_ID_BIKE_DRIVEBYRHS;
+        animLookFwd   = ANIM_ID_BIKE_DRIVEBYFT;
+    } else {
+        animLookFwd = ANIM_ID_NO_ANIMATION_SET; // Unused, only the bike has a "look forward" anim
+        if (vehicleFlags.bLowVehicle) {
+            animLookLeft  = ANIM_ID_DRIVEBYL_L;
+            animLookRight = ANIM_ID_DRIVEBYL_R;
+        } else {
+            animLookLeft  = ANIM_ID_DRIVEBY_L;
+            animLookRight = ANIM_ID_DRIVEBY_R;
+        }
+    }
+
+    weapon.Update(nullptr);
+
+    const auto& cam = CCamera::GetActiveCamera();
+    const bool  bUsePadLook = cam.m_nMode == MODE_TOPDOWN
+        || TheCamera.m_bObbeCinematicCarCamOn
+        || cam.m_nMode == MODE_TWOPLAYER_IN_CAR_AND_SHOOTING;
+
+    const bool bLookLeft  = bUsePadLook ? pad->GetLookLeft()  : cam.m_bLookingLeft;
+    const bool bLookRight = bUsePadLook ? pad->GetLookRight() : cam.m_bLookingRight;
+
+    const auto StopAnim = [](RpClump* clump, AnimationId animId) {
+        if (auto* const assoc = RpAnimBlendClumpGetAssociation(clump, animId)) {
+            assoc->m_BlendDelta = -8.0f;
+        }
+    };
+
+    // Can't (or doesn't want to) shoot - Go back to the normal driving pose
+    const auto Relax = [&] {
+        if (weapon.m_TotalAmmo != 0) {
+            weapon.m_AmmoInClip = std::min<uint32>(weapon.m_TotalAmmo, wInfo->m_nAmmoClip);
+        }
+        StopAnim(driver->GetRpClump(), animLookLeft);
+        StopAnim(driver->GetRpClump(), animLookRight);
+        if (bOnBike) {
+            StopAnim(driver->GetRpClump(), animLookFwd);
+        }
+    };
+
+    if (bOnBike ? !bCarGunFired : (!bLookLeft && !bLookRight)) {
+        Relax();
+        return;
+    }
+
+    if (weapon.m_TotalAmmo < 1) {
+        Relax();
+        return;
+    }
+
+    const auto BlendLookAnim = [&](AnimationId animId) {
+        auto* const assoc = RpAnimBlendClumpGetAssociation(driver->GetRpClump(), animId);
+        if (!assoc || assoc->m_BlendDelta < 0.0f) {
+            return CAnimManager::BlendAnimation(driver->GetRpClump(), group, animId, 16.0f);
+        }
+        return assoc;
+    };
+
+    CAnimBlendAssociation* assoc{};
+    if (bLookLeft) {
+        assoc = BlendLookAnim(animLookLeft);
+    } else if (bLookRight) {
+        assoc = BlendLookAnim(animLookRight);
+    } else if (bOnBike) {
+        assoc = BlendLookAnim(animLookFwd);
+    }
+
+    if (assoc) {
+        if (assoc->IsPlaying()) {
+            return;
+        }
+        if (assoc->m_BlendAmount <= 0.99f) {
+            return;
+        }
+    }
+
+    if (!bCarGunFired || CTimer::GetTimeInMS() <= weapon.m_TimeForNextShotMs) {
+        return;
+    }
+
+    weapon.FireFromCar(this, bLookLeft, bLookRight);
+    weapon.m_TimeForNextShotMs = CTimer::GetTimeInMS() + 70;
+
+    driver->DoGunFlash(250, false);
 }
 
 // NOTSA

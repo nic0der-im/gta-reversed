@@ -16,7 +16,7 @@ enum eBmxNodes {
     BMX_FORKS_REAR  = 3,
     BMX_WHEEL_FRONT = 4,
     BMX_WHEEL_REAR  = 5,
-    BMX_HANDLEBARS  = 6,
+    BMX_MUDGUARD    = 6,
     BMX_CHAINSET    = 7,
     BMX_PEDAL_R     = 8,
     BMX_PEDAL_L     = 9,

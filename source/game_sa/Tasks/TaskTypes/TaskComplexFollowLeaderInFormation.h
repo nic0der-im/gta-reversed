@@ -31,7 +31,10 @@ public:
     CTask*    Clone() const override { return new CTaskComplexFollowLeaderInFormation{*this}; }
     CTask*    CreateNextSubTask(CPed* ped) override;
     CTask*    CreateFirstSubTask(CPed* ped) override;
-    CTask*    ControlSubTask(CPed* ped) override;
+    CTask* ControlSubTask(CPed* ped) override;
+
+    // NOTSA
+    CPed* GetLeader() const { return m_Leader; }
 
 private:
     friend void InjectHooksMain();
