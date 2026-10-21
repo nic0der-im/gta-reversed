@@ -694,7 +694,7 @@ bool CCam::GetBoatHandlingCamHeight(float* outCamHeight) {
     }
 
     const auto* boatHandling = gHandlingDataMgr.GetBoatPointer(
-        CModelInfo::GetVehicleModelInfo(m_pCamTargetEntity->m_nModelIndex)->m_nHandlingId
+        static_cast<uint8>(CModelInfo::GetVehicleModelInfo(m_pCamTargetEntity->m_nModelIndex)->m_nHandlingId)
     );
     if (!boatHandling) {
         return false;
