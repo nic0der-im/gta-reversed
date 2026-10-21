@@ -935,8 +935,13 @@ OpcodeResult CRunningScript::Process() {
     return OR_CONTINUE;
 }
 
+uint32 CRunningScript::GetHighlightMarkerId() const {
+    return static_cast<uint32>(CTheScripts::GetScriptIndexFromPointer(const_cast<CRunningScript*>(this)) * CTheScripts::SCRIPT_SPACE_SIZE)
+         + static_cast<uint32>(m_IP - CTheScripts::ScriptSpace.data());
+}
+
 void CRunningScript::HighlightImportantArea(CVector2D from, CVector2D to, float z) {
-    CTheScripts::HighlightImportantArea(reinterpret_cast<int32>(this) + reinterpret_cast<int32>(m_IP), from.x, from.y, to.x, to.y, z);
+    CTheScripts::HighlightImportantArea(GetHighlightMarkerId(), from.x, from.y, to.x, to.y, z);
 }
 
 void CRunningScript::HighlightImportantArea(CRect area, float z) {
@@ -960,4 +965,93 @@ void CRunningScript::ResetIP() {
     do {
         m_IP = std::exchange(m_IPStack[m_StackDepth--], nullptr); // NOTSA: Also clear the stack, we don't need it anymore
     } while (m_StackDepth);
+}
+
+//! Address `CTheScripts::ScriptSpace` has in the original (32 bit) game - Pointers into it are stored in save games relative to it
+static constexpr uint32 s_ScriptSpaceSaveAddr = 0xA49960;
+
+//! Address `ScriptsArray` (The array all running scripts live in) has in the original (32 bit) game
+static constexpr uint32 s_ScriptsArraySaveAddr = 0xA8B430;
+
+//! Convert a pointer into the script space to the address stored in save games
+static uint32 ToSaveGameAddr(const uint8* p) {
+    if (!p) {
+        return 0;
+    }
+    VERIFY(CTheScripts::ScriptSpace.data() <= p && p < CTheScripts::ScriptSpace.data() + CTheScripts::SCRIPT_SPACE_SIZE);
+    return s_ScriptSpaceSaveAddr + static_cast<uint32>(p - CTheScripts::ScriptSpace.data());
+}
+
+//! Convert an address loaded from a save game to a pointer into our script space
+static uint8* FromSaveGameAddr(uint32 addr) {
+    if (!addr) {
+        return nullptr;
+    }
+    VERIFY(addr >= s_ScriptSpaceSaveAddr && addr < s_ScriptSpaceSaveAddr + CTheScripts::SCRIPT_SPACE_SIZE);
+    return &CTheScripts::ScriptSpace[addr - s_ScriptSpaceSaveAddr];
+}
+
+//! Convert a pointer to a script in `ScriptsArray` to the address stored in save games
+static uint32 ToSaveGameScriptAddr(const CRunningScript* script) {
+    if (!script) {
+        return 0;
+    }
+    return s_ScriptsArraySaveAddr + static_cast<uint32>(CTheScripts::GetScriptIndexFromPointer(const_cast<CRunningScript*>(script)) * sizeof(CRunningScriptSave32));
+}
+
+void CRunningScriptSave32::Construct(const CRunningScript& script) {
+    // NOTE: These are not read back on load (The script list is re-linked from the live scripts),
+    //       but they're still written (as the original game did) so the saved image stays the same
+    m_pNext = ToSaveGameScriptAddr(script.m_pNext);
+    m_pPrev = ToSaveGameScriptAddr(script.m_pPrev);
+
+    rng::copy(script.m_szName, m_szName);
+
+    m_BaseIP = ToSaveGameAddr(script.m_BaseIP);
+    m_IP     = ToSaveGameAddr(script.m_IP);
+    rng::transform(script.m_IPStack, m_IPStack, ToSaveGameAddr);
+
+    m_StackDepth = script.m_StackDepth;
+    rng::copy(script.m_LocalVars, m_LocalVars);
+
+    m_IsActive                        = script.m_IsActive;
+    m_CondResult                      = script.m_CondResult;
+    m_UsesMissionCleanup              = script.m_UsesMissionCleanup;
+    m_IsExternal                      = script.m_IsExternal;
+    m_IsTextBlockOverride             = script.m_IsTextBlockOverride;
+    m_ExternalType                    = script.m_ExternalType;
+    m_WakeTime                        = script.m_WakeTime;
+    m_AndOrState                      = script.m_AndOrState;
+    m_NotFlag                         = script.m_NotFlag;
+    m_IsDeathArrestCheckEnabled       = script.m_IsDeathArrestCheckEnabled;
+    m_DoneDeathArrest                 = script.m_DoneDeathArrest;
+    m_SceneSkipIP                     = script.m_SceneSkipIP;
+    m_ThisMustBeTheOnlyMissionRunning = script.m_ThisMustBeTheOnlyMissionRunning;
+}
+
+void CRunningScriptSave32::Extract(CRunningScript& script) const {
+    // NOTE: `script.m_pNext` and `script.m_pPrev` are intentionally left as they are
+
+    rng::copy(m_szName, script.m_szName);
+
+    script.m_BaseIP = FromSaveGameAddr(m_BaseIP);
+    script.m_IP     = FromSaveGameAddr(m_IP);
+    rng::transform(m_IPStack, script.m_IPStack.begin(), FromSaveGameAddr);
+
+    script.m_StackDepth = m_StackDepth;
+    rng::copy(m_LocalVars, script.m_LocalVars.begin());
+
+    script.m_IsActive                        = m_IsActive;
+    script.m_CondResult                      = m_CondResult;
+    script.m_UsesMissionCleanup              = m_UsesMissionCleanup;
+    script.m_IsExternal                      = m_IsExternal;
+    script.m_IsTextBlockOverride             = m_IsTextBlockOverride;
+    script.m_ExternalType                    = m_ExternalType;
+    script.m_WakeTime                        = m_WakeTime;
+    script.m_AndOrState                      = m_AndOrState;
+    script.m_NotFlag                         = m_NotFlag;
+    script.m_IsDeathArrestCheckEnabled       = m_IsDeathArrestCheckEnabled;
+    script.m_DoneDeathArrest                 = m_DoneDeathArrest;
+    script.m_SceneSkipIP                     = m_SceneSkipIP;
+    script.m_ThisMustBeTheOnlyMissionRunning = m_ThisMustBeTheOnlyMissionRunning;
 }

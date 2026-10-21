@@ -11,6 +11,7 @@
 #include "ClothesBuilder.h"
 #include "PedClothesDesc.h"
 
+// 0xBC1C78 - exe: `CPedClothesDesc`, 0x78 bytes (zeroed by initializer 0x84FF30 as 40 + 72 + 4 + 4)
 auto& PlayerClothes = StaticRef<CPedClothesDesc>(0xBC1C78);
 
 void CClothes::InjectHooks() {

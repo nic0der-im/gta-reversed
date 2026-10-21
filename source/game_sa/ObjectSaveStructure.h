@@ -39,4 +39,8 @@ public:
     void Construct(CObject* obj);
     void Extract(CObject* obj);
 };
-VALIDATE_SIZE(CObjectSaveStructure, 0x30);
+//! Nested element of the save structure - Must keep its 32 bit layout in every build too
+VALIDATE_SIZE_ALWAYS(CCompressedMatrixNotAligned, 20);
+
+//! Written verbatim into the save file - Must keep this exact layout on 64 bit builds too
+VALIDATE_SIZE_ALWAYS(CObjectSaveStructure, 0x30);

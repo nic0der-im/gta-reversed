@@ -670,7 +670,7 @@ bool CCutsceneMgr::LoadCutSceneFile(const char* csFileName) {
 
             int32 startTime, duration;
             auto& gxtEntry = ms_cTextOutput[numTxt];
-            VERIFY(sscanf_s(ln, "%d %d %s", &startTime, &duration, gxtEntry, std::size(gxtEntry)) == 3);
+            VERIFY(sscanf_s(ln, "%d %d %s", &startTime, &duration, SCANF_S_STR(gxtEntry)) == 3);
             _strupr_s(gxtEntry);
 
             ms_iTextStartTime[numTxt] = startTime;
@@ -692,7 +692,7 @@ bool CCutsceneMgr::LoadCutSceneFile(const char* csFileName) {
         case REMOVE: { // 0x5B0DBA
             auto& cr = ms_crToHideItems[ms_iNumHiddenEntities++];
             auto& p  = cr.m_vecPosn;
-            VERIFY(sscanf_s(ln, "%f %f %f %s", &p.x, &p.y, &p.z, cr.m_szObjectName, std::size(cr.m_szObjectName)) == 4);
+            VERIFY(sscanf_s(ln, "%f %f %f %s", &p.x, &p.y, &p.z, SCANF_S_STR(cr.m_szObjectName)) == 4);
             break;
         }
         case PEFFECT: { // 0x5B0E1D
@@ -700,11 +700,11 @@ bool CCutsceneMgr::LoadCutSceneFile(const char* csFileName) {
             auto& csfx = ms_pParticleEffects[ms_iNumParticleEffects++];
             VERIFY(sscanf_s(
                 ln, "%s %d %d %d %s %f %f %f %f %f %f",
-                csfx.m_szEffectName, std::size(csfx.m_szEffectName),
+                SCANF_S_STR(csfx.m_szEffectName),
                 &csfx.m_nStartTime,
                 &csfx.m_nEndTime,
                 &csfx.m_nObjectId,
-                csfx.m_szObjectPart, std::size(csfx.m_szObjectPart),
+                SCANF_S_STR(csfx.m_szObjectPart),
                 &csfx.m_vecPosn.x, &csfx.m_vecPosn.y, &csfx.m_vecPosn.z,
                 &csfx.m_vecDirection.x, &csfx.m_vecDirection.y, &csfx.m_vecDirection.z
             ) == 11);

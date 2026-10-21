@@ -5,6 +5,12 @@
 #include "AEStreamingChannel.h"
 #include "AEAudioUtility.h"
 
+#ifdef NOTSA_NATIVE
+#include "Audio/OpenAL/OALBase.h"
+#include "Audio/OpenAL/OALBuffer.h"
+#include "Audio/OpenAL/OALSource.h"
+#endif
+
 #ifndef NOTSA_NATIVE
 //! Stereo channel FX Param EQ presets [0x8CBA70]
 static inline DSFXParamEq s_FXParamEqPresets[(+eBassSetting::NUM)][2]{
@@ -12,7 +18,28 @@ static inline DSFXParamEq s_FXParamEqPresets[(+eBassSetting::NUM)][2]{
     {{ 80.f, 30.f,  4.0f }, { 180.f, 30.f,  1.5f }}, // Preset BOOST
     {{ 80.f, 36.f, -15.f }, { 80.f,  36.f, -15.f }}, // Preset CUT
 };
-#endif
+#else
+//! One `DSFXParamEq` band (0x8CBA70), to be mapped onto `AL_EFFECT_EQUALIZER`
+struct tEQBand {
+    float m_fCenter;    //!< In Hz
+    float m_fBandwidth; //!< In 1/100 octaves (AL wants octaves)
+    float m_fGain;      //!< In dB
+};
+
+//! Stereo channel FX Param EQ presets [0x8CBA70]
+static constexpr tEQBand s_EQPresets[(+eBassSetting::NUM)][2]{
+    {{  0.0f,  0.0f,   0.0f }, {   0.0f,  0.0f,  0.0f }}, // Preset NORMAL [Unused]
+    {{ 80.0f, 30.0f,   4.0f }, { 180.0f, 30.0f,  1.5f }}, // Preset BOOST
+    {{ 80.0f, 36.0f, -15.0f }, {  80.0f, 36.0f, -15.0f }}, // Preset CUT
+};
+
+namespace {
+//! Size of one decoded chunk (0x6000 bytes ≈ 128ms of 48kHz stereo 16 bit audio)
+constexpr uint32 STREAM_CHUNK_BYTES = 0x6000;
+//! Number of chunks kept queued (≈ 512ms of buffered audio)
+constexpr uint32 STREAM_CHUNK_COUNT = 4;
+} // namespace
+#endif // NOTSA_NATIVE
 
 // 0x4F2200
 CAEStreamingChannel::~CAEStreamingChannel() {
@@ -21,7 +48,16 @@ CAEStreamingChannel::~CAEStreamingChannel() {
     m_nState              = StreamingChannelState::Stopping;
     m_lStoppingFrameCount = 0;
 
-#ifndef NOTSA_NATIVE
+#ifdef NOTSA_NATIVE
+    if (m_bEQEnabled) {
+        RemoveFX();
+    }
+
+    if (m_pDirectSoundBuffer) {
+        m_pDirectSoundBuffer->ClearQueue();
+        m_pDirectSoundBuffer->Stop();
+    }
+#else
     if (m_pDirectSoundBuffer8) {
         m_pDirectSoundBuffer8->SetFX(0, nullptr, nullptr);
     }
@@ -47,19 +83,24 @@ CAEStreamingChannel::~CAEStreamingChannel() {
 // 0x4F22F0
 void CAEStreamingChannel::Initialise() {
 #ifdef NOTSA_NATIVE
-    m_WaveFormat.wFormatTag = WAVE_FORMAT_PCM;
-    m_WaveFormat.cbSize = 0;
-    m_WaveFormat.nChannels = 2;
-    m_WaveFormat.wBitsPerSample = 16;
-    m_WaveFormat.nSamplesPerSec = 48000;
+    m_WaveFormat.wFormatTag      = WAVE_FORMAT_PCM;
+    m_WaveFormat.cbSize          = 0;
+    m_WaveFormat.nChannels       = 2;
+    m_WaveFormat.wBitsPerSample  = 16;
+    m_WaveFormat.nSamplesPerSec  = 48000;
     m_WaveFormat.nAvgBytesPerSec = 192000;
-    m_WaveFormat.nBlockAlign = 4;
+    m_WaveFormat.nBlockAlign     = 4;
 
-    // Silent backend: no DirectSound buffer, but keep the state the shared code reads.
+    // The OpenAL voice the stream is played through
+    if (!m_pDirectSoundBuffer) {
+        m_pDirectSoundBuffer = new OALSource{};
+    }
+
     m_bInitialized = true;
     SetOriginalFrequency(m_WaveFormat.nSamplesPerSec);
-    m_pBuffer = m_aBuffer;
-    m_bLooped = true;
+    m_pBuffer  = m_aBuffer;
+    m_bLooped  = true;
+
     InitialiseSilence();
 #else
     VERIFY(SUCCEEDED(CoInitialize(nullptr)));
@@ -97,7 +138,9 @@ void CAEStreamingChannel::Initialise() {
 // 0x4F1C70
 void CAEStreamingChannel::InitialiseSilence() {
 #ifdef NOTSA_NATIVE
-    // Silent backend: there is no silence buffer to create or play.
+    // DirectSound needed a second, silently playing buffer to keep the (hardware mixed)
+    // primary buffer from starving. OpenAL simply plays nothing until buffers are queued,
+    // so there's nothing to set up here.
 #else
     DSBUFFERDESC bufferDesc{};
     bufferDesc.dwSize = 36;
@@ -124,10 +167,10 @@ void CAEStreamingChannel::InitialiseSilence() {
 void CAEStreamingChannel::SetReady() {
     switch (m_nState) {
     case StreamingChannelState::Stopping:
-#ifndef NOTSA_NATIVE
-        AESmoothFadeThread.CancelFade(m_pDirectSoundBuffer);
-        m_pDirectSoundBuffer->Stop();
-#endif
+        if (m_pDirectSoundBuffer) {
+            AESmoothFadeThread.CancelFade(m_pDirectSoundBuffer);
+            m_pDirectSoundBuffer->Stop();
+        }
         m_nState = StreamingChannelState::Stopped;
 
         break;
@@ -141,8 +184,43 @@ void CAEStreamingChannel::SetReady() {
 // 0x4F1F30
 void CAEStreamingChannel::SetBassEQ(eBassSetting mode, float gain) {
 #ifdef NOTSA_NATIVE
-    // Silent backend: there is no DirectSound FX chain to configure.
-    UNUSED(mode, gain);
+    if (mode == eBassSetting::NORMAL) {
+        if (m_bEQEnabled) {
+            RemoveFX();
+        }
+        return;
+    }
+
+    if (!m_bEQEnabled && !AddFX()) {
+        return;
+    }
+
+    const auto  efx    = notsa::oal::GetEFX();
+    const auto& preset = s_EQPresets[+mode];
+    if (!efx) {
+        return;
+    }
+
+    // `DSFXParamEq` is a single peaking EQ per channel - `AL_EFFECT_EQUALIZER` has a low shelf
+    // and two peaking bands, which is where the two presets are mapped onto.
+    switch (mode) {
+    case eBassSetting::BOOST:
+        efx->Effectf(m_effectId, AL_EQUALIZER_LOW_CUTOFF, preset[0].m_fCenter);
+        efx->Effectf(m_effectId, AL_EQUALIZER_LOW_GAIN, preset[0].m_fGain * gain);
+        efx->Effectf(m_effectId, AL_EQUALIZER_MID1_CENTER, preset[1].m_fCenter);
+        efx->Effectf(m_effectId, AL_EQUALIZER_MID1_WIDTH, preset[1].m_fBandwidth / 100.0f);
+        efx->Effectf(m_effectId, AL_EQUALIZER_MID1_GAIN, preset[1].m_fGain * gain);
+        break;
+    case eBassSetting::CUT:
+        efx->Effectf(m_effectId, AL_EQUALIZER_LOW_CUTOFF, preset[0].m_fCenter);
+        efx->Effectf(m_effectId, AL_EQUALIZER_LOW_GAIN, preset[0].m_fGain * gain);
+        break;
+    default:
+        break;
+    }
+
+    // The slot has to be told about the changed parameters again
+    efx->AuxiliaryEffectSloti(m_effectSlot, AL_EFFECTSLOT_EFFECT, static_cast<ALint>(m_effectId));
 #else
     if (mode == eBassSetting::NORMAL) {
         if (m_bEQEnabled) {
@@ -177,8 +255,29 @@ void CAEStreamingChannel::SetBassEQ(eBassSetting mode, float gain) {
 // 0x4F2060
 void CAEStreamingChannel::SetFrequencyScalingFactor(float factor) {
 #ifdef NOTSA_NATIVE
-    // Silent backend: there is no DirectSound buffer to re-frequency.
-    UNUSED(factor);
+    if (factor == 0.0f) {
+        if (!m_pDirectSoundBuffer || m_nState == StreamingChannelState::Paused || !IsBufferPlaying())
+            return;
+
+        DirectSoundBufferFadeToSilence();
+        m_nState = StreamingChannelState::Paused;
+    } else {
+        SetFrequency(static_cast<uint32>((float)m_nOriginalFrequency * factor));
+
+        if (m_nState != StreamingChannelState::Paused)
+            return;
+
+        if (!m_pDirectSoundBuffer)
+            return;
+
+        m_pDirectSoundBuffer->SetVolumeDb(-100.0f);
+        m_pDirectSoundBuffer->Play(false);
+
+        if (!AESmoothFadeThread.RequestFade(m_pDirectSoundBuffer, m_Volume, 35, true))
+            m_pDirectSoundBuffer->SetVolumeDb(m_Volume);
+
+        m_nState = StreamingChannelState::Started;
+    }
 #else
     if (factor == 0.0f) {
         if (!m_pDirectSoundBuffer || m_nState == StreamingChannelState::Paused || !IsBufferPlaying())
@@ -274,7 +373,17 @@ void CAEStreamingChannel::PrepareStream(CAEStreamingDecoder* newDecoder, int8 so
 
     m_bLoopTrack = (soundFlags & 1) != 0;
     m_pStreamingDecoder = newDecoder;
-#ifndef NOTSA_NATIVE
+#ifdef NOTSA_NATIVE
+    // Drop whatever is left of the previous stream and restart the play time accounting
+    if (m_pDirectSoundBuffer) {
+        m_pDirectSoundBuffer->Stop();
+        m_pDirectSoundBuffer->ClearQueue();
+    }
+    m_nPlayedBytes      = 0;
+    m_nStreamPlayTimeMs = 0;
+    m_nPlayTime         = 0;
+    m_nLastUpdateTime   = CAEAudioUtility::GetCurrentTimeInMS();
+#else
     if (SUCCEEDED(m_pDirectSoundBuffer->Lock(
         0,
         0,
@@ -315,10 +424,23 @@ void CAEStreamingChannel::PrepareStream(CAEStreamingDecoder* newDecoder, int8 so
 
     m_lastSlot = 0;
     SetOriginalFrequency(newDecoder->GetSampleRate());
+#ifdef NOTSA_NATIVE
+    // The play time is derived from the number of bytes played, so keep the format in sync
+    m_WaveFormat.nSamplesPerSec  = m_nOriginalFrequency;
+    m_WaveFormat.nAvgBytesPerSec = m_nOriginalFrequency * m_WaveFormat.nBlockAlign;
+    m_bNeedToFinish = false;
+#endif
     m_bSilenced = false;
     m_bNeedSwitch = false;
     m_bShouldStop = false;
-#ifndef NOTSA_NATIVE
+#ifdef NOTSA_NATIVE
+    if (m_pDirectSoundBuffer) {
+        m_pDirectSoundBuffer->SetPlaybackByteOffset(0);
+
+        // Prime the queue (the DirectSound code filled the whole ring buffer right here)
+        RefillQueue();
+    }
+#else
     m_pDirectSoundBuffer->SetCurrentPosition(0);
 #endif
 }
@@ -360,8 +482,21 @@ int32 CAEStreamingChannel::UpdatePlayTime() {
     }
 
 #ifdef NOTSA_NATIVE
-    // Silent backend: there is no buffer cursor to derive the play time from.
-    m_nPlayTime = 0;
+    const auto now = CAEAudioUtility::GetCurrentTimeInMS();
+    if (now - m_nLastUpdateTime < 1'000) {
+        return GetPlayTime();
+    }
+
+    // Position = everything unqueued so far + the offset inside the buffer being played
+    uint32 playedBytes = m_nPlayedBytes;
+    if (m_pDirectSoundBuffer) {
+        playedBytes += m_pDirectSoundBuffer->GetPlaybackByteOffset();
+    }
+    m_nPlayTime = static_cast<int32>(
+        static_cast<float>(playedBytes) * 1000.0f / static_cast<float>(m_WaveFormat.nAvgBytesPerSec)
+    );
+
+    m_nLastUpdateTime = now;
     return m_nPlayTime;
 #else
     if (CAEAudioUtility::GetCurrentTimeInMS() - m_nLastUpdateTime < 1'000) {
@@ -398,7 +533,23 @@ int32 CAEStreamingChannel::UpdatePlayTime() {
 // 0x4F1AE0
 bool CAEStreamingChannel::AddFX() {
 #ifdef NOTSA_NATIVE
-    // Silent backend: there is no DirectSound FX chain to create.
+    if (m_bEQEnabled)
+        return true;
+
+    const auto efx = notsa::oal::GetEFX();
+    if (!efx || !m_pDirectSoundBuffer) {
+        NOTSA_LOG_WARN("OpenAL: EFX is not available - the stream equalizer is disabled");
+        return false;
+    }
+
+    efx->GenEffects(1, &m_effectId);
+    efx->Effecti(m_effectId, AL_EFFECT_TYPE, AL_EFFECT_EQUALIZER);
+
+    efx->GenAuxiliaryEffectSlots(1, &m_effectSlot);
+    efx->AuxiliaryEffectSloti(m_effectSlot, AL_EFFECTSLOT_EFFECT, static_cast<ALint>(m_effectId));
+
+    m_pDirectSoundBuffer->SetEffectSlot(m_effectSlot);
+
     m_bEQEnabled = true;
     return true;
 #else
@@ -449,7 +600,21 @@ bool CAEStreamingChannel::AddFX() {
 // 0x4F1C20
 void CAEStreamingChannel::RemoveFX() {
 #ifdef NOTSA_NATIVE
-    // Silent backend: there is no DirectSound FX chain to remove.
+    if (m_pDirectSoundBuffer) {
+        m_pDirectSoundBuffer->SetEffectSlot(AL_EFFECTSLOT_NULL);
+    }
+
+    if (const auto efx = notsa::oal::GetEFX()) {
+        if (m_effectSlot) {
+            efx->DeleteAuxiliaryEffectSlots(1, &m_effectSlot);
+            m_effectSlot = 0;
+        }
+        if (m_effectId) {
+            efx->DeleteEffects(1, &m_effectId);
+            m_effectId = 0;
+        }
+    }
+
     m_bEQEnabled = false;
 #else
     bool stopped{false};
@@ -505,14 +670,26 @@ uint16 CAEStreamingChannel::GetLength() {
 // 0x4F1D40
 void CAEStreamingChannel::Play(int16 startOffsetMs, int8 soundFlags, float freqFac) {
 #ifdef NOTSA_NATIVE
-    if (!m_pStreamingDecoder)
+    if (!m_pStreamingDecoder || !m_pDirectSoundBuffer)
         return;
 
     SetOriginalFrequency(m_pStreamingDecoder->GetSampleRate());
+
     if (m_nState != StreamingChannelState::Paused) {
         m_bLoopTrack = (soundFlags & 1) != 0;
     }
+
+    if (m_nState == StreamingChannelState::Stopping) {
+        AESmoothFadeThread.CancelFade(m_pDirectSoundBuffer);
+        m_pDirectSoundBuffer->Stop();
+
+        m_nState = StreamingChannelState::Stopped;
+    }
+
     m_nState = StreamingChannelState::Started;
+    m_pDirectSoundBuffer->SetVolumeDb(m_Volume);
+    // NOTSA: The queue must not loop - a single track is looped by `FillBuffer` instead.
+    m_pDirectSoundBuffer->Play(false);
 #else
     if (!m_pStreamingDecoder || !m_pDirectSoundBuffer)
         return;
@@ -564,9 +741,130 @@ void CAEStreamingChannel::Stop() {
     m_lStoppingFrameCount = 0;
 }
 
+#ifdef NOTSA_NATIVE
+//! Keeps the queue topped up, replacing the DirectSound ring buffer refill of 0x4F2550.
+void CAEStreamingChannel::RefillQueue() {
+    auto* const voice = m_pDirectSoundBuffer;
+    if (!voice || !m_pStreamingDecoder) {
+        return;
+    }
+
+    // Release the chunks that already played, and account for them in the play time
+    m_nPlayedBytes += voice->UnqueueProcessed();
+
+    uint32 queued = voice->GetQueuedBufferCount();
+    while (queued < STREAM_CHUNK_COUNT) {
+        if (m_bNeedSwitch) { // The next stream has to be switched to
+            auto* const next = std::exchange(m_pNextStreamingDecoder, nullptr);
+
+            m_nState = StreamingChannelState::Paused;
+            Stop(false);
+            PrepareStream(next, 0, 0);
+            Play(0, 0, 1.0f);
+            return;
+        }
+
+        if (m_bSilenced) { // The next stream has a different sample rate - queue silence meanwhile
+            memset(m_pBuffer, 0, STREAM_CHUNK_BYTES);
+
+            auto* const chunk = new OALBuffer{m_pBuffer, STREAM_CHUNK_BYTES, m_nOriginalFrequency, 2};
+            voice->QueueBuffer(chunk);
+            chunk->Release();
+
+            m_bSilenced   = false;
+            m_bNeedSwitch = true;
+            continue;
+        }
+
+        if (m_bNeedToFinish) {
+            m_nState = StreamingChannelState::Finished;
+        }
+
+        if (m_nState == StreamingChannelState::Finished) {
+            // Let the already queued audio play out, then stop
+            if (!m_bShouldStop) {
+                m_bShouldStop = true;
+            } else if (queued == 0) {
+                Stop();
+                m_nState      = StreamingChannelState::Stopped;
+                m_bShouldStop = false;
+            }
+            return;
+        }
+
+        const auto filled = FillBuffer(m_pBuffer, STREAM_CHUNK_BYTES);
+        if (filled < STREAM_CHUNK_BYTES) {
+            memset(static_cast<uint8*>(m_pBuffer) + filled, 0, STREAM_CHUNK_BYTES - filled);
+        }
+
+        auto* const chunk = new OALBuffer{m_pBuffer, STREAM_CHUNK_BYTES, m_nOriginalFrequency, 2};
+        const bool  ok    = voice->QueueBuffer(chunk);
+        chunk->Release();
+        if (!ok) {
+            return;
+        }
+        ++queued;
+    }
+}
+#endif // NOTSA_NATIVE
+
 // 0x4F2550
 void CAEStreamingChannel::Service() {
+#ifdef NOTSA_NATIVE
+    UpdateStatus();
+
+    const bool playing = IsBufferPlaying();
+
+    if (!playing) {
+        if (m_nState == StreamingChannelState::Stopping) {
+            m_nState = StreamingChannelState::Stopped;
+        }
+    } else {
+        switch (m_nState) {
+        case StreamingChannelState::Started:
+            m_nState = StreamingChannelState::UNK_MINUS_3;
+            break;
+        case StreamingChannelState::UNK_MINUS_3:
+        case StreamingChannelState::Finished:
+            break;
+        case StreamingChannelState::Stopping:
+            if (++m_lStoppingFrameCount > 6) {
+                Stop();
+            }
+            break;
+        default:
+            m_lStoppingFrameCount = 0;
+            if (m_nState == StreamingChannelState::Stopped) {
+                Stop();
+            }
+            break;
+        }
+    }
+
+    if (m_nState == StreamingChannelState::UNK_MINUS_3 && !playing) {
+        m_nState = StreamingChannelState::Paused;
+    }
+
+    if (m_nState != StreamingChannelState::UNK_MINUS_3
+     && m_nState != StreamingChannelState::Finished
+     && m_nState != StreamingChannelState::Paused
+    ) {
+        return;
+    }
+
+    if (!m_pStreamingDecoder) {
+        return;
+    }
+
+    // The voice has to play at the decoder's sample rate
+    if (const auto rate = m_pStreamingDecoder->GetSampleRate(); rate != m_nOriginalFrequency) {
+        SetOriginalFrequency(rate);
+    }
+
+    RefillQueue();
+#else
     plugin::CallMethod<0x4F2550, CAEStreamingChannel*>(this);
+#endif // NOTSA_NATIVE
 }
 
 void CAEStreamingChannel::InjectHooks() {

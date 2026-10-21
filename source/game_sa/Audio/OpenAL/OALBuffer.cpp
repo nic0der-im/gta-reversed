@@ -1,44 +1,30 @@
 #include "StdInc.h"
+
 #include "OALBuffer.h"
 
-OALBuffer::OALBuffer(void* data, uint32 size, uint32 frequency, uint32 channels)
-    : OALBase()
-{
-    alGenBuffers(1, &m_bufferId);
-    alBufferData(m_bufferId, channels == 2 ? AL_FORMAT_STEREO16 : AL_FORMAT_MONO16, data, size, frequency);
-    m_bufferSize = size;
-}
+#ifdef NOTSA_NATIVE
 
-OALBuffer::OALBuffer(void* preloopData, uint32 preloopSize, void* loopData, uint32 loopSize, uint32 frequency, uint32 channels)
-    : OALBase()
-{
-    ALuint buffers[2]{};
-    alGenBuffers(2, buffers);
-    m_bufferId = buffers[0];
-    m_preloopBufferId = buffers[1];
-
-    const auto format = channels == 2 ? AL_FORMAT_STEREO16 : AL_FORMAT_MONO16;
-
-    alBufferData(m_preloopBufferId, format, preloopData, preloopSize, frequency);
-
-    if (loopSize > 0x18F) {
-        alBufferData(m_bufferId, format, loopData, loopSize, frequency);
-    } else {
-        auto* data = new uint8[4 * loopSize];
-        for (auto i = 0; i < 4; i++) {
-            memcpy(&data[i * loopSize], loopData, loopSize);
-        }
-        alBufferData(m_bufferId, format, data, 4 * loopSize, frequency);
-        delete[] data;
+OALBuffer::OALBuffer(const void* data, uint32 size, uint32 frequency, uint32 channels) {
+    if (!notsa::oal::IsDeviceOpen()) {
+        NOTSA_LOG_ERR("OALBuffer: No OpenAL device");
+        return;
     }
 
-    m_bufferSize = loopSize + preloopSize;
+    OAL_CHECKED(alGenBuffers(1, &m_bufferId));
+
+    const auto format = channels == 2 ? AL_FORMAT_STEREO16 : AL_FORMAT_MONO16;
+    OAL_CHECKED(alBufferData(m_bufferId, format, data, static_cast<ALsizei>(size), static_cast<ALsizei>(frequency)));
+
+    m_size      = size;
+    m_frequency = frequency;
+    m_channels  = channels;
 }
 
 OALBuffer::~OALBuffer() {
-    alDeleteBuffers(1, &m_bufferId);
-
-    if (m_preloopBufferId) {
-        alDeleteBuffers(1, &m_preloopBufferId);
+    if (m_bufferId && notsa::oal::IsDeviceOpen()) {
+        OAL_CHECKED(alDeleteBuffers(1, &m_bufferId));
     }
+    m_bufferId = 0;
 }
+
+#endif // NOTSA_NATIVE

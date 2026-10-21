@@ -397,7 +397,7 @@ CVehicle::~CVehicle() {
         m_pCustomCarPlate = nullptr;
     }
 
-    const auto iRopeInd = CRopes::FindRope(reinterpret_cast<uint32>(this) + 1);
+    const auto iRopeInd = CRopes::FindRope(notsa::PtrToId(this) + 1);
     if (iRopeInd >= 0) {
         CRopes::GetRope(iRopeInd).Remove();
     }
@@ -5068,7 +5068,7 @@ void CVehicle::DoHeadLightReflectionImpl(CMatrix& vehicleMatrix, eVehicleLightsF
 
         CShadows::StoreCarLightShadow(
             this,
-            reinterpret_cast<int32>(&m_matrix) + 2,
+            notsa::PtrToId(&m_matrix) + 2,
             doTwin ? gpShadowHeadLightsTex : gpShadowHeadLightsTex2,
             GetPosition() + CVector(lightPos2D, 2.0f),
             shdwFront.x, shdwFront.y,
@@ -5136,7 +5136,7 @@ bool CVehicle::DoLightEffectImpl(bool isFront, eVehicleLightId lightId, CMatrix&
     const float normAngle            = std::sqrt(angle);
 
     const bool isFullsizeTrain       = IsSubTrain() && GetModelIndex() != MODEL_TRAM;
-    const auto RegisterCorona        = [&](uintptr id, uint8 r, uint8 g, uint8 b, uint8 intensity, CVector& pos, float size, eCoronaType type, eCoronaReflType reflType, float camDistLimit) {
+    const auto RegisterCorona        = [&](uint32 id, uint8 r, uint8 g, uint8 b, uint8 intensity, CVector& pos, float size, eCoronaType type, eCoronaReflType reflType, float camDistLimit) {
         CCoronas::RegisterCorona(id, this, r, g, b, intensity, pos, size, 150.0f * TheCamera.m_fLODDistMultiplier, type, eCoronaFlareType::FLARETYPE_NONE, reflType, eCoronaLOSCheck::LOSCHECK_OFF, eCoronaTrail::TRAIL_OFF, normAngle, false, camDistLimit, false, 15.0f, false, false);
     };
 
@@ -5176,7 +5176,7 @@ bool CVehicle::DoLightEffectImpl(bool isFront, eVehicleLightId lightId, CMatrix&
                     lightColorB = 195u;
                 }
 
-                RegisterCorona(reinterpret_cast<uintptr>(&m_placement) + 2 * static_cast<uint32>(lightId) + isRight, lightColorR, lightColorG, lightColorB, 255u, tweakedDummy, coronaSize, eCoronaType::CORONATYPE_HEADLIGHTLINE, eCoronaReflType::CORREFL_NONE, 0.3f);
+                RegisterCorona(notsa::PtrToId(&m_placement) + 2 * static_cast<uint32>(lightId) + isRight, lightColorR, lightColorG, lightColorB, 255u, tweakedDummy, coronaSize, eCoronaType::CORONATYPE_HEADLIGHTLINE, eCoronaReflType::CORREFL_NONE, 0.3f);
             }
 
             if (m_pHandlingData->m_bHalogenLights) {
@@ -5187,7 +5187,7 @@ bool CVehicle::DoLightEffectImpl(bool isFront, eVehicleLightId lightId, CMatrix&
                 lightColorG = static_cast<uint8>(intensity * 195.0f);
             }
 
-            RegisterCorona(reinterpret_cast<uintptr>(this) + 2 * static_cast<uint32>(lightId) + isRight, lightColorR, lightColorR, lightColorG, 128u, tweakedDummy, coronaSize, eCoronaType::CORONATYPE_HEADLIGHT, eCoronaReflType::CORREFL_SIMPLE, 0.5f);
+            RegisterCorona(notsa::PtrToId(this) + 2 * static_cast<uint32>(lightId) + isRight, lightColorR, lightColorR, lightColorG, 128u, tweakedDummy, coronaSize, eCoronaType::CORONATYPE_HEADLIGHT, eCoronaReflType::CORREFL_SIMPLE, 0.5f);
         } else {
             uint8 redIntensity = 0u;
 
@@ -5199,7 +5199,7 @@ bool CVehicle::DoLightEffectImpl(bool isFront, eVehicleLightId lightId, CMatrix&
                 isBraking    = true;
             }
 
-            RegisterCorona(reinterpret_cast<uintptr>(&m_placement.m_vPosn.y) + 2 * static_cast<uint32>(lightId) + isRight, redIntensity, 0, 0, 128u, tweakedDummy, coronaSize, eCoronaType::CORONATYPE_HEADLIGHT, eCoronaReflType::CORREFL_SIMPLE, 0.5f);
+            RegisterCorona(notsa::PtrToId(&m_placement.m_vPosn.y) + 2 * static_cast<uint32>(lightId) + isRight, redIntensity, 0, 0, 128u, tweakedDummy, coronaSize, eCoronaType::CORONATYPE_HEADLIGHT, eCoronaReflType::CORREFL_SIMPLE, 0.5f);
         }
     }
 

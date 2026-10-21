@@ -6,6 +6,8 @@
 */
 #include "StdInc.h"
 
+#include <extensions/utility.hpp>
+
 #include "Entity.h"
 
 #include "PointLights.h"
@@ -498,7 +500,7 @@ void CEntity::PreRender() {
                 );
 
                 CCoronas::RegisterCorona(
-                    (uint32)this, nullptr,
+                    notsa::PtrToId(this), nullptr,
                     static_cast<uint8>(fRand * 255.0F),
                     static_cast<uint8>(fRand * 220.0F),
                     static_cast<uint8>(fRand * 190.0F), 255, vecPos,
@@ -528,7 +530,7 @@ void CEntity::PreRender() {
             );
 
             CCoronas::RegisterCorona(
-                (uint32)this, nullptr,
+                notsa::PtrToId(this), nullptr,
                 static_cast<uint8>(fRand * 255.0F),
                 static_cast<uint8>(fRand * 255.0F),
                 static_cast<uint8>(fRand * 255.0F), 255, vecPos,
@@ -551,7 +553,7 @@ void CEntity::PreRender() {
             
             if (CVector2D(obj->m_vecMoveSpeed).Magnitude() > 0.03F) {
                 CMotionBlurStreaks::RegisterStreak(
-                    reinterpret_cast<uint32>(this), 100, 100, 100, 255, 
+                    notsa::PtrToId(this), 100, 100, 100, 255, 
                     vecStreakStart, vecStreakEnd
                 );
             }
@@ -566,7 +568,7 @@ void CEntity::PreRender() {
                 if (!CWaterLevel::GetWaterLevelNoWaves(vecPos, &fWaterLevel, nullptr, nullptr) || 
                     vecPos.z > fWaterLevel) {
                     CMotionBlurStreaks::RegisterStreak(
-                        reinterpret_cast<uint32>(this), 255, 160, 100, 255, 
+                        notsa::PtrToId(this), 255, 160, 100, 255, 
                         vecStreakStart, vecStreakEnd
                     );
                 }
@@ -1366,7 +1368,7 @@ void CEntity::ModifyMatrixForTreeInWind() {
         fWindOffset *= 0.015F;
 
     } else {
-        auto uiTimeOffset = (reinterpret_cast<uint32>(this) + CTimer::GetTimeInMS()) & 0xFFF;
+        auto uiTimeOffset = (notsa::PtrToId(this) + CTimer::GetTimeInMS()) & 0xFFF;
 
         constexpr float scalingFactor = 6.28f / 4096.f;
         fWindOffset = sin(uiTimeOffset * scalingFactor) * 0.005F;
@@ -1946,7 +1948,7 @@ void CEntity::ProcessLightsForEntity() {
                 skipCoronaChecks = true;
 
                 CCoronas::RegisterCorona(
-                    (uint32)this + C,
+                    notsa::PtrToId(this) + C,
                     nullptr,
                     0,
                     0,
@@ -2012,7 +2014,7 @@ void CEntity::ProcessLightsForEntity() {
                 const auto coronaSize = effect->light.m_fCoronaSize * sizeMult;
 
                 CCoronas::RegisterCorona(
-                    (uint32)this + C,
+                    notsa::PtrToId(this) + C,
                     nullptr,
                     static_cast<uint8>(static_cast<float>(effect->light.m_color.red) * TimeFade),
                     static_cast<uint8>(static_cast<float>(effect->light.m_color.green) * TimeFade),
@@ -2043,7 +2045,7 @@ void CEntity::ProcessLightsForEntity() {
         if (!skipCoronaChecks && ApplyOnVersion) {
             skipCoronaChecks = true;
             CCoronas::RegisterCorona(
-                (uint32)this + C,
+                notsa::PtrToId(this) + C,
                 nullptr,
                 0,
                 0,
@@ -2069,7 +2071,7 @@ void CEntity::ProcessLightsForEntity() {
 
         if (!skipCoronaChecks && UpdateCoors) {
             CCoronas::UpdateCoronaCoors(
-                (uint32)this + C,
+                notsa::PtrToId(this) + C,
                 effectPos,
                 effect->light.m_fCoronaFarClip,
                 0.0f
@@ -2158,7 +2160,7 @@ void CEntity::ProcessLightsForEntity() {
                 color.blue = static_cast<uint8>(static_cast<float>(color.blue) * colorMult);
 
                 CShadows::StoreStaticShadow(
-                    (uint32)this + C,
+                    notsa::PtrToId(this) + C,
                     eShadowType::SHADOW_ADDITIVE,
                     effect->light.m_pShadowTex,
                     effectPos,
@@ -2178,7 +2180,7 @@ void CEntity::ProcessLightsForEntity() {
                 );
             } else if (ApplyOnVersion) {
                 CShadows::StoreStaticShadow(
-                    (uint32)this + C,
+                    notsa::PtrToId(this) + C,
                     eShadowType::SHADOW_ADDITIVE,
                     effect->light.m_pShadowTex,
                     effectPos,

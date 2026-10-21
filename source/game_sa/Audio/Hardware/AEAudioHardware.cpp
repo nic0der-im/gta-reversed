@@ -8,6 +8,10 @@
 #include "AEStaticChannel.h"
 #include "AEUserRadioTrackManager.h"
 
+#ifdef NOTSA_NATIVE
+#include "Audio/OpenAL/OALBase.h"
+#endif
+
 auto& AEAudioHardware = StaticRef<CAEAudioHardware>(0xB5F8B8);
 
 void CAEAudioHardware::InjectHooks() {
@@ -87,10 +91,13 @@ bool CAEAudioHardware::Initialise() {
     }
 
 #ifdef NOTSA_NATIVE
-    // Silent backend: no DirectSound device until B4.
-    NOTSA_LOG_WARN("Audio backend is silent until B4");
+    if (!InitDirectSoundListener(2, 48'000, 16)) {
+        NOTSA_LOG_ERR("Failed to initialize the OpenAL device");
+        return false;
+    }
 
-    m_nNumChannels = 48;
+    m_nSpeakerConfig = 3; // Stereo (only informational)
+    m_nNumChannels   = 48;
     m_IsHardwareMixAvailable = false;
     AESmoothFadeThread.m_nNumAvailableBuffers = 48;
 
@@ -186,8 +193,20 @@ bool CAEAudioHardware::Initialise() {
 // 0x4D9640
 bool CAEAudioHardware::InitDirectSoundListener(uint32 numChannels, uint32 samplesPerSec, uint32 bitsPerSample) {
 #ifdef NOTSA_NATIVE
-    // Silent backend: there is no DirectSound listener to initialize.
-    UNUSED(numChannels, samplesPerSec, bitsPerSample);
+    // Opens the OpenAL device/context and sets up the listener. The arguments describe the
+    // primary buffer format DirectSound would have used; OpenAL takes the sample rate from
+    // the device context and resamples the buffers itself.
+    if (!notsa::oal::OpenDevice(samplesPerSec)
+        || !notsa::oal::MakeContextCurrent()
+        || !notsa::oal::InitListener()
+    ) {
+        return false;
+    }
+
+    NOTSA_LOG_INFO("OpenAL output: {} channels, {} Hz, {} bit", numChannels, samplesPerSec, bitsPerSample);
+
+    Query3DSoundEffects();
+
     return true;
 #else
     if (!m_pDSDevice)
@@ -260,14 +279,72 @@ void CAEAudioHardware::Terminate() {
     }
     delete std::exchange(m_pMP3BankLoader, nullptr);
     delete std::exchange(m_pMP3TrackLoader, nullptr);
-#ifndef NOTSA_NATIVE
+#ifdef NOTSA_NATIVE
+    AESmoothFadeThread.WaitForExit();
+    notsa::oal::CloseDevice();
+#else
     SAFE_RELEASE(m_pDirectSound3dListener);
     SAFE_RELEASE(m_pDSDevice);
 #endif
 }
 
 void CAEAudioHardware::PlaySound(int16 channel, uint16 channelSlot, uint16 soundIdInSlot, uint16 bankSlot, int16 playPosition, int16 flags, float speed) {
+#ifdef NOTSA_NATIVE
+    if (channel < 0 || channelSlot >= m_anNumChannelsInSlot[channel]) {
+        return;
+    }
+
+    if (channel + channelSlot == 0 || channel + channelSlot >= MAX_NUM_AUDIO_CHANNELS) {
+        return; // Slot 0 is the streaming channel
+    }
+
+    uint32 size{};
+    uint16 sampleRate{};
+    auto* const data = m_pMP3BankLoader->GetSoundBuffer(
+        static_cast<eSoundID>(soundIdInSlot),
+        static_cast<eSoundBankSlot>(bankSlot),
+        size,
+        sampleRate
+    );
+    if (!data) {
+        return;
+    }
+
+    auto* const ch = static_cast<CAEStaticChannel*>(m_aChannels[channel + channelSlot]);
+    if (!ch) {
+        return;
+    }
+
+    const auto loopOffset = m_pMP3BankLoader->GetLoopOffset(
+        static_cast<eSoundID>(soundIdInSlot),
+        static_cast<eSoundBankSlot>(bankSlot)
+    );
+
+    // `data` is the raw PCM data - the parameter type is a leftover of the DirectSound signature
+    if (!ch->SetAudioBuffer(reinterpret_cast<IDirectSound3DBuffer*>(data), size, soundIdInSlot, bankSlot, static_cast<int16>(loopOffset), sampleRate)) {
+        return;
+    }
+
+    auto startPos = std::max<int16>(playPosition, 0);
+    const auto lengthMs = static_cast<int16>(ch->GetLength());
+    if ((flags & 8) != 0 && startPos > 0) { // 8 = "play position is a percentage"
+        startPos = static_cast<int16>(std::lrint(static_cast<float>(startPos) * 0.01f * static_cast<float>(lengthMs)));
+    }
+    if (lengthMs < startPos) {
+        startPos = lengthMs;
+    }
+
+    if (m_n3dEffectsQueryResult != 0) {
+        ch->SetNotInRoom((flags & 0x200) == 0);
+    }
+
+    ch->Play(startPos, static_cast<int8>(flags), speed);
+
+    m_awChannelFlags[channel + channelSlot] = flags;
+    ch->m_nFlags                            = static_cast<uint32>(static_cast<int32>(flags));
+#else
     plugin::CallMethod<0x4D86B0, CAEAudioHardware*, int16, uint16, uint16, uint16, int16, int16, float>(this, channel, channelSlot, soundIdInSlot, bankSlot, playPosition, flags, speed);
+#endif // NOTSA_NATIVE
 }
 
 // 0x5B9340
@@ -780,8 +857,12 @@ void CAEAudioHardware::ResumeAllSounds() {
 // 0x4D8490
 void CAEAudioHardware::Query3DSoundEffects() {
 #ifdef NOTSA_NATIVE
-    // Silent backend: no DirectSound device, hence no EAX/3D effects.
-    m_n3dEffectsQueryResult = 2;
+    // `1` = effects available (see `SetReverbAndDepth`), `2` = not available
+    m_n3dEffectsQueryResult = notsa::oal::GetEFX() ? 1 : 2;
+
+    if (m_n3dEffectsQueryResult == 2) {
+        NOTSA_LOG_DEBUG("OpenAL: EFX is not available");
+    }
 #else
     DSBUFFERDESC bufferDesc;
     bufferDesc.guid3DAlgorithm = GUID_NULL;

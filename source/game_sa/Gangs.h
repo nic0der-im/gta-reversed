@@ -17,6 +17,7 @@ class CGangInfo;
 class CGangs {
 public:
     static inline auto& GangAttackWithCops = StaticRef<std::array<bool, 10>>(0xC091E0);
+    // 0xC091F0 - exe: 10 x 0x10 `CGangInfo`, element ctor 0x5DE520 (sets `m_nPedModelOverride` = -1)
     static inline auto& Gang               = StaticRef<std::array<CGangInfo, 10>>(0xC091F0);
 
 public:

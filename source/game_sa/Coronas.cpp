@@ -744,7 +744,7 @@ void CCoronas::DoSunAndMoon() {
 }
 
 // Inlined, code from 0x6FC524 to 0x6FC53C
-inline CRegisteredCorona* CCoronas::GetCoronaByID(int32 id) {
+inline CRegisteredCorona* CCoronas::GetCoronaByID(uint32 id) {
     for (auto& corona : aCoronas) {
         if (corona.m_dwId == id) {
             return &corona;

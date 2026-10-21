@@ -61,7 +61,7 @@ file(
     "${CMAKE_CURRENT_SOURCE_DIR}/*.c*"
 )
 list(APPEND SOURCE_FILES_WITHOUT_MODULES_LIST StdInc.cpp)
-if (${RE_PROJECT}_WITH_OPENAL)
+if (${RE_PROJECT}_WITH_OPENAL OR ${RE_PROJECT}_NATIVE)
     # TODO: Remove dsound specific sources
 else()
     file(
@@ -80,10 +80,11 @@ if (${RE_PROJECT}_NATIVE)
     # NOTE: `app/platform/native/` itself MUST stay in the source list.
     list(FILTER SOURCE_FILES_WITHOUT_MODULES_LIST EXCLUDE REGEX "^(app/platform/win|reversiblehooks|toolsmenu)/")
     list(FILTER SOURCE_FILES_WITHOUT_MODULES_LIST EXCLUDE REGEX "^(oswrapper/oswrapper_win|dllmain|InjectHooksMain)\\.cpp$")
+    # RenderWare: every retail thunk (`plugin::Call` into the exe) is replaced by the fakerw layer
+    # in `game_sa/RenderWare/librw/`, which implements the same C API on top of librw.
+    # NOTE: `librw/` is a subdirectory of `RenderWare/`, so it is matched separately below.
+    list(FILTER SOURCE_FILES_WITHOUT_MODULES_LIST EXCLUDE REGEX "^game_sa/RenderWare/rw/[^/]*\\.cpp$")
     list(FILTER SOURCE_FILES_WITHOUT_MODULES_LIST EXCLUDE REGEX "^game_sa/RenderWare/D3D[^/]*\\.cpp$")
-    # `D3DResourceSystem` is called from shared game code (`Game.cpp`, `MenuManager_Process.cpp`).
-    # Natively every method is an unreversed stub, but the symbols must exist.
-    list(APPEND SOURCE_FILES_WITHOUT_MODULES_LIST "game_sa/RenderWare/D3DResourceSystem.cpp")
     list(FILTER SOURCE_FILES_WITHOUT_MODULES_LIST EXCLUDE REGEX "^game_sa/Audio/Loaders/AE(WMA|MF)Decoder\\.")
 endif()
 
@@ -172,6 +173,23 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(imfilebrowser)
 
+if (${RE_PROJECT}_NATIVE)
+    # RenderWare for the native build: librw (MIT) pinned to the commit validated by `spikes/librw`.
+    # It is fetched into the build tree (`build/<config>/_deps`), never into the repository.
+    set(LIBRW_COMMIT "18532c2e13efbc1aa43f0b00b4459831f9414de0" CACHE STRING "librw git commit")
+    set(LIBRW_PLATFORM "GL3" CACHE STRING "" FORCE)
+    set(LIBRW_GL3_GFXLIB "SDL3" CACHE STRING "" FORCE)
+    set(LIBRW_TOOLS OFF CACHE BOOL "" FORCE)
+    set(LIBRW_INSTALL OFF CACHE BOOL "" FORCE)
+    set(LIBRW_EXAMPLES OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        librw
+        GIT_REPOSITORY https://github.com/aap/librw.git
+        GIT_TAG        ${LIBRW_COMMIT}
+    )
+    FetchContent_MakeAvailable(librw)
+endif()
+
 macro(add_dependency)
     foreach (target ${ARGV})
         find_package(${target} CONFIG REQUIRED)
@@ -221,6 +239,12 @@ target_link_libraries(${RE_PROJECT_LIB_NAME} PRIVATE
 if (${RE_PROJECT}_USE_SDL3)
     target_link_libraries(${RE_PROJECT_LIB_NAME} PRIVATE
         SDL3::SDL3
+    )
+endif()
+
+if (${RE_PROJECT}_NATIVE)
+    target_link_libraries(${RE_PROJECT_LIB_NAME} PRIVATE
+        librw::librw
     )
 endif()
 
@@ -345,7 +369,10 @@ endif()
 # Configure the Audio API
 #--------------------------------------------------------------------
 if (${RE_PROJECT}_NATIVE)
-    # No audio backend yet: the game runs with a silent one until B4 brings OpenAL back
+    # OpenAL Soft backend (Audio/OpenAL + the native bodies of the CAE* hardware classes)
+    find_package(OpenAL REQUIRED)
+    target_compile_definitions(${RE_PROJECT_LIB_NAME} PRIVATE USE_OPENAL)
+    target_link_libraries(${RE_PROJECT_LIB_NAME} PRIVATE OpenAL::OpenAL)
 elseif (${RE_PROJECT}_WITH_OPENAL)
     target_compile_definitions(${RE_PROJECT_LIB_NAME} PRIVATE USE_OPENAL)
 

@@ -331,6 +331,15 @@ public:
     void SetActive(bool active)         { m_IsActive = active; }
     void SetExternal(bool external)     { m_IsExternal = external; }
 
+    /*!
+     * @brief Get the id of the script's current instruction, which is used as the marker id when highlighting areas.
+     *
+     * The original game used the sum of the (32 bit) script and IP pointers for this, which isn't possible
+     * (nor unique) with 64 bit pointers, so it's derived from the script's index and the IP's offset
+     * inside `CTheScripts::ScriptSpace` instead.
+     */
+    uint32 GetHighlightMarkerId() const;
+
     //! Highlight an important area 2D
     void HighlightImportantArea(CVector2D from, CVector2D to, float z = -100.f);
 
@@ -399,3 +408,48 @@ private:
 };
 
 VALIDATE_SIZE(CRunningScript, 0xE0);
+
+/*!
+ * @brief 32 bit (retail PC) on-disk representation of `CRunningScript`, written by `CTheScripts::Save` and read by `CTheScripts::Load`.
+ *
+ * Save games store the script's 0xE0 byte image verbatim (Pointers included), which can't be done on 64 bit builds
+ * (Pointers are 8 bytes wide there), so the script has to be converted to (and from) this struct explicitly.
+ *
+ * Pointers are stored as the address they had in the original (32 bit) game, so they have to be
+ * converted from (and to) the addresses our objects have at runtime (See `CRunningScriptSave32::Construct`/`Extract`).
+ */
+struct CRunningScriptSave32 {
+    uint32       m_pNext;      //!< `CRunningScript` address in the original game (Not read back on load: the list is re-linked from the live scripts)
+    uint32       m_pPrev;      //!< Same as above
+    char         m_szName[SHORT_STRING_SIZE];
+    uint32       m_BaseIP;     //!< Pointer into `CTheScripts::ScriptSpace` (As an original game address)
+    uint32       m_IP;         //!< Pointer into `CTheScripts::ScriptSpace` (As an original game address, but see the note below)
+    uint32       m_IPStack[MAX_STACK_DEPTH];
+    uint16       m_StackDepth;
+    tScriptParam m_LocalVars[MAX_LOCAL_VARS + MAX_NUM_TIMERS];
+    bool         m_IsActive;
+    bool         m_CondResult;
+    bool         m_UsesMissionCleanup;
+    bool         m_IsExternal;
+    bool         m_IsTextBlockOverride;
+    int8         m_ExternalType;
+    int32        m_WakeTime;
+    uint16       m_AndOrState;
+    bool         m_NotFlag;
+    bool         m_IsDeathArrestCheckEnabled;
+    bool         m_DoneDeathArrest;
+    int32        m_SceneSkipIP;
+    bool         m_ThisMustBeTheOnlyMissionRunning;
+
+    //! Fill this in from a running script (Called before saving)
+    void Construct(const CRunningScript& script);
+
+    /*!
+     * @brief Write this into a running script (Called when loading).
+     * @note `m_pNext`/`m_pPrev` of `script` are left untouched.
+     * @note `m_IP` and `m_IPStack` here are redundant - `CTheScripts::Load` overwrites them right after
+     *       using the IPs saved separately (as plain offsets into `CTheScripts::ScriptSpace`).
+     */
+    void Extract(CRunningScript& script) const;
+};
+VALIDATE_SIZE_ALWAYS(CRunningScriptSave32, 0xE0);

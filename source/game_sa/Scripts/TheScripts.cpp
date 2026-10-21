@@ -1235,12 +1235,9 @@ void CTheScripts::Load() {
     auto numScripts = CGenericGameStorage::LoadDataFromWorkBuffer<uint32>();
     for (auto i = 0u; i < numScripts; i++) {
         auto* script = StartNewScript(nullptr, CGenericGameStorage::LoadDataFromWorkBuffer<uint16>());
-        {
-            const auto prev = script->m_pPrev, next = script->m_pNext;
-            CGenericGameStorage::LoadDataFromWorkBuffer(*script);
-            script->m_pPrev = prev;
-            script->m_pNext = next;
-        }
+        CRunningScriptSave32 scriptSave{};
+        CGenericGameStorage::LoadDataFromWorkBuffer(scriptSave);
+        scriptSave.Extract(*script); // NOTE: Doesn't touch `m_pNext`/`m_pPrev`
         script->SetCurrentIp(&ScriptSpace[CGenericGameStorage::LoadDataFromWorkBuffer<uint32>()]);
 
         for (auto& stk : script->m_IPStack) {
@@ -1358,11 +1355,15 @@ void CTheScripts::Save() {
         }
 
         CGenericGameStorage::SaveDataToWorkBuffer((int16)GetScriptIndexFromPointer(s));
-        CGenericGameStorage::SaveDataToWorkBuffer(*s);
-        CGenericGameStorage::SaveDataToWorkBuffer((uint32)(s->m_IP - ScriptSpace.data()));
+
+        CRunningScriptSave32 scriptSave{};
+        scriptSave.Construct(*s);
+        CGenericGameStorage::SaveDataToWorkBuffer(scriptSave);
+
+        CGenericGameStorage::SaveDataToWorkBuffer(static_cast<uint32>(s->m_IP - ScriptSpace.data()));
 
         for (auto& stk : s->m_IPStack) {
-            CGenericGameStorage::SaveDataToWorkBuffer((uint32)(stk ? stk - ScriptSpace.data() : 0));
+            CGenericGameStorage::SaveDataToWorkBuffer(static_cast<uint32>(stk ? stk - ScriptSpace.data() : 0));
         }
     }
 }

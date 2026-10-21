@@ -1,17 +1,23 @@
 #pragma once
+
+#ifdef NOTSA_NATIVE
+
 #include "OALBase.h"
 
+//! An OpenAL buffer: a block of 16 bit PCM data (mono or stereo).
 class OALBuffer final : public OALBase {
 public:
     ALuint m_bufferId{};
-    ALuint m_preloopBufferId{0};
-    uint32 m_bufferSize{};
+    uint32 m_size{};      //!< Size of the PCM data, in bytes
+    uint32 m_frequency{}; //!< Sample rate of the PCM data, in Hz
+    uint32 m_channels{};  //!< 1 (mono) or 2 (stereo)
 
 public:
-    OALBuffer(void* data, uint32 size, uint32 frequency, uint32 channels);
-    OALBuffer(void* preloopData, uint32 preloopSize, void* loopData, uint32 loopSize, uint32 frequency, uint32 channels);
-    virtual ~OALBuffer() override;
+    OALBuffer(const void* data, uint32 size, uint32 frequency, uint32 channels);
+    ~OALBuffer() override;
 
-    // NOTSA
-    OALBuffer(const OALBuffer&) = delete;
+    OALBuffer(const OALBuffer&)            = delete;
+    OALBuffer& operator=(const OALBuffer&) = delete;
 };
+
+#endif // NOTSA_NATIVE

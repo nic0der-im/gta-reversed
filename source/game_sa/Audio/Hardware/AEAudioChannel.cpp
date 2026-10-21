@@ -59,7 +59,9 @@ CAEAudioChannel::CAEAudioChannel(IDirectSound* directSound, uint16 channelId, ui
     m_nOriginalFrequency         = samplesPerSec;
     m_Volume                    = -100.0f;
     m_pDirectSoundBuffer         = nullptr;
+#ifndef NOTSA_NATIVE
     m_pDirectSound3DBuffer       = nullptr;
+#endif
     m_bPaused                    = false;
     m_bLooped                    = false;
     m_bShouldStop                = false;
@@ -75,7 +77,10 @@ CAEAudioChannel::CAEAudioChannel(IDirectSound* directSound, uint16 channelId, ui
 // 0x4D7910
 CAEAudioChannel::~CAEAudioChannel() {
 #ifdef NOTSA_NATIVE
-    // Silent backend: no DirectSound buffers are ever created.
+    if (m_pDirectSoundBuffer) {
+        --g_numSoundChannelsUsed;
+        std::exchange(m_pDirectSoundBuffer, nullptr)->Release();
+    }
 #else
     if (m_pDirectSoundBuffer) {
         --g_numSoundChannelsUsed;
@@ -91,13 +96,32 @@ CAEAudioChannel::~CAEAudioChannel() {
 // 0x4D7D00
 void CAEAudioChannel::SetFrequencyScalingFactor(float factor) {
 #ifdef NOTSA_NATIVE
-    // Silent backend: keep the channel state, but there is no buffer to re-frequency.
     if (factor == 0.0F) {
+        if (m_pDirectSoundBuffer && !m_bPaused && IsBufferPlaying()) {
+            // The fade thread silences (and then stops) the voice; if no fade slot is available,
+            // stop it right away.
+            if (!AESmoothFadeThread.RequestFade(m_pDirectSoundBuffer, -100.0F, -1, true)) {
+                m_pDirectSoundBuffer->Stop();
+            }
+        }
+
         m_bPaused = true;
         return;
     }
+
     SetFrequency(static_cast<uint32>(float(m_nOriginalFrequency) * factor));
-    m_bPaused = false;
+
+    if (m_bPaused) {
+        if (m_pDirectSoundBuffer) {
+            m_pDirectSoundBuffer->SetVolumeDb(-100.0F);
+            m_pDirectSoundBuffer->Play(m_bLooped);
+
+            if (!AESmoothFadeThread.RequestFade(m_pDirectSoundBuffer, m_Volume, -2, false)) {
+                m_pDirectSoundBuffer->SetVolumeDb(m_Volume);
+            }
+        }
+        m_bPaused = false;
+    }
 #else
     if (factor == 0.0F) {
         if (m_pDirectSoundBuffer &&
@@ -136,6 +160,10 @@ void CAEAudioChannel::SetFrequencyScalingFactor(float factor) {
 
 // 0x4D7950
 void CAEAudioChannel::SetPosition(const CVector& vecPos) const {
+#ifdef NOTSA_NATIVE
+    if (m_pDirectSoundBuffer)
+        m_pDirectSoundBuffer->SetPosition(vecPos);
+#else
     if (!m_pDirectSoundBuffer)
         return;
 
@@ -144,6 +172,7 @@ void CAEAudioChannel::SetPosition(const CVector& vecPos) const {
 
 #ifdef USE_DSOUND
     m_pDirectSound3DBuffer->SetPosition(vecPos.x, vecPos.y, vecPos.z, DS3D_DEFERRED);
+#endif
 #endif
 }
 
@@ -174,7 +203,7 @@ uint32 CAEAudioChannel::GetCurrentPlaybackPosition() const {
         return 0;
 
 #ifdef NOTSA_NATIVE
-    return 0;
+    return m_pDirectSoundBuffer->GetPlaybackByteOffset();
 #else
     uint32 outPos = 0;
     m_pDirectSoundBuffer->GetCurrentPosition(reinterpret_cast<LPDWORD>(&outPos), nullptr);
@@ -199,11 +228,15 @@ void CAEAudioChannel::SetFrequency(uint32 freq) {
 
     m_nFrequency = freq;
 
-    #ifdef USE_DSOUND
+#ifdef NOTSA_NATIVE
+    if (m_pDirectSoundBuffer) {
+        m_pDirectSoundBuffer->SetFrequency(freq);
+    }
+#elif defined(USE_DSOUND)
     if (m_pDirectSoundBuffer) {
         VERIFY_TODO_FIX(SUCCEEDED(m_pDirectSoundBuffer->SetFrequency(freq)));
     }
-    #endif
+#endif
 }
 
 // 0x4D7A70
@@ -214,7 +247,9 @@ void CAEAudioChannel::SetOriginalFrequency(uint32 freq) {
 
 // 0x4D7BD0
 void CAEAudioChannel::UpdateStatus() {
-#ifdef USE_DSOUND
+#ifdef NOTSA_NATIVE
+    m_nBufferStatus = IsBufferPlaying() ? 0x1 /* DSBSTATUS_PLAYING */ : 0;
+#elif defined(USE_DSOUND)
     m_pDirectSoundBuffer->GetStatus(reinterpret_cast<LPDWORD>(&m_nBufferStatus));
     if (m_nBufferStatus & DSBSTATUS_BUFFERLOST) {
         Lost();
@@ -236,7 +271,8 @@ bool CAEAudioChannel::Lost() const {
 // 0x4D7AA0
 bool CAEAudioChannel::SetReverbAndDepth(uint32 reverbEnv, uint32 depth) {
 #ifdef NOTSA_NATIVE
-    // Silent backend: there is no 3D buffer (nor EAX) to configure.
+    // EAX reverb is disabled in this build too (`#if 0 // No EAX` above), so there's nothing
+    // to configure - exactly like the Windows build.
     UNUSED(reverbEnv, depth);
     return false;
 #else
@@ -262,7 +298,7 @@ bool CAEAudioChannel::SetReverbAndDepth(uint32 reverbEnv, uint32 depth) {
 // 0x4D7B50
 void CAEAudioChannel::SetNotInRoom(bool onStreet) {
 #ifdef NOTSA_NATIVE
-    // Silent backend: there is no 3D buffer (nor EAX) to configure.
+    // EAX reverb is disabled in this build too (`#if 0 // No EAX` above).
     UNUSED(onStreet);
 #else
     if (!m_pDirectSoundBuffer || !m_pDirectSound3DBuffer || AEAudioHardware.m_n3dEffectsQueryResult != 1) {

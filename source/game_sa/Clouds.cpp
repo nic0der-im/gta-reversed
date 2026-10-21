@@ -20,7 +20,7 @@ void CClouds::InjectHooks() {
     RH_ScopedInstall(SetUpOneSkyPoly, 0x713060);
     RH_ScopedInstall(Render, 0x713950);
     RH_ScopedInstall(RenderSkyPolys, 0x714650);
-    RH_ScopedInstall(RenderBottomFromHeight, 0x7154B0, { .Reversed = false });
+    RH_ScopedInstall(RenderBottomFromHeight, 0x7154B0);
 
     // Moving fog
     RH_ScopedInstall(MovingFogInit, 0x713660);
@@ -857,43 +857,225 @@ void CClouds::RenderSkyPolys() {
     CBrightLights::RenderOutGeometryBuffer();
 }
 
+// Pseudo-random tables from the original executable's `.rdata` (0x8D5658, 0x8D57A0 and 0x8D5818) -
+// They give every low cloud quad/billboard a stable position, size and height band.
+// NOTE: Only the first 34 entries of `CLOUD_RANDOM_TABLE` are ever read below.
+constexpr std::array<float, 80> CLOUD_RANDOM_TABLE{
+    0.36f, 0.12f, 0.94f, 0.34f, 0.83f, 0.75f, 0.28f, 0.10f,
+    0.03f, 0.85f, 0.52f, 0.92f, 0.36f, 0.83f, 0.09f, 0.26f,
+    0.43f, 0.27f, 0.95f, 0.02f, 0.64f, 0.23f, 0.49f, 0.55f,
+    0.30f, 0.88f, 0.37f, 0.94f, 0.58f, 0.67f, 0.21f, 0.47f,
+    0.38f, 0.03f, 0.26f, 0.96f, 0.74f, 0.66f, 0.99f, 0.11f,
+    0.85f, 0.29f, 0.58f, 0.30f, 0.30f, 0.36f, 0.39f, 0.08f,
+    0.58f, 0.33f, 0.16f, 0.76f, 0.34f, 0.96f, 0.69f, 0.71f,
+    0.75f, 0.39f, 0.48f, 0.90f, 0.80f, 0.76f, 0.69f, 0.28f,
+    0.23f, 0.29f, 0.75f, 0.72f, 0.14f, 0.73f, 0.59f, 0.35f,
+    0.90f, 0.18f, 0.77f, 0.04f, 0.48f, 0.37f, 0.81f, 0.67f,
+};
+
+constexpr std::array<float, 30> CLOUD_BILLBOARD_OFFSET_X{
+    54.f, 105.f, 203.f, 65.f, 213.f, 154.f, 169.f, 54.f, 76.f, 10.f,
+    119.f, 204.f, 176.f, 154.f, 132.f, 190.f, 200.f, 37.f, 193.f, 154.f,
+    71.f, 111.f, 234.f, 12.f, 195.f, 165.f, 104.f, 94.f, 23.f, 222.f,
+};
+
+constexpr std::array<float, 30> CLOUD_BILLBOARD_OFFSET_Y{
+    100.f, 50.f, 156.f, 123.f, 232.f, 12.f, 76.f, 203.f, 164.f, 120.f,
+    64.f, 164.f, 94.f, 195.f, 125.f, 71.f, 243.f, 123.f, 176.f, 65.f,
+    132.f, 54.f, 94.f, 12.f, 234.f, 167.f, 165.f, 200.f, 100.f, 40.f,
+};
+
 // 0x7154B0
 void CClouds::RenderBottomFromHeight() {
-    /****
-    * Code below should be good
-    * but it isn't complete...
-    *****\
-   
     const auto camPos = TheCamera.GetPosition();
-    if (camPos.z < -90.f) { // 0x71557D [Moved up here]
+    if (camPos.z < -90.0f) { // 0x715567
         return;
     }
 
     const auto& cc = CTimeCycle::m_CurrentColours; // cc = color component
-    const auto ClampClr = [](float clr) {
-        return std::min(clr, 255.f);
-    };
-    const auto fcClr = CRGBA{ // fc = fluffy clouds
-        (uint8)ClampClr(cc.m_nFluffyCloudsBottomRed * 2.f + 20.f),
-        (uint8)ClampClr(cc.m_nFluffyCloudsBottomGreen * 1.5f),
-        (uint8)ClampClr(cc.m_nFluffyCloudsBottomBlue * 1.5f),
-        (uint8)255
+
+    const auto ClampTo255 = [](float clr) {
+        return (uint8)(int32)std::min(clr, 255.0f);
     };
 
-    auto lowZ = 160.f, highZ = 190.f;
+    // Brighter variant of the cloud colour, used by the first vertex of every quad
+    const RwRGBA clrTop{
+        ClampTo255(cc.m_nFluffyCloudsBottomRed * 2.0f + 20.0f),
+        ClampTo255(cc.m_nFluffyCloudsBottomGreen * 1.5f),
+        ClampTo255(cc.m_nFluffyCloudsBottomBlue * 1.5f),
+        255
+    };
 
-    auto& windShift = StaticRef<float>(0xC6E954);
+    // Raw colour, used by the remaining 3 vertices of every quad
+    const RwRGBA clrBottom{
+        (uint8)cc.m_nFluffyCloudsBottomRed,
+        (uint8)cc.m_nFluffyCloudsBottomGreen,
+        (uint8)cc.m_nFluffyCloudsBottomBlue,
+        255
+    };
 
-    RwRenderStateSet(rwRENDERSTATEZWRITEENABLE,      RWRSTATE(TRUE));
+    // Height band the clouds are drawn in - It's lifted along with the camera once it's high enough
+    float lowZ = 160.0f, highZ = 190.0f;
+    const float bandLift = (camPos.z - 190.0f - 10.0f) * 0.3f;
+    if (bandLift > 0.0f) {
+        lowZ  += bandLift;
+        highZ += bandLift;
+    }
+
+    auto& windShift = StaticRef<float>(0xC6E954); // World anchored scroll accumulator
+    windShift += CTimer::GetTimeStep() * CWeather::Wind * 0.25f;
+
+    RwRenderStateSet(rwRENDERSTATEZWRITEENABLE,      RWRSTATE(FALSE));
     RwRenderStateSet(rwRENDERSTATEZTESTENABLE,       RWRSTATE(TRUE));
     RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, RWRSTATE(TRUE));
-    RwRenderStateSet(rwRENDERSTATEFOGENABLE,         RWRSTATE(TRUE));
+    RwRenderStateSet(rwRENDERSTATEFOGENABLE,         RWRSTATE(FALSE));
     RwRenderStateSet(rwRENDERSTATESRCBLEND,          RWRSTATE(rwBLENDSRCALPHA));
     RwRenderStateSet(rwRENDERSTATEDESTBLEND,         RWRSTATE(rwBLENDINVSRCALPHA));
     RwRenderStateSet(rwRENDERSTATETEXTURERASTER,     RWRSTATE(RwTextureGetRaster(gpCloudMaskTex)));
 
-    // TODO....
-    */
+    // Snap a camera relative coordinate to the centre of a 512 (mask 0x1FF) or 256 (mask 0xFF) units cell.
+    // The original truncates with an `(int32)` cast (and doesn't use `fmod`), so negative values must wrap exactly like this.
+    const auto SnapToCellCentre = [](float v, int32 mask, int32 halfCell) {
+        return v - (float)(((int32)v & ~mask) + halfCell);
+    };
+
+    const auto PushVertex = [](uint16 idx, float x, float y, float z, float u, float v, const RwRGBA& clr) {
+        auto& vert = TempBufferVertices.m_3d[idx];
+        RwIm3DVertexSetPos(&vert, x, y, z);
+        RwIm3DVertexSetRGBA(&vert, clr.red, clr.green, clr.blue, clr.alpha);
+        RwIm3DVertexSetU(&vert, u);
+        RwIm3DVertexSetV(&vert, v);
+    };
+
+    const int32 alpha0 = (int32)cc.m_fCloudAlpha;
+
+    // ---- Quads (The flat, horizontal part of the cloud layer) ----
+    if (alpha0 != 0) {
+        uiTempBufferIndicesStored  = 0;
+        uiTempBufferVerticesStored = 0;
+
+        for (int32 i = 1; i < 28; i++) {
+            const float scroll = (CLOUD_RANDOM_TABLE[(i + 5) % 80] * 0.5f + 1.0f) * windShift;
+
+            const float xw = scroll + CLOUD_RANDOM_TABLE[(i - 1) % 80] * 512.0f - camPos.x;
+            const float yw = scroll + CLOUD_RANDOM_TABLE[i % 80] * 512.0f - camPos.y;
+            const float x  = camPos.x + SnapToCellCentre(xw, 0x1FF, 0x100);
+            const float y  = camPos.y + SnapToCellCentre(yw, 0x1FF, 0x100);
+            const float z  = lowZ + (highZ - lowZ) * CLOUD_RANDOM_TABLE[(i + 1) % 80];
+
+            int32 alpha = alpha0;
+            if (z - camPos.z > 0.0f) { // Fade out with the distance above the camera
+                alpha = (int32)((1.0f - (z - camPos.z) * 0.004f) * (float)alpha0);
+            }
+            if (alpha <= 0) {
+                continue;
+            }
+
+            const float dist = std::max(std::abs(camPos.x - x), std::abs(camPos.y - y)) * (1.0f / 256.0f);
+            if (dist > 0.75f) {
+                alpha = (int32)((1.0f - (dist - 0.75f) * 4.0f) * (float)alpha);
+            }
+            if (alpha <= 0) {
+                continue;
+            }
+
+            const float halfW = CLOUD_RANDOM_TABLE[(i + 2) % 80] * 100.0f + 60.0f;
+            const float halfH = CLOUD_RANDOM_TABLE[(i + 3) % 80] * 100.0f + 60.0f;
+
+            const uint8  a       = (uint8)alpha;
+            const uint16 vertIdx = uiTempBufferVerticesStored;
+
+            RwRGBA clrA = clrTop;
+            clrA.alpha = a;
+            RwRGBA clrB = clrBottom;
+            clrB.alpha = a;
+
+            PushVertex(vertIdx + 0, x - halfW, y + halfH, z, 0.0f, 0.0f, clrA);
+            PushVertex(vertIdx + 1, x + halfW, y + halfH, z, 0.0f, 1.0f, clrB);
+            PushVertex(vertIdx + 2, x - halfW, y - halfH, z, 1.0f, 0.0f, clrB);
+            PushVertex(vertIdx + 3, x + halfW, y - halfH, z, 1.0f, 1.0f, clrB);
+
+            aTempBufferIndices[uiTempBufferIndicesStored + 0] = vertIdx + 2;
+            aTempBufferIndices[uiTempBufferIndicesStored + 1] = vertIdx + 1;
+            aTempBufferIndices[uiTempBufferIndicesStored + 2] = vertIdx + 0;
+            aTempBufferIndices[uiTempBufferIndicesStored + 3] = vertIdx + 2;
+            aTempBufferIndices[uiTempBufferIndicesStored + 4] = vertIdx + 3;
+            aTempBufferIndices[uiTempBufferIndicesStored + 5] = vertIdx + 1;
+
+            uiTempBufferIndicesStored  += 6;
+            uiTempBufferVerticesStored += 4;
+        }
+
+        if (uiTempBufferIndicesStored != 0
+            && RwIm3DTransform(TempBufferVertices.m_3d, uiTempBufferVerticesStored, nullptr, rwIM3D_VERTEXXYZ | rwIM3D_VERTEXRGBA | rwIM3D_VERTEXUV)
+        ) {
+            RwIm3DRenderIndexedPrimitive(rwPRIMTYPETRILIST, aTempBufferIndices, uiTempBufferIndicesStored);
+            RwIm3DEnd();
+        }
+
+        uiTempBufferIndicesStored  = 0;
+        uiTempBufferVerticesStored = 0;
+    }
+
+    CSprite::InitSpriteBuffer();
+
+    // ---- Billboards (Soft "puffs" around the quads) ----
+    if (alpha0 > 0) {
+        const float scroll = windShift * 0.5f; // The billboards scroll at half the speed of the quads
+
+        for (int32 i = 0; i < 30; i++) {
+            const float xw = scroll + CLOUD_BILLBOARD_OFFSET_X[i] - camPos.x;
+            const float yw = scroll + CLOUD_BILLBOARD_OFFSET_Y[i] - camPos.y;
+            const float x  = camPos.x + SnapToCellCentre(xw, 0xFF, 0x80);
+            const float y  = camPos.y + SnapToCellCentre(yw, 0xFF, 0x80);
+            const float z  = lowZ + (highZ - lowZ) * CLOUD_RANDOM_TABLE[i % 80];
+
+            int32 alpha = (int32)((1.0f - std::abs(camPos.z - z) * 0.004f) * (float)alpha0);
+            if (alpha <= 0) {
+                continue;
+            }
+
+            const float scale = (CLOUD_RANDOM_TABLE[(i + 1) % 80] + 1.0f) * 12.0f;
+
+            float dist = std::max(std::abs(camPos.x - x), std::abs(camPos.y - y)) * (1.0f / 128.0f);
+            if (dist >= 1.0f) {
+                dist = 1.0f;
+            }
+            if (dist > 0.75f) {
+                alpha = (int32)((1.0f - (dist - 0.75f) * 4.0f) * (float)alpha);
+            }
+
+            if (dist <= 0.05f) { // Too close, don't render
+                continue;
+            }
+
+            if (dist < 0.1f) { // Fade in
+                alpha = (int32)((dist - 0.05f) * (float)alpha * 20.0f);
+            }
+
+            CVector posOnScreen;
+            float   w{}, h{};
+            if (CSprite::CalcScreenCoors(CVector{x, y, z}, &posOnScreen, &w, &h, false, true)) {
+                CSprite::RenderBufferedOneXLUSprite(
+                    posOnScreen,
+                    CVector2D{w * scale, h * scale},
+                    (uint8)cc.m_nFluffyCloudsBottomRed,
+                    (uint8)cc.m_nFluffyCloudsBottomGreen,
+                    (uint8)cc.m_nFluffyCloudsBottomBlue,
+                    0x100, // Intensity (256, not 255)
+                    1.0f / posOnScreen.z,
+                    (uint8)alpha
+                );
+            }
+        }
+    }
+
+    CSprite::FlushSpriteBuffer();
+
+    RwRenderStateSet(rwRENDERSTATETEXTURERASTER,     RWRSTATE(NULL));
+    RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, RWRSTATE(FALSE));
+    RwRenderStateSet(rwRENDERSTATEZWRITEENABLE,      RWRSTATE(TRUE));
+    RwRenderStateSet(rwRENDERSTATEZTESTENABLE,       RWRSTATE(TRUE));
 }
 
 //

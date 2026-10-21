@@ -6,6 +6,8 @@
 #include "dsound.h"
 #endif
 
+#include "Audio/OpenAL/OALTypes.h"
+
 #include "Vector.h"
 
 
@@ -20,10 +22,8 @@ public:
     };
     IDirectSound3DBuffer* m_pDirectSound3DBuffer;
 #elif defined(NOTSA_NATIVE)
-    // Silent backend: these are always null, but the shared code still tests them.
-    IDirectSound*         m_pDirectSound{};
-    IDirectSoundBuffer*   m_pDirectSoundBuffer{};
-    IDirectSound3DBuffer* m_pDirectSound3DBuffer{};
+    IDirectSound*         m_pDirectSound{};        //!< Unused natively: the OpenAL device is global
+    tAudioBufferHandle*   m_pDirectSoundBuffer{};  //!< The OpenAL voice of this channel
 #endif
 
     char                  _pad10[24];
@@ -49,6 +49,8 @@ public:
         } bufferStatus;
         uint32 m_nBufferStatus;
     };
+#elif defined(NOTSA_NATIVE)
+    uint32                m_nBufferStatus{};
 #endif
 
 public:
@@ -71,6 +73,8 @@ public:
     bool   IsBufferPlaying() const {
 #ifdef USE_DSOUND
         return m_nBufferStatus & DSBSTATUS_PLAYING;
+#elif defined(NOTSA_NATIVE)
+        return m_pDirectSoundBuffer && m_pDirectSoundBuffer->IsPlaying();
 #else
         return false;
 #endif

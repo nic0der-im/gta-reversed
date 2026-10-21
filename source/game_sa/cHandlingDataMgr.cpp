@@ -52,8 +52,8 @@ int32 tHandlingData::InitFromData(int32 id, const char* line) {
         &m_transmissionData.m_MaxVelocity,
         &m_transmissionData.m_EngineAcceleration,
         &m_transmissionData.m_EngineInertia,
-        &m_transmissionData.m_nDriveType, 1u,
-        &m_transmissionData.m_nEngineType, 1u,
+        SCANF_S_CHAR(&m_transmissionData.m_nDriveType),
+        SCANF_S_CHAR(&m_transmissionData.m_nEngineType),
 
         &m_fBrakeDeceleration, // 18
         &m_fBrakeBias,

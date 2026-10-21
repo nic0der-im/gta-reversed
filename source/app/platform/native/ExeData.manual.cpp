@@ -2,6 +2,7 @@
 
 #ifdef NOTSA_NATIVE
 
+#include <algorithm>
 #include <cstring>
 #include <new>
 
@@ -11,9 +12,15 @@
 #include "app/platform/native/ExeGlobals.h"
 
 #include "ControllerConfigManager.h"
+#include "Gangs.h"
 #include "Pad.h"
+#include "PedClothesDesc.h"
+#include "Tasks/PedScriptedTaskRecord.h"
 #include "World.h"
 #include "cHandlingDataMgr.h"
+
+//! Defined in `Clothes.cpp`, bound to `StaticRef<CPedClothesDesc>(0xBC1C78)`.
+extern CPedClothesDesc& PlayerClothes;
 
 namespace notsa::native {
 namespace {
@@ -26,7 +33,133 @@ namespace {
 void ClearArray(const ExeDataEntry& e) {
     ExeGlobals::ZeroFill(e.Addr, static_cast<size_t>(e.Size) * e.Count);
 }
+
+/*!
+* @brief One row of the initializer table whose native element layout differs from the executable's.
+*
+* The executable writes element `i` at `Addr + i * ExeStride`; the native type stores element `i` at
+* `Addr + i * sizeof(element)` in `ExeGlobals` storage, which is a different offset as soon as a
+* pointer widens. `WriteElement` maps one executable element write onto the native members, and
+* `ClearElements` maps a clear of the whole row onto the native type.
+*/
+struct NativeLayoutRow {
+    std::uintptr_t Addr;      //!< Executable address of element 0.
+    std::size_t    ExeStride; //!< Element size in the executable.
+    std::size_t    ExeSize;   //!< Bytes the executable occupies (element count x `ExeStride`).
+    //! Apply the executable's write of `size` bytes at `offset` inside element `index`.
+    void (*WriteElement)(std::uint32_t index, std::size_t offset, const void* data, std::size_t size);
+    //! Bring the whole row to the executable's initial state (rows the executable clears).
+    void (*ClearElements)();
+};
+
+//! Read the little-endian integer payload of one table write.
+std::int32_t ReadInt32(const void* data, std::size_t size) {
+    std::int32_t value{};
+    std::memcpy(&value, data, std::min(size, sizeof(value)));
+    return value;
+}
+
+// 0x851680: `CPedScriptedTaskRecord::ms_scriptedTasks` (128 x 0x14), element constructor 0x608330
+// stores `m_opcode` = -1 at offset 0x0 and `m_status` = FLUSHED at offset 0x10. Natively the three
+// pointers widen the element to 0x28, so the executable's offsets do not match the member offsets.
+void WriteScriptedTask(std::uint32_t index, std::size_t offset, const void* data, std::size_t size) {
+    auto& record = CPedScriptedTaskRecord::ms_scriptedTasks[index];
+    switch (offset) {
+    case 0x00:
+        record.m_opcode = ReadInt32(data, size);
+        return;
+    case 0x10:
+        record.m_status = static_cast<eScriptedTaskStatus>(ReadInt32(data, size));
+        return;
+    default:
+        spdlog::warn("ExeData: no `CPedScriptedTaskRecordData` member at executable offset 0x{:X}", offset);
+        return;
+    }
+}
+
+// 0x850CE0: `CGangs::Gang` (10 x 0x10 `CGangInfo`), element constructor 0x5DE520 stores
+// `m_nPedModelOverride` = -1 at offset 0x0.
+void WriteGang(std::uint32_t index, std::size_t offset, const void* data, std::size_t size) {
+    if (offset != 0 || size != 1) {
+        spdlog::warn("ExeData: unexpected write of {} byte(s) at `CGangInfo` offset 0x{:X}", size, offset);
+        return;
+    }
+    CGangs::Gang[index].m_nPedModelOverride = static_cast<std::int8_t>(*static_cast<const std::uint8_t*>(data));
+}
+
+// 0x84E9E0: `CWorld::ms_aRepeatSectors` (256 x 0xC). Element constructor 0x563190 only constructs
+// the three inline `CPtrListDoubleLink`s (0x0043E3F0), each of which clears itself, so zeroing the
+// native element is the equivalent.
+void ClearRepeatSectors() {
+    for (auto& row : CWorld::ms_aRepeatSectors) {
+        for (auto& sector : row) {
+            std::memset(static_cast<void*>(&sector), 0, sizeof(sector));
+        }
+    }
+}
+
+// 0x84FF30: `PlayerClothes`, cleared as two zero fills (0xBC1C78: 40 bytes, 0xBC1CA0: 72 bytes).
+// `CPedClothesDesc` has the same size in both layouts, but the rows address it in two pieces, so
+// the clear goes through the typed object.
+void ClearPlayerClothes() {
+    std::memset(static_cast<void*>(&PlayerClothes), 0, sizeof(PlayerClothes));
+}
+
+constexpr NativeLayoutRow kNativeLayoutRows[] = {
+    // 0x84E9E0 `_eh_vector_constructor_iterator(ctor 0x563190 dtor 0x5631B0 256 x 0xC)`
+    {0xB992B8, 0x0C, 0x0C * 256, nullptr, &ClearRepeatSectors},
+
+    // 0x84FF30 zero fill of `CPedClothesDesc` (0x78 bytes in both layouts).
+    {0xBC1C78, sizeof(CPedClothesDesc), sizeof(CPedClothesDesc), nullptr, &ClearPlayerClothes},
+
+    // 0x850CE0 `_eh_vector_constructor_iterator(ctor 0x5DE520 dtor 0x5DE540 10 x 0x10)`
+    {0xC091F0, 0x10, 0x10 * 10, &WriteGang, nullptr},
+
+    // 0x851680 `_eh_vector_constructor_iterator(ctor 0x608330 dtor 0x6082E0 128 x 0x14)`
+    {0xC0B1E8, 0x14, 0x14 * 128, &WriteScriptedTask, nullptr},
+};
+
+//! Find the row whose executable range contains `[addr, addr + size)`.
+const NativeLayoutRow* FindNativeLayoutRow(std::uintptr_t addr, std::size_t size) {
+    if (size == 0) {
+        return nullptr;
+    }
+    for (const auto& row : kNativeLayoutRows) {
+        if (addr < row.Addr) {
+            continue;
+        }
+        const auto offset = addr - row.Addr;
+        if (offset < row.ExeSize && size <= row.ExeSize - offset) {
+            return &row;
+        }
+    }
+    return nullptr;
+}
 } // namespace
+
+bool ApplyManualExeDataPattern(std::uintptr_t addr, const void* data, std::size_t size) {
+    const auto* const row = FindNativeLayoutRow(addr, size);
+    if (!row || !row->WriteElement) {
+        return false;
+    }
+    const auto offset = addr - row->Addr;
+    row->WriteElement(
+        static_cast<std::uint32_t>(offset / row->ExeStride),
+        offset % row->ExeStride,
+        data,
+        size
+    );
+    return true;
+}
+
+bool ApplyManualExeDataZeroFill(std::uintptr_t addr, std::size_t size) {
+    const auto* const row = FindNativeLayoutRow(addr, size);
+    if (!row || !row->ClearElements) {
+        return false;
+    }
+    row->ClearElements();
+    return true;
+}
 
 bool ApplyManualExeDataEntry(const ExeDataEntry& e) {
     switch (e.Kind) {
@@ -59,6 +192,8 @@ bool ApplyManualExeDataEntry(const ExeDataEntry& e) {
 
         // 0x84E9E0: `CWorld::ms_aRepeatSectors` (256 x 0xC). Element constructor 0x00563190 only
         // constructs three inline `CPtrListSingleLink`s (0x0043E3F0), each of which clears itself.
+        // The zero fill below is redirected to the native array by `ClearRepeatSectors`, so the
+        // executable's 0xC stride never addresses the widened elements.
         if (e.Addr == 0xB992B8) {
             ClearArray(e);
             return true;

@@ -48,7 +48,7 @@ public:
     bool   Initialise();
     size_t FillBuffer(void* dest, size_t size);
     uint32 GetCurrentPosition();
-    uint32 Seek(long offset, int32 whence);
+    uint32 Seek(int32 offset, int32 whence);
     bool   Close();
 
 private:

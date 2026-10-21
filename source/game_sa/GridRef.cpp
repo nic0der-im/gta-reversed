@@ -27,7 +27,7 @@ void CGridRef::Init() {
 
         char x_ch = 0;
         int32 y = 0;
-        VERIFY(sscanf_s(line, "%c%d %s", &x_ch, 1u, &y, SCANF_S_STR(str)) == 3);
+        VERIFY(sscanf_s(line, "%c%d %s", SCANF_S_CHAR(&x_ch), &y, SCANF_S_STR(str)) == 3);
         _strlwr_s(str);
         int8 x = x_ch - 'A'; // Get alphabetical index
         y -= 1;

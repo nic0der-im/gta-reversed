@@ -76,7 +76,7 @@ public:
     static void InjectHooks();
 
     // Inlined
-    static CRegisteredCorona* GetCoronaByID(int32 id);
+    static CRegisteredCorona* GetCoronaByID(uint32 id);
     // Inlined
     static CRegisteredCorona* GetFree();
 };

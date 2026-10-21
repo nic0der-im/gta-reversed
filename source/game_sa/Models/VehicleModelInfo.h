@@ -83,9 +83,55 @@ enum eComponentsRules {
     FULL_RANDOM = 4,
 };
 
+//! Address of an Rw field together with the value to put back into it.
+//! Used by `CVehicleModelInfo::SetEditableMaterials` to undo the changes it made to a clump's materials.
+//! \note On 32 bit this mirrors the exe's array at `0xB4DBE8` (256 entries), so its layout must stay
+//!       2 x 4 bytes there - it has no room to grow either (`CVehicleModelInfo::ms_lightsOn` at `0xB4E3E8`
+//!       is exactly where the 256th entry ends).
 struct tRestoreEntry {
-    void* m_pAddress;
-    void* m_pValue;
+    void*     m_pAddress = nullptr;
+    uintptr_t m_nValue   = 0; // *Bits* of the field, as wide as the field itself (see `m_nValueSize`)
+
+#ifdef NOTSA_NATIVE
+    //! `RpMaterial::texture` is pointer-sized, while `RpMaterial::color` and `RpMaterial::surfaceProps`
+    //! stay 4 bytes wide, so the width of the field at `m_pAddress` has to travel along with its value.
+    //! Not needed (nor possible) in 32 bit builds, where the exe's layout is fixed and every restored field is 4 bytes.
+    uint32    m_nValueSize = sizeof(uint32);
+#endif
+
+    //! Save a pointer-sized field (e.g. `RpMaterial::texture`), to be put back by `Restore`
+    template<typename T>
+    void SetPointerValue(T*& field) {
+        m_pAddress = &field;
+        m_nValue   = reinterpret_cast<uintptr_t>(field);
+#ifdef NOTSA_NATIVE
+        m_nValueSize = sizeof(void*);
+#endif
+    }
+
+    //! Save the first 4 bytes of a 32 bit field (e.g. `RwRGBA` or `RwSurfaceProperties`), to be put back by `Restore`
+    void Set32BitValue(void* field) {
+        uint32 value;
+        std::memcpy(&value, field, sizeof(value));
+
+        m_pAddress = field;
+        m_nValue   = value;
+#ifdef NOTSA_NATIVE
+        m_nValueSize = sizeof(uint32);
+#endif
+    }
+
+    //! Write the saved value back into the field it was taken from
+    void Restore() const {
+#ifdef NOTSA_NATIVE
+        if (m_nValueSize == sizeof(void*)) {
+            std::memcpy(m_pAddress, &m_nValue, sizeof(void*));
+            return;
+        }
+#endif
+        const auto value = static_cast<uint32>(m_nValue);
+        std::memcpy(m_pAddress, &value, sizeof(value));
+    }
 };
 VALIDATE_SIZE(tRestoreEntry, 0x8);
 

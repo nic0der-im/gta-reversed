@@ -1,5 +1,7 @@
 #include "StdInc.h"
 
+#include <extensions/utility.hpp>
+
 #include "TrafficLights.h"
 #include "Shadows.h"
 
@@ -196,7 +198,7 @@ void CTrafficLights::DisplayActualLight(CEntity* entity) {
         auto fSize = CTimeCycle::m_CurrentColours.m_fSpriteSize * 0.175F;
 
         CCoronas::RegisterCorona(
-            reinterpret_cast<uint32>(entity) + iFxInd,
+            notsa::PtrToId(entity) + iFxInd,
             nullptr,
             static_cast<uint8>((float)aTrafficLightColoursR[iColorState] * fBrightness),
             static_cast<uint8>((float)aTrafficLightColoursG[iColorState] * fBrightness),
@@ -260,7 +262,7 @@ void CTrafficLights::DisplayActualLight(CEntity* entity) {
                 auto ucBlue  = static_cast<uint8>((float)aTrafficLightColoursB[iLightState] * fColMult);
 
                 CShadows::StoreStaticShadow(
-                    reinterpret_cast<uint32>(entity),
+                    notsa::PtrToId(entity),
                     eShadowType::SHADOW_ADDITIVE,
                     gpShadowExplosionTex,
                     vecCenter,

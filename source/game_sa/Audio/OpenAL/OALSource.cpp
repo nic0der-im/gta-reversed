@@ -1,155 +1,314 @@
 #include "StdInc.h"
+
 #include "OALSource.h"
 #include "OALBuffer.h"
 
-OALSource::~OALSource() {
-    if (m_oalBuffer && m_type != OALSourceType::OST_Preloop) {
-        if (m_sourceId)
-            alSourcei(m_sourceId, AL_BUFFER, 0);
+#ifdef NOTSA_NATIVE
 
-        m_oalBuffer->Release();
-        m_oalBuffer = nullptr;
+//! `AL_SOFT_loop_points` (see `alext.h`) - only the constant is needed, not the whole extension header.
+#ifndef AL_LOOP_POINTS_SOFT
+#define AL_LOOP_POINTS_SOFT 0x2015
+#endif
+
+OALSource::~OALSource() {
+    if (!notsa::oal::IsDeviceOpen()) {
+        // The context is gone already - just drop the references, there's nothing to free.
+        for (auto* buffer : m_queuedBuffers) {
+            buffer->Release();
+        }
+        m_queuedBuffers.clear();
+
+        if (m_buffer) {
+            std::exchange(m_buffer, nullptr)->Release();
+        }
+        m_sourceId = 0;
+        return;
     }
 
-    if (m_sourceId) {
-        switch (m_type) {
-        case OALSourceType::OST_Preloop:
-        case OALSourceType::OST_Streaming:
-            UnqueueBuffers();
-            break;
-        }
+    ReleaseQueuedBuffers();
+    DetachBuffer();
 
-        std::erase(activeSources, this);
-        alDeleteSources(1, &m_sourceId);
+    if (m_sourceId) {
+        OAL_CHECKED(alDeleteSources(1, &m_sourceId));
         m_sourceId = 0;
     }
 }
 
-// Ensures that OpenAL source is created.
 void OALSource::ObtainSource() {
-    if (m_sourceId)
+    if (m_sourceId || !notsa::oal::IsDeviceOpen()) {
         return;
+    }
 
-    alGenSources(1, &m_sourceId);
-    activeSources.push_back(this);
+    if (!notsa::oal::MakeContextCurrent()) {
+        return;
+    }
 
-    if (m_oalBuffer && m_type != OALSourceType::OST_Preloop) {
-        alSourcei(m_sourceId, AL_BUFFER, m_oalBuffer->m_bufferId);
+    OAL_CHECKED(alGenSources(1, &m_sourceId));
+    if (!m_sourceId) {
+        return;
+    }
+
+    // A DirectSound buffer without 3D processing behaves like a plain stereo voice.
+    OAL_CHECKED(alSourcei(m_sourceId, AL_SOURCE_RELATIVE, AL_FALSE));
+    OAL_CHECKED(alSourcef(m_sourceId, AL_ROLLOFF_FACTOR, 0.0f)); // The game attenuates by distance itself
+    OAL_CHECKED(alSourcef(m_sourceId, AL_GAIN, m_volumeDb <= -100.0f ? 0.0f : std::pow(10.0f, m_volumeDb * 0.05f)));
+
+    if (m_buffer && m_bufferId) {
+        OAL_CHECKED(alSourcei(m_sourceId, AL_BUFFER, static_cast<ALint>(m_bufferId)));
     }
 }
 
-void OALSource::SetZero(uint32 size, uint32 frequency) {
-    auto* zeros = new uint8[size];
-    std::memset(zeros, 0, size);
-    SetData(zeros, size, frequency, 1);
-    delete[] zeros;
+void OALSource::DetachBuffer() {
+    if (m_bufferId && m_sourceId) {
+        OAL_CHECKED(alSourcei(m_sourceId, AL_BUFFER, 0));
+    }
+    m_bufferId = 0;
+
+    if (m_buffer) {
+        std::exchange(m_buffer, nullptr)->Release();
+    }
 }
 
-void OALSource::SetStream() {
-    m_type = OALSourceType::OST_Streaming;
+void OALSource::ReleaseQueuedBuffers() {
+    if (m_sourceId) {
+        OAL_CHECKED(alSourcei(m_sourceId, AL_BUFFER, 0)); // Unqueues everything
+    }
+
+    for (auto* buffer : m_queuedBuffers) {
+        buffer->Release();
+    }
+    m_queuedBuffers.clear();
 }
 
-void OALSource::SetData(void* data, uint32 size, uint32 frequency, uint32 channels) {
-    const auto buffer = new OALBuffer(data, size, frequency, channels);
-    SetBuffer(buffer);
-    buffer->Release(); // ???
-}
+bool OALSource::SetBuffer(OALBuffer* buffer) {
+    if (!buffer || !buffer->m_bufferId) {
+        return false;
+    }
 
-void OALSource::SetBuffer(OALBuffer* buffer) {
-    assert(buffer);
-
-    if (m_oalBuffer)
-        m_oalBuffer->Release();
-
-    m_type = buffer->m_preloopBufferId ? OALSourceType::OST_Preloop : OALSourceType::OST_Static;
-
-    if (m_sourceId)
-        alSourcei(m_sourceId, AL_BUFFER, buffer->m_bufferId);
-
-    m_oalBuffer = buffer;
-    buffer->AddRef();
-}
-
-// !!!ONLY PUT PTRS THAT ARE ALLOCATED WITH `NEW`!!!
-void OALSource::QueueBuffer(OALBuffer* buffer) {
     ObtainSource();
-    UnqueueBuffers();
+    if (!m_sourceId) {
+        return false;
+    }
 
-    alSourceQueueBuffers(m_sourceId, 1, &buffer->m_bufferId);
+    DetachBuffer();
+
+    m_buffer    = buffer;
+    m_bufferId  = buffer->m_bufferId;
+    buffer->AddRef();
+
+    if (!m_frequency) {
+        m_frequency = buffer->m_frequency;
+    }
+    m_bufferFrequency = buffer->m_frequency;
+
+    OAL_CHECKED(alSourcei(m_sourceId, AL_BUFFER, static_cast<ALint>(m_bufferId)));
+    ApplyPitch();
+    return true;
+}
+
+void OALSource::SetLoopPoints(uint32 startSample, uint32 endSample) {
+    if (!m_sourceId || endSample <= startSample) {
+        return;
+    }
+
+    if (!m_loopPointsSupported) {
+        return; // Already reported
+    }
+
+    if (!alIsExtensionPresent("AL_SOFT_loop_points")) {
+        m_loopPointsSupported = false;
+        NOTSA_LOG_WARN("OpenAL: AL_SOFT_loop_points is not available - looping sounds will include their intro");
+        return;
+    }
+
+    const ALint points[]{
+        static_cast<ALint>(startSample),
+        static_cast<ALint>(endSample)
+    };
+    OAL_CHECKED(alSourceiv(m_sourceId, AL_LOOP_POINTS_SOFT, points));
+}
+
+bool OALSource::QueueBuffer(OALBuffer* buffer) {
+    if (!buffer || !buffer->m_bufferId) {
+        return false;
+    }
+
+    ObtainSource();
+    if (!m_sourceId) {
+        return false;
+    }
+
+    OAL_CHECKED(alSourceQueueBuffers(m_sourceId, 1, &buffer->m_bufferId));
+
     m_queuedBuffers.push_back(buffer);
     buffer->AddRef();
+
+    if (!m_frequency) {
+        m_frequency = buffer->m_frequency;
+    }
+    m_bufferFrequency = buffer->m_frequency;
+    ApplyPitch();
+    return true;
 }
 
-void OALSource::UnqueueBuffers() {
+uint32 OALSource::UnqueueProcessed() {
     ALint processed{};
-    alGetSourcei(m_sourceId, AL_BUFFERS_PROCESSED, &processed);
-
-    for (auto i = 0; i < processed; i++) {
-        ALuint buffer{};
-        alSourceUnqueueBuffers(m_sourceId, 1, &buffer);
-
-        const auto queuedBufIt = rng::find_if(m_queuedBuffers, [&buffer](OALBuffer* buf) {
-            return buf->m_bufferId == buffer || buf->m_preloopBufferId == buffer;
-        });
-
-        if (queuedBufIt == m_queuedBuffers.end())
-            continue;
-        auto queuedBuf = *queuedBufIt;
-
-        m_posOffset += queuedBuf->m_bufferSize;
-        std::erase(m_queuedBuffers, queuedBuf);
-        queuedBuf->Release();
+    if (m_sourceId) {
+        OAL_CHECKED(alGetSourcei(m_sourceId, AL_BUFFERS_PROCESSED, &processed));
     }
+
+    uint32 unqueuedBytes = 0;
+    for (ALint i = 0; i < processed; i++) {
+        ALuint bufferId{};
+        OAL_CHECKED(alSourceUnqueueBuffers(m_sourceId, 1, &bufferId));
+
+        const auto it = rng::find_if(m_queuedBuffers, [bufferId](const OALBuffer* buffer) {
+            return buffer->m_bufferId == bufferId;
+        });
+        if (it == m_queuedBuffers.end()) {
+            continue;
+        }
+
+        unqueuedBytes += (*it)->m_size;
+        (*it)->Release();
+        m_queuedBuffers.erase(it);
+    }
+    return unqueuedBytes;
 }
 
-void OALSource::Play() {
+void OALSource::ClearQueue() {
+    ReleaseQueuedBuffers();
+}
+
+uint32 OALSource::GetQueuedBufferCount() const {
+    ALint queued{};
+    if (m_sourceId) {
+        OAL_CHECKED(alGetSourcei(m_sourceId, AL_BUFFERS_QUEUED, &queued));
+    }
+    return static_cast<uint32>(queued);
+}
+
+void OALSource::Play(bool looping) {
     ObtainSource();
-
-    if (m_type == OALSourceType::OST_Preloop) {
-        UnqueueBuffers();
-
-        alSourceQueueBuffers(m_sourceId, 1, &m_oalBuffer->m_preloopBufferId);
-        for (auto i = 0; i < 11; i++) { // todo: why 11?
-            alSourceQueueBuffers(m_sourceId, 1, &m_oalBuffer->m_bufferId);
-        }
+    if (!m_sourceId) {
+        return;
     }
 
-    alSourcePlay(m_sourceId);
-    m_currentState = AL_PLAYING;
-    m_wasStopped = false;
+    OAL_CHECKED(alSourcei(m_sourceId, AL_LOOPING, looping ? AL_TRUE : AL_FALSE));
+
+    // DirectSound's `Play` continues from the buffer's current position, so do we
+    // (a plain `alSourcePlay` after a stop would restart the buffer from the beginning).
+    if (m_resumeOffset && m_queuedBuffers.empty()) {
+        OAL_CHECKED(alSourcei(m_sourceId, AL_BYTE_OFFSET, static_cast<ALint>(m_resumeOffset)));
+    }
+    m_resumeOffset = 0;
+
+    OAL_CHECKED(alSourcePlay(m_sourceId));
 }
 
 void OALSource::Pause() {
-    ObtainSource();
-    alSourcePause(m_sourceId);
-}
-
-float OALSource::GetVolume() {
-    return std::log(1.0f / m_currentVolume) * -8.6562f; // todo: constant
-}
-
-void OALSource::SetVolume(float volume)
-{
-    ObtainSource();
-
-    if (const auto vol = std::min(1.0f / std::exp2f(volume / -6.0f), 1.0f); m_currentVolume != vol) {
-        m_currentVolume = vol;
-        alSourcef(m_sourceId, AL_GAIN, vol);
+    if (m_sourceId) {
+        OAL_CHECKED(alSourcePause(m_sourceId));
     }
 }
 
-void OALSource::Update() {
-    m_currentState = 0;
-
-    if (m_type != OALSourceType::OST_Preloop)
+void OALSource::Stop() {
+    if (!m_sourceId) {
         return;
+    }
 
-    ALint processed{};
-    alGetSourcei(m_sourceId, AL_BUFFERS_PROCESSED, &processed);
+    m_resumeOffset = GetPlaybackByteOffset();
+    OAL_CHECKED(alSourceStop(m_sourceId));
+}
 
-    for (auto i = 0; i < processed; i++) {
-        ALuint buffer{};
-        alSourceUnqueueBuffers(m_sourceId, 1, &buffer);
-        alSourceQueueBuffers(m_sourceId, 1, &m_oalBuffer->m_bufferId);
+void OALSource::Rewind() {
+    m_resumeOffset = 0;
+    if (m_sourceId) {
+        OAL_CHECKED(alSourceRewind(m_sourceId));
     }
 }
+
+bool OALSource::IsPlaying() const {
+    ALint state{};
+    if (!m_sourceId) {
+        return false;
+    }
+    OAL_CHECKED(alGetSourcei(m_sourceId, AL_SOURCE_STATE, &state));
+    return state == AL_PLAYING;
+}
+
+void OALSource::SetVolumeDb(float db) {
+    const auto volume = std::clamp(db, -100.0f, 0.0f);
+    if (m_volumeDb == volume) {
+        return;
+    }
+
+    m_volumeDb = volume;
+    if (m_sourceId) {
+        OAL_CHECKED(alSourcef(m_sourceId, AL_GAIN, volume <= -100.0f ? 0.0f : std::pow(10.0f, volume * 0.05f)));
+    }
+}
+
+void OALSource::SetFrequency(uint32 hz) {
+    m_frequency = hz;
+    ApplyPitch();
+}
+
+void OALSource::ApplyPitch() {
+    if (!m_sourceId || !m_bufferFrequency) {
+        return;
+    }
+
+    const auto pitch = m_frequency
+        ? static_cast<float>(m_frequency) / static_cast<float>(m_bufferFrequency)
+        : 1.0f;
+    OAL_CHECKED(alSourcef(m_sourceId, AL_PITCH, pitch));
+}
+
+void OALSource::SetPosition(const CVector& pos) {
+    ObtainSource();
+    if (!m_sourceId) {
+        return;
+    }
+
+    const auto alPos = notsa::oal::ToListenerSpace(pos);
+    OAL_CHECKED(alSource3f(m_sourceId, AL_POSITION, alPos.x, alPos.y, alPos.z));
+}
+
+void OALSource::SetVelocity(const CVector& vel) {
+    ObtainSource();
+    if (!m_sourceId) {
+        return;
+    }
+
+    const auto alVel = notsa::oal::ToListenerSpace(vel);
+    OAL_CHECKED(alSource3f(m_sourceId, AL_VELOCITY, alVel.x, alVel.y, alVel.z));
+}
+
+void OALSource::SetPlaybackByteOffset(uint32 offset) {
+    m_resumeOffset = 0;
+    if (m_sourceId) {
+        OAL_CHECKED(alSourcei(m_sourceId, AL_BYTE_OFFSET, static_cast<ALint>(offset)));
+    } else {
+        m_resumeOffset = offset;
+    }
+}
+
+uint32 OALSource::GetPlaybackByteOffset() const {
+    ALint offset{};
+    if (m_sourceId) {
+        OAL_CHECKED(alGetSourcei(m_sourceId, AL_BYTE_OFFSET, &offset));
+    }
+    return static_cast<uint32>(offset);
+}
+
+void OALSource::SetEffectSlot(ALuint slot) {
+    ObtainSource();
+    if (!m_sourceId) {
+        return;
+    }
+
+    OAL_CHECKED(alSource3i(m_sourceId, AL_AUXILIARY_SEND_FILTER, static_cast<ALint>(slot), 0, AL_FILTER_NULL));
+}
+
+#endif // NOTSA_NATIVE

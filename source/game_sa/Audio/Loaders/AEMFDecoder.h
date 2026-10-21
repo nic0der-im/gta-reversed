@@ -24,13 +24,13 @@ private:
             size_t           m_nTempBufferUsed;
         };
     };
-    long m_nPlayTime; // index 160
-    long m_nLength;   // index 164
+    int32 m_nPlayTime; // index 160
+    int32 m_nLength;   // index 164
     union {
         uint32 _unknown3[3];
     };
     int32 m_nTrackID;     // index 180
-    long  m_nLengthMs;    // index 184
+    int32 m_nLengthMs;    // index 184
     int32 m_nSampleRate;  // index 188
     float m_fTimeDivider; // index 192
 
@@ -40,9 +40,9 @@ public:
 
     bool   Initialise() override;
     size_t FillBuffer(void* dest, size_t size) override;
-    long   GetStreamLengthMs() override;
-    long   GetStreamPlayTimeMs() override;
-    void   SetCursor(unsigned long pos) override;
+    int32  GetStreamLengthMs() override;
+    int32  GetStreamPlayTimeMs() override;
+    void   SetCursor(uint32 pos) override;
     int32  GetSampleRate() override;
     int32  GetStreamID() override;
 

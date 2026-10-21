@@ -6,6 +6,29 @@
 #include "AEUserRadioTrackManager.h"
 #include "AEVorbisDecoder.h"
 
+#ifdef NOTSA_NATIVE
+#include "Audio/OpenAL/OALBase.h"
+
+#include <mutex>
+#include <thread>
+#endif
+
+#ifdef NOTSA_NATIVE
+struct CAEStreamThread::NativeState {
+    std::thread thread;
+    std::mutex  mutex;
+};
+
+CAEStreamThread::NativeState& CAEStreamThread::GetNativeState() {
+    if (!m_nativeState) {
+        // Only ever allocated by `Initialise`/`Start`, i.e. on the main thread,
+        // before the worker exists.
+        m_nativeState = new NativeState{};
+    }
+    return *m_nativeState;
+}
+#endif
+
 void CAEStreamThread::InjectHooks() {
     RH_ScopedClass(CAEStreamThread);
     RH_ScopedCategory("Audio");
@@ -48,7 +71,7 @@ bool CAEStreamThread::Initialise(CAEStreamingChannel* streamingChannel) {
     m_nTrackLengthMs   = streamingChannel->GetLength();
 
 #ifdef NOTSA_NATIVE
-    // Silent backend: no streaming thread is started (see `Start`).
+    // The worker thread itself is created by `Start`
 #else
     m_nHandle = CreateThread(nullptr, 0, &CAEStreamThread::MainLoop, this, CREATE_SUSPENDED, (LPDWORD)(&m_lpThreadId));
     assert(m_nHandle);
@@ -67,7 +90,11 @@ bool CAEStreamThread::Initialise(CAEStreamingChannel* streamingChannel) {
 // 0x4F11F0
 void CAEStreamThread::Start() {
     m_bThreadActive = true;
-#ifndef NOTSA_NATIVE
+#ifdef NOTSA_NATIVE
+    if (!GetNativeState().thread.joinable()) {
+        GetNativeState().thread = std::thread(&CAEStreamThread::MainLoop, this);
+    }
+#else
     ResumeThread(m_nHandle);
 #endif
 }
@@ -75,6 +102,12 @@ void CAEStreamThread::Start() {
 // 0x4F1590
 void CAEStreamThread::Stop() {
     m_bThreadActive = false;
+#ifdef NOTSA_NATIVE
+    // Join before releasing the track loader - the worker may still be using it
+    if (m_nativeState && m_nativeState->thread.joinable()) {
+        m_nativeState->thread.join();
+    }
+#endif
     if (std::exchange(m_bActive, false)) {
         delete m_pMp3TrackLoader;
     }
@@ -82,7 +115,10 @@ void CAEStreamThread::Stop() {
 
 // 0x4F1200
 void CAEStreamThread::Pause() const {
-#ifndef NOTSA_NATIVE
+#ifdef NOTSA_NATIVE
+    // Nothing to suspend: the worker only plays while the game is in the foreground
+    // (see `MainLoop`), and it has to keep servicing the stream otherwise.
+#else
     SuspendThread(m_nHandle);
 #endif
 }
@@ -96,7 +132,11 @@ void CAEStreamThread::Resume() const {
 
 // 0x4F1220
 void CAEStreamThread::WaitForExit() const {
-#ifndef NOTSA_NATIVE
+#ifdef NOTSA_NATIVE
+    if (m_nativeState && m_nativeState->thread.joinable()) {
+        m_nativeState->thread.join();
+    }
+#else
     WaitForSingleObject(m_nHandle, INFINITE);
 #endif
 }
@@ -127,7 +167,7 @@ int32 CAEStreamThread::GetPlayingTrackID() const {
 // 0x4F1230
 void CAEStreamThread::PlayTrack(uint32 iTrackId, int32 iNextTrackId, uint32 a3, int32 a4, bool bIsUserTrack, bool bNextIsUserTrack) {
 #ifdef NOTSA_NATIVE
-    std::lock_guard lock{ m_mutex };
+    std::lock_guard lock{ GetNativeState().mutex };
 #else
     EnterCriticalSection(&m_criticalSection);
 #endif
@@ -166,6 +206,9 @@ DWORD WINAPI CAEStreamThread::MainLoop(LPVOID data) {
 
 #ifndef NOTSA_NATIVE
     const auto self = reinterpret_cast<CAEStreamThread*>(data);
+#else
+    // OpenAL's current context is per-thread
+    notsa::oal::MakeContextCurrent();
 #endif
 
     bool wasForeground = true;
@@ -201,6 +244,8 @@ DWORD WINAPI CAEStreamThread::MainLoop(LPVOID data) {
 
 #ifndef NOTSA_NATIVE
     return 0;
+#else
+    notsa::oal::ClearCurrentContext();
 #endif
 }
 
@@ -228,7 +273,7 @@ void CAEStreamThread::Service() {
     }
 
 #ifdef NOTSA_NATIVE
-    std::lock_guard lock{ m_mutex };
+    std::lock_guard lock{ GetNativeState().mutex };
 #else
     EnterCriticalSection(&m_criticalSection);
 #endif

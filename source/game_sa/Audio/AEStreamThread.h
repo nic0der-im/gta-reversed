@@ -2,17 +2,16 @@
 
 #include "AEStreamingChannel.h"
 
-#ifdef NOTSA_NATIVE
-#include <mutex>
-#endif
-
 class CAEMP3TrackLoader;
 
 class CAEStreamThread {
 public:
 #ifdef NOTSA_NATIVE
-    //! The silent backend doesn't run a streaming thread (nothing to stream until B4).
-    std::mutex            m_mutex;
+    //! The worker thread and the lock guarding the track request fields.
+    //! Lazily allocated: this object lives inside `AEAudioHardware`, which natively sits in
+    //! the game's `.bss` and is never constructed.
+    struct NativeState;
+    NativeState*          m_nativeState{};
 #else
     HANDLE m_nHandle;
     LPDWORD               m_lpThreadId;
@@ -66,6 +65,7 @@ public:
 
 #ifdef NOTSA_NATIVE
     static void MainLoop(CAEStreamThread* self);
+    NativeState& GetNativeState();
 #else
     static DWORD WINAPI MainLoop(LPVOID);
 #endif

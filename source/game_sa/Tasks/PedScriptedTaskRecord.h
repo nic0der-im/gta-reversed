@@ -46,6 +46,7 @@ class CPedScriptedTaskRecord {
 public:
     static void InjectHooks();
 
+    // 0xC0B1E8 - exe: 128 x 0x14 with `m_opcode` = -1 (element ctor 0x608330); 0x28 per element natively (three pointers widen)
     static inline auto& ms_scriptedTasks = StaticRef<CPedScriptedTaskRecordData[TOTAL_SCRIPTED_TASKS]>(0xC0B1E8);
 
     static CPedScriptedTaskRecordData* GetRecordAssociatedWithEvent(CEvent* event);

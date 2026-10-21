@@ -30,12 +30,19 @@ public:
     CAEStreamingDecoder*  m_pNextStreamingDecoder{nullptr};
     StreamingChannelState m_nState{StreamingChannelState::Stopped};
     uint32                m_nStreamPlayTimeMs{0u};
-    int32                 m_nPlayTime;
-    uint32                m_LastTimer;
+    int32                 m_nPlayTime{};
+    uint32                m_LastTimer{};
     int32                 m_lStoppingFrameCount{0u};
-    uint64                m_nLastUpdateTime;
-    IDirectSoundBuffer*   m_pSilenceBuffer;
+    uint64                m_nLastUpdateTime{};
+    tAudioBufferHandle*   m_pSilenceBuffer{};
     float                 m_fEQScaleFactor{1.0f};
+#ifdef NOTSA_NATIVE
+    //! Bytes that already played (i.e. that were unqueued) - used to derive the play time.
+    uint32                m_nPlayedBytes{};
+    //! EFX equalizer used by `SetBassEQ` (see `AddFX`)
+    ALuint                m_effectId{};
+    ALuint                m_effectSlot{};
+#endif
 
 public:
     CAEStreamingChannel(IDirectSound* directSound, uint16 channelId)
@@ -74,6 +81,12 @@ private:
     friend void InjectHooksMain();
     static void InjectHooks();
 
+#ifdef NOTSA_NATIVE
+    //! Keeps the OpenAL buffer queue filled with decoded audio (the native equivalent of the
+    //! DirectSound ring buffer refill in `Service`).
+    void RefillQueue();
+#endif
+
     CAEStreamingChannel* Constructor(IDirectSound* directSound, uint16 channelId) {
         this->CAEStreamingChannel::CAEStreamingChannel(directSound, channelId);
         return this;
@@ -86,7 +99,13 @@ private:
                                 // NOTSA
     void DirectSoundBufferFadeToSilence() {
 #ifdef NOTSA_NATIVE
-        // Silent backend: there is no DirectSound buffer to fade.
+        if (!m_pDirectSoundBuffer) {
+            return;
+        }
+
+        if (!AESmoothFadeThread.RequestFade(m_pDirectSoundBuffer, -100.0f, 35, true)) {
+            m_pDirectSoundBuffer->Stop();
+        }
 #else
         if (!AESmoothFadeThread.RequestFade(m_pDirectSoundBuffer, -100.0, 35, true))
             m_pDirectSoundBuffer->Stop();

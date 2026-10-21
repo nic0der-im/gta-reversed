@@ -6,6 +6,8 @@
 */
 #include "StdInc.h"
 
+#include <extensions/utility.hpp>
+
 #include "Pickups.h"
 #include "Garages.h"
 #include "tPickupMessage.h"
@@ -138,7 +140,7 @@ void CPickups::DoCollectableEffects(CEntity* entity) {
         const auto t = (uint8)((std::sinf((float)(((uint16)std::bit_cast<uintptr_t>(entity) + (uint16)CTimer::GetTimeInMS()) % 2048) * 0.0030664064f) + 1.0f) / 2.0f * ((14.0f - d) / 14.0f) * 255.0f);
 
         CShadows::StoreStaticShadow(
-            (uint32)entity,
+            notsa::PtrToId(entity),
             SHADOW_ADDITIVE,
             gpShadowExplosionTex,
             entityPos,
@@ -157,7 +159,7 @@ void CPickups::DoCollectableEffects(CEntity* entity) {
             0.0f
         );
         CCoronas::RegisterCorona(
-            (uint32)entity,
+            notsa::PtrToId(entity),
             nullptr,
             t,
             t,
@@ -193,7 +195,7 @@ void CPickups::DoMineEffects(CEntity* entity) {
         const auto t = (uint8)((std::sinf((float)(((uint16)std::bit_cast<uintptr_t>(entity) + (uint16)CTimer::GetTimeInMS()) % 512) * 0.012265625f) + 1.0f) / 2.0f * ((20.0f - d) / 20.0f) * 64.0f);
 
         CShadows::StoreStaticShadow(
-            (uint32)entity,
+            notsa::PtrToId(entity),
             SHADOW_ADDITIVE,
             gpShadowExplosionTex,
             entityPos,
@@ -212,7 +214,7 @@ void CPickups::DoMineEffects(CEntity* entity) {
             0.0f
         );
         CCoronas::RegisterCorona(
-            (uint32)entity,
+            notsa::PtrToId(entity),
             nullptr,
             t,
             0,

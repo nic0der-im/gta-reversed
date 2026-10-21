@@ -9,13 +9,37 @@ Everything platform specific lives behind `#ifdef NOTSA_NATIVE` or in
 
 ## Where the native binary stops today
 
-`gta_reversed --game-dir <dir>` creates its SDL3 window, reads `models/GTA3.IMG` and then aborts
-with `Unreversed exe function 0x745510 called` (`psGetMemoryFunctions`, i.e. RenderWare's memory
-functions have no in-repo definition yet).
+`gta_reversed --game-dir <dir>` creates its SDL3 window through librw (`RwEngineStart`), reads
+`models/GTA3.IMG`, initialises the RenderWare engine, attaches the game's RenderWare plugins,
+builds the camera/world, shows the EAX splash, plays the intro videos through the native video
+player and loads the text GXT. It then loads `DATA/HANDLING.CFG` (259 handlings for 210
+vehicles) and calls `SurfaceInfos_c::LoadAdhesiveLimits` (`CGame::InitialiseCoreDataAfterRW` →
+`g_surfaceInfos.Init()`), which is still a stub. The process ends with
+`Unreversed exe function 0x55D0E0 called` and `SIGABRT` (134) — the expected B1 boundary.
+
+`Rw: stub RxPipelineCreate` (`CCustomCarEnvMapPipeline::CreatePipe`, plan B3) is still logged,
+but it is only a no-op stub now, not a crash site.
+
+Observed run (`timeout 120`, 2026-10-21):
+
+```
+[info]    Rw: engine started (640x448 window)
+[warning] Rw: stub RpWorldAddCamera
+[warning] Rw: stub RpWorldAddLight
+[debug]   CTxdStore::Create(7)
+[debug]   Video: playing `movies/Logo.mpg` (640x480, 29.97 fps, 15.35s)
+[debug]   Video: playing `movies/GTAtitles.mpg` (640x480, 29.97 fps, 88.72s)
+[debug]   Loading 'AMERICAN.GXT' version=04 (8-bit ASCII)
+[warning] Rw: stub RxPipelineCreate
+[debug]   Successfully loaded 259x handlings for 210x vehicles!
+[critical] Unreversed exe function 0x55D0E0 called
+```
 
 | Address | Symbol | Hit by |
 | --- | --- | --- |
-| 0x745510 | `psGetMemoryFunctions` | native startup |
+| 0x5617C0 | `GetMillisecondTime` | `CTimer::Initialise` (now `RsTimer()` natively, `Timer.cpp`) |
+| 0x745510 | `psGetMemoryFunctions` | **no longer reached** (`app/platform/native/NativePs.cpp`) |
+| 0x55D0E0 | `SurfaceInfos_c::LoadAdhesiveLimits` | `CGame::InitialiseCoreDataAfterRW` → `SurfaceInfos_c::Init` (stub, `.Reversed = false`) |
 
 Append a row for every address the native build aborts on. The column is the reason the native
 build reached it, so it doubles as a work list for reversing.
@@ -42,6 +66,39 @@ So B2 is not "copy the exe's data section"; it is "reimplement the exe's static 
 stores, 10 byte stores, 9 fill-patterns, 5 zero-fills, 81 object constructors, 19 vector
 constructors, 54 skips, 4 unhandled (documented in the file). Object constructors that need our
 own C++ types live in `ExeData.manual.cpp`; the rest are listed as not-applied.
+
+## Known 64-bit layout issues
+
+`StaticRef` storage is per address, so two typed sites claiming the same address with different
+sizes is a real divergence once pointers widen. A typed size that merely differs from an
+initializer row's byte count is *not* one: the row is expressed in the executable's 32-bit element
+layout, and a row that clears an object only covers part of it. `ExeGlobals::Get` therefore logs
+`StaticRef ... requested with sizes ...` only when both requests are typed; initializer writes are
+silent and grow the allocation when needed.
+
+Rows whose element layout changed are not replayed byte for byte. `ExeGlobals::Write`/`ZeroFill`
+hand them to `ApplyManualExeDataPattern`/`ApplyManualExeDataZeroFill` (`ExeData.manual.cpp`), which
+apply them element by element through the typed container:
+
+| address | executable row | native element | applied as |
+| --- | --- | --- | --- |
+| 0xB992B8 | `CWorld::ms_aRepeatSectors`, 256 x 0xC (ctor 0x563190) | 0x18 (`CRepeatSector`, three list heads) | every element cleared |
+| 0xBC1C78 | `PlayerClothes`, cleared as 0xBC1C78: 40 bytes + 0xBC1CA0: 72 bytes | 0x78 (`CPedClothesDesc`) | whole object cleared |
+| 0xC091F0 | `CGangs::Gang`, 10 x 0x10 (ctor 0x5DE520), `m_nPedModelOverride` = -1 | 0x10 (`CGangInfo`) | `Gang[i].m_nPedModelOverride = -1` |
+| 0xC0B1E8 | `CPedScriptedTaskRecord::ms_scriptedTasks`, 128 x 0x14 (ctor 0x608330), `m_opcode` = -1 at +0x0 and `m_status` = FLUSHED at +0x10 | 0x28 (`CPedScriptedTaskRecordData`) | both members set, per element |
+
+Adding a row is a table entry in `ExeData.manual.cpp`; the matcher is address based, so it needs
+the executable address, the executable stride, the element count and the member mapping. Rows
+whose element size did not change (the `CNodeAddress` arrays, for example) and rows no typed
+reference reaches are still replayed as bytes.
+
+What remains a genuine problem is `ReportOverlaps()`' list: two *typed* `StaticRef`s whose
+allocations would overlap in the executable's address space because one native type is wider than
+its executable counterpart. The largest case is `CWorld::ms_aRepeatSectors` (6144 bytes starting
+at 0xB992B8), whose native extent covers the executable address of `CWorld::ms_aLodPtrLists`
+(0xB99EB8, immediately after the repeat sectors' 256 x 0xC bytes). They are separate allocations
+with separate pointers, so the game runs, but the addresses cannot be treated as one contiguous
+global until the list storage is unified.
 
 ## Renderer decision: librw
 
@@ -71,6 +128,52 @@ Android/WASM later). Conditions:
   specular) need GL3 pipeline implementations.
 - librw's camera `rasterLock` omits `GL_PACK_ALIGNMENT = 1` (see
   `spikes/librw/screenshots/librw_readback_shear_625px.png`); carry a fix upstream or in our fork.
+
+## Renderer (librw) layer: fakerw
+
+`source/CMakeLists.txt` fetches librw with `FetchContent` (pinned to the commit above,
+`LIBRW_PLATFORM=GL3`, `LIBRW_GL3_GFXLIB=SDL3`, fetched into `build/<config>/_deps`) and links
+`librw::librw`. The native build excludes `source/game_sa/RenderWare/rw/*.cpp` (the retail thunks)
+and `RenderWare/D3D*.cpp`; the Windows `.asi` keeps compiling them unchanged.
+
+The same C API is reimplemented as a thin "fakerw" layer in
+`source/game_sa/RenderWare/librw/`:
+
+| file | contents |
+| --- | --- |
+| `RwFakerw.{h,cpp}` | `RwGlobals`/`RwEngineInstance` state (the plugin-sdk headers dereference it through `RWSRCGLOBAL`), `RwEngineInit/Open/Start/Stop/Close/Term`, video modes, `RwOsGetMemoryInterface`, the plugin-data registry, the `Rw: stub <name>` logger |
+| `RwStream.cpp` | streams over stdio (memory, file, filename, custom) and chunk lookup |
+| `RwCamera.cpp` | cameras and rasters; `RwCameraBeginUpdate/EndUpdate/Clear/ShowRaster` drive a librw camera and the GL window; **this is the camera present path** |
+| `RwFrame.cpp` | frame hierarchy, `_rwObjectHasFrame*`, `RwFrameUpdateObjects`/`GetLTM` |
+| `RwMatrix.cpp` | matrix/vector math |
+| `RwImage.cpp`, `RwTexture.cpp` | images, textures, dictionaries |
+| `RwWorld.cpp` | world/atomic/clump/geometry/light/material containers and Rw plugin attach |
+| `RwD3D9.cpp` | `RwD3D9*` and `D3DResourceSystem` no-ops (GL3 replaces them in B3) |
+| `RwStubs.generated.cpp` | generated by `scripts/native/gen_rw_stubs.py`: one logged stub per thunk not implemented by hand |
+
+Design notes:
+
+- The game's structs stay authoritative, because game code reads their fields directly
+  (`camera->farPlane`, `raster->width`, `frame->modelling`, ...). librw objects (camera, rasters,
+  world) live next to them in side tables; `RwCameraBeginUpdate` copies the game state into the
+  librw camera right before presenting.
+- `RwEngineInit` installs the game's callbacks in `RwGlobals::memoryFuncs` and in librw's
+  `MemoryFunctions`. The callbacks come from `notsa::native::GetRwMemoryFunctions()`
+  (`app/platform/native/NativePs.cpp`), the native counterpart of the retail `0x745510`.
+- `RwEngineStart` lets librw create the SDL3 window and the GL context and publishes it through
+  `psGlobalType` (`PSGLOBAL(sdlWindow)`); `NativeMain` no longer creates a window.
+- Objects with plugin data are allocated with trailing space (`PluginRegistry`), so
+  `RWPLUGINOFFSET` offsets returned by `RwFrameRegisterPlugin`, `RpAtomicRegisterPlugin`, ... are
+  valid and the constructors/destructors/copies run.
+- Not implemented yet (each logs `Rw: stub <name>` and returns a neutral value):
+  DFF/TXD streaming (`RpClumpStreamRead`, `RwTexDictionaryGtaStreamRead*`), `RwTextureRead`
+  (returns null - no TXD reader), `RxPipeline*` (null - blocks SA's custom pipelines),
+  `RwIm3D*`/`RpClumpRender`, lighting, skinning data and animation schemes.
+- `scripts/native/gen_rw_stubs.py` re-derives the stub signatures from the retail thunks
+  (so they always match the game headers) and skips every function defined in `librw/`;
+  `--check` fails when the checked-in file is stale, like the other `scripts/native/` generators.
+
+Windows is unaffected: the layer is behind `#ifdef NOTSA_NATIVE` / `if(GTASA_NATIVE)`.
 
 ## Exe static initializers
 

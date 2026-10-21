@@ -30,7 +30,7 @@ class CRope {
 public:
     std::array<CVector, NUM_ROPE_SEGMENTS> m_aSegments;
     std::array<CVector, NUM_ROPE_SEGMENTS> m_aSpeed;
-    uintptr    m_nId;
+    uint32     m_nId; // Id of the object this rope was registered for (see `CRopes::RegisterRope`)
     float      m_fGroundZ;
     float      m_fMass;
     float      m_fTotalLength;

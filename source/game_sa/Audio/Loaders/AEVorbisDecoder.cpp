@@ -63,7 +63,7 @@ size_t CAEVorbisDecoder::FillBuffer(void* dest, size_t size) {
         int32 dummy;
 
         while (readedTotal < size) {
-            long readed = ov_read(m_pVorbisFileHandle, buffer + readedTotal, size - readedTotal, 0, sizeof(int16), 1, &dummy);
+            const auto readed = ov_read(m_pVorbisFileHandle, buffer + readedTotal, size - readedTotal, 0, sizeof(int16), 1, &dummy);
             if (readed <= 0)
                 break;
 
@@ -85,27 +85,27 @@ size_t CAEVorbisDecoder::FillBuffer(void* dest, size_t size) {
 }
 
 // 0x502610
-long CAEVorbisDecoder::GetStreamLengthMs() {
+int32 CAEVorbisDecoder::GetStreamLengthMs() {
     if (m_bInitialized) {
         double length = ov_time_total(m_pVorbisFileHandle, -1);
-        return (long)(length * 1000.0f);
+        return static_cast<int32>(length * 1000.0f);
     }
 
     return -1;
 }
 
 // 0x502640
-long CAEVorbisDecoder::GetStreamPlayTimeMs() {
+int32 CAEVorbisDecoder::GetStreamPlayTimeMs() {
     if (m_bInitialized) {
         double length = ov_time_tell(m_pVorbisFileHandle);
-        return (long)(length * 1000.0f);
+        return static_cast<int32>(length * 1000.0f);
     }
 
     return -1;
 }
 
 // 0x502670
-void CAEVorbisDecoder::SetCursor(unsigned long pos) {
+void CAEVorbisDecoder::SetCursor(uint32 pos) {
     if (m_bInitialized)
         ov_time_seek(m_pVorbisFileHandle, static_cast<float>(pos) / 1000.0f);
 }
@@ -144,13 +144,13 @@ int32 CAEVorbisDecoder::SeekCallback(void* opaque, ogg_int64_t offset, int32 whe
         return -1;
 
     CAEDataStream* dataStream = reinterpret_cast<CAEDataStream*>(opaque);
-    unsigned long  result = dataStream->Seek(static_cast<long>(offset), whence);
+    const uint32   result = dataStream->Seek(static_cast<int32>(offset), whence);
 
     return static_cast<int32>(result);
 }
 
 // 0x5025f0
-long CAEVorbisDecoder::TellCallback(void* opaque) {
+CAEVorbisDecoder::OVTellResult CAEVorbisDecoder::TellCallback(void* opaque) {
     if (opaque == nullptr)
         return -1;
 

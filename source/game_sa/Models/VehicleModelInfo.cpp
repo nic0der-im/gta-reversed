@@ -761,8 +761,7 @@ RpMaterial* CVehicleModelInfo::SetEditableMaterialsCB(RpMaterial* material, void
         && RpMaterialGetTexture(material)
         && RwTextureGetName(RpMaterialGetTexture(material))[0] == '#') {
 
-        (*ppEntries)->m_pAddress = &material->texture;
-        (*ppEntries)->m_pValue = material->texture;
+        (*ppEntries)->SetPointerValue(material->texture);
         (*ppEntries)++;
 
         material->texture = ms_pRemapTexture;
@@ -779,8 +778,7 @@ RpMaterial* CVehicleModelInfo::SetEditableMaterialsCB(RpMaterial* material, void
         else if (color == CRGBA(255, 60, 0, 0))
             iLightIndex = 3;
 
-        (*ppEntries)->m_pAddress = RpMaterialGetColor(material);
-        (*ppEntries)->m_pValue = *reinterpret_cast<void**>(RpMaterialGetColor(material));
+        (*ppEntries)->Set32BitValue(RpMaterialGetColor(material));
         (*ppEntries)++;
 
         RpMaterialGetColor(material)->red = 255;
@@ -788,12 +786,10 @@ RpMaterial* CVehicleModelInfo::SetEditableMaterialsCB(RpMaterial* material, void
         RpMaterialGetColor(material)->blue = 255;
 
         if (iLightIndex != -1 && ms_lightsOn[iLightIndex]) {
-            (*ppEntries)->m_pAddress = &material->texture;
-            (*ppEntries)->m_pValue = material->texture;
+            (*ppEntries)->SetPointerValue(material->texture);
             (*ppEntries)++;
 
-            (*ppEntries)->m_pAddress = RpMaterialGetSurfaceProperties(material);
-            (*ppEntries)->m_pValue = *(void**)RpMaterialGetSurfaceProperties(material);
+            (*ppEntries)->Set32BitValue(RpMaterialGetSurfaceProperties(material));
             (*ppEntries)++;
 
             material->texture = ms_pLightsOnTexture;
@@ -813,8 +809,7 @@ RpMaterial* CVehicleModelInfo::SetEditableMaterialsCB(RpMaterial* material, void
         else
             return material;
 
-        (*ppEntries)->m_pAddress = RpMaterialGetColor(material);
-        (*ppEntries)->m_pValue = *reinterpret_cast<void**>(RpMaterialGetColor(material));
+        (*ppEntries)->Set32BitValue(RpMaterialGetColor(material));
         (*ppEntries)++;
 
         auto& color = ms_vehicleColourTable[iColorIndex]; // todo: shadow var
@@ -897,7 +892,7 @@ void CVehicleModelInfo::ResetEditableMaterials(RpClump* clump)
 {
     auto pEntry = gRestoreEntries;
     while (pEntry->m_pAddress) {
-        *(uint32*)pEntry->m_pAddress = (uint32)pEntry->m_pValue;
+        pEntry->Restore();
         pEntry++;
     }
 }
@@ -1669,8 +1664,7 @@ RpMaterial* RemoveWindowAlphaCB(RpMaterial* material, void* data)
         return material;
 
     auto ppEntries = reinterpret_cast<tRestoreEntry**>(data);
-    (*ppEntries)->m_pAddress = color;
-    (*ppEntries)->m_pValue = *reinterpret_cast<void**>(color);
+    (*ppEntries)->Set32BitValue(color);
     (*ppEntries)++;
 
     color->red = 0;

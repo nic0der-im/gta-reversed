@@ -6,6 +6,7 @@
 */
 #include "StdInc.h"
 #include <imgui.h>
+#include <extensions/utility.hpp>
 #include "Shadows.h"
 #include "FireManager.h"
 #include <CustomBuildingDNPipeline.h>
@@ -1125,7 +1126,7 @@ void CShadows::StoreShadowForVehicle(CVehicle* vehicle, VEH_SHD_TYPE vehShadowTy
 }
 
 // 0x70C500
-void CShadows::StoreCarLightShadow(CVehicle* vehicle, int32 id, RwTexture* texture, const CVector& posn, float frontX, float frontY, float sideX, float sideY, uint8 red, uint8 green, uint8 blue, float maxViewAngleCosine) {
+void CShadows::StoreCarLightShadow(CVehicle* vehicle, uint32 id, RwTexture* texture, const CVector& posn, float frontX, float frontY, float sideX, float sideY, uint8 red, uint8 green, uint8 blue, float maxViewAngleCosine) {
     // Maximum distance (from camera to `posn`) after which shadows aren't stored (and rendered)
     constexpr auto MAX_CAM_TO_LIGHT_DIST = 27.f;
 
@@ -1177,7 +1178,7 @@ void CShadows::StoreCarLightShadow(CVehicle* vehicle, int32 id, RwTexture* textu
         );
     } else {
         StoreStaticShadow(
-            reinterpret_cast<uint32>(vehicle) + id,
+            notsa::PtrToId(vehicle) + id,
             SHADOW_ADDITIVE,
             texture,
             posn,
@@ -1212,7 +1213,7 @@ void CShadows::StoreShadowForPole(CEntity* entity, float offsetX, float offsetY,
     const auto right     = CVector2D{ CTimeCycle::GetShadowSide() } * poleWidth;
 
     StoreStaticShadow(
-        reinterpret_cast<uint32>(entity->GetLod()) + localId + 3,
+        notsa::PtrToId(entity->GetLod()) + localId + 3,
         SHADOW_DEFAULT,
         gpPostShadowTex,
         mat.GetPosition() + CVector{ front, 0.f } + CVector{

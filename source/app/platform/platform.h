@@ -82,3 +82,11 @@ bool psNativeTextureSupport();
 RsEventStatus psDebugMessageHandler(RsEvent event, void* param);
 bool psAlwaysOnTop(bool alwaysOnTop);
 bool psSelectDevice();
+
+#ifdef NOTSA_NATIVE
+namespace notsa::native {
+//! Memory callbacks handed to `RwEngineInit` by the native build (the retail implementation is
+//! `psGetMemoryFunctions` at 0x745510, which lives in the executable).
+RwMemoryFunctions* GetRwMemoryFunctions();
+} // namespace notsa::native
+#endif

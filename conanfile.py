@@ -59,6 +59,10 @@ class saRecipe(ConanFile):
         self.requires("vorbis/1.3.7")
         self.requires("libjpeg-turbo/3.2.0")
 
+        # Native (non-Windows) audio backend
+        if self.options.native:
+            self.requires("openal-soft/1.24.3")
+
     def layout(self):
         cmake_layout(self)
     

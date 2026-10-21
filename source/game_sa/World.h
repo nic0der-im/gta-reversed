@@ -37,9 +37,11 @@ constexpr int32 MAX_SECTORS_X = 120;
 constexpr int32 MAX_SECTORS_Y = 120;
 constexpr int32 MAX_SECTORS = MAX_SECTORS_X * MAX_SECTORS_Y;
 
+// The exe's repeat-sector grid is 16 x 16 (256 x 0xC at 0xB992B8, indices masked with `& 0xF` - see `GetRepeatSector`).
 constexpr size_t MAX_REPEAT_SECTORS_X = 16;
 constexpr size_t MAX_REPEAT_SECTORS_Y = 16;
 constexpr size_t MAX_REPEAT_SECTORS = MAX_REPEAT_SECTORS_X * MAX_REPEAT_SECTORS_Y;
+static_assert(MAX_REPEAT_SECTORS == 256, "The exe holds 256 repeat sectors (16 x 16) at 0xB992B8");
 
 constexpr int32 MAX_LOD_PTR_LISTS_X = 30;
 constexpr int32 MAX_LOD_PTR_LISTS_Y = 30;
@@ -74,6 +76,7 @@ public:
     // Use GetSector() to access this array
     inline static auto& ms_aSectors = StaticRef<notsa::mdarray<CSector, MAX_SECTORS_Y, MAX_SECTORS_X>>(0xB7D0B8);
     // Use GetRepeatSector() to access this array
+    // 0xB992B8 - exe: 256 x 0xC (0x18 per element natively, three list heads), element ctor 0x563190
     inline static auto& ms_aRepeatSectors = StaticRef<notsa::mdarray<CRepeatSector, MAX_REPEAT_SECTORS_Y, MAX_REPEAT_SECTORS_X>>(0xB992B8);
     // Use GetLodPtrList() to access this array
     inline static auto& ms_aLodPtrLists = StaticRef<notsa::mdarray<CPtrListSingleLink<CEntity*>, MAX_LOD_PTR_LISTS_Y, MAX_LOD_PTR_LISTS_X>>(0xB99EB8);

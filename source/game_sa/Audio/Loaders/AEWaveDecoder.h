@@ -19,9 +19,9 @@ public:
 
     bool   Initialise() override;
     size_t FillBuffer(void* dest, size_t size) override;
-    long   GetStreamLengthMs() override;
-    long   GetStreamPlayTimeMs() override;
-    void   SetCursor(unsigned long pos) override;
+    int32  GetStreamLengthMs() override;
+    int32  GetStreamPlayTimeMs() override;
+    void   SetCursor(uint32 pos) override;
     int32  GetSampleRate() override;
     int32  GetStreamID() override;
 

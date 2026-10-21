@@ -31,7 +31,7 @@ bool CAEWaveDecoder::Initialise() {
             if (memcmp(tag, "data", sizeof(tag)) == 0)
                 break;
 
-            m_dataStream->Seek(size, SEEK_CUR);
+            m_dataStream->Seek(static_cast<int32>(size), SEEK_CUR);
         }
 
         dataPosition = m_dataStream->GetCurrentPosition();
@@ -68,34 +68,34 @@ size_t CAEWaveDecoder::FillBuffer(void* dest, size_t size) {
 }
 
 // 0x503310
-long CAEWaveDecoder::GetStreamLengthMs() {
+int32 CAEWaveDecoder::GetStreamLengthMs() {
     if (m_bInitialized) {
         uint32 samples = dataChunkSize / blockAlign;
         // More precise way would be involving using GCD
-        return long((float)samples * 1000.0f / (float)sampleRate);
+        return static_cast<int32>(static_cast<float>(samples) * 1000.0f / static_cast<float>(sampleRate));
     }
 
     return -1;
 }
 
 // 0x503360
-long CAEWaveDecoder::GetStreamPlayTimeMs() {
+int32 CAEWaveDecoder::GetStreamPlayTimeMs() {
     if (m_bInitialized) {
         uint32 posByte = m_dataStream->GetCurrentPosition() - dataPosition;
         uint32 posSamples = posByte / blockAlign;
         // More precise way would be involving using GCD
-        return long((float)posSamples * 1000.0f / (float)sampleRate);
+        return static_cast<int32>(static_cast<float>(posSamples) * 1000.0f / static_cast<float>(sampleRate));
     }
 
     return -1;
 }
 
 // 0x5033c0
-void CAEWaveDecoder::SetCursor(unsigned long pos) {
+void CAEWaveDecoder::SetCursor(uint32 pos) {
     if (m_bInitialized) {
         // The calculation is exactly in this order!
         uint32 posByte = pos * sampleRate / 1000 * blockAlign;
-        m_dataStream->Seek(static_cast<long>(posByte + dataPosition), SEEK_SET);
+        m_dataStream->Seek(static_cast<int32>(posByte + dataPosition), SEEK_SET);
     }
 }
 

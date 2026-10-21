@@ -193,6 +193,13 @@ template<typename... Ts>
     #define SCANF_S_STR(s) s, std::size(s)
 #endif
 
+//! Same as `SCANF_S_STR`, but for a single `char` (The `%c` conversion).
+#ifdef NOTSA_NATIVE
+    #define SCANF_S_CHAR(p) p
+#else
+    #define SCANF_S_CHAR(p) p, 1u
+#endif
+
 #ifdef NOTSA_NATIVE
     #define NOTSA_FORCEINLINE inline __attribute__((always_inline))
 #else

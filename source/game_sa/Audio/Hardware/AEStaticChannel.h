@@ -16,7 +16,7 @@ public:
     int32                 m_nNumLockBytes;
     uint16                m_nNumLoops;
     uint16                field_82;
-    IDirectSound3DBuffer* m_pBuffer;
+    void*                 m_pBuffer; //!< Raw PCM data (16 bit mono) of the current sound
     uint16                field_88;
     bool                  m_IsHardwareMixAvailable;
     char                  field_8B;
@@ -33,7 +33,7 @@ public:
     void   SynchPlayback() override;
     void   Stop() override;
 
-    bool SetAudioBuffer(IDirectSound3DBuffer* buffer, uint16 size, int16 f88, int16 f8c, int16 loopOffset, uint16 frequency);
+    bool SetAudioBuffer(IDirectSound3DBuffer* buffer, uint32 size, int16 f88, int16 f8c, int16 loopOffset, uint16 frequency);
 
 private:
     friend void InjectHooksMain();

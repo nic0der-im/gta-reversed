@@ -12,9 +12,9 @@ public:
 
     virtual bool   Initialise() = 0;
     virtual size_t FillBuffer(void* dest, size_t size) = 0;
-    virtual long   GetStreamLengthMs() = 0;
-    virtual long   GetStreamPlayTimeMs() = 0;
-    virtual void   SetCursor(unsigned long pos) = 0;
+    virtual int32  GetStreamLengthMs() = 0;
+    virtual int32  GetStreamPlayTimeMs() = 0;
+    virtual void   SetCursor(uint32 pos) = 0;
     virtual int32  GetSampleRate() = 0;
     virtual ~CAEStreamingDecoder();
     virtual int32 GetStreamID() = 0;

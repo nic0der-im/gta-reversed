@@ -175,4 +175,20 @@ bool psSelectDevice() {
     return true;
 }
 
+namespace notsa::native {
+
+RwMemoryFunctions* GetRwMemoryFunctions() {
+    // Same callbacks the retail `0x745510` returns (see the commented-out `g_objMemFunctions`
+    // in `platform.cpp`), all of them implemented on top of the CRT natively.
+    static RwMemoryFunctions funcs{
+        [](size_t size, RwUInt32 hint) -> void* { return CMemoryMgr::Malloc((uint32)size, hint); },
+        [](void* memory) { CMemoryMgr::Free(memory); },
+        [](void* memory, size_t size, RwUInt32 hint) -> void* { return CMemoryMgr::Realloc(memory, (uint32)size, hint); },
+        [](size_t numObj, size_t sizeObj, RwUInt32 hint) -> void* { return CMemoryMgr::Calloc((uint32)numObj, (uint32)sizeObj, hint); }
+    };
+    return &funcs;
+}
+
+} // namespace notsa::native
+
 #endif // NOTSA_NATIVE

@@ -87,7 +87,7 @@ bool CAEWMADecoder::Initialise() {
                 WMT_ATTR_DATATYPE dataType;
                 headerInfo->GetAttributeByIndexEx(0, indices[0], nullptr, &dummyNameLen, &dataType, nullptr, (BYTE*)&duration, &dummyBufLen);
 
-                m_nLengthMs = (long)(duration / 10000ULL);
+                m_nLengthMs = static_cast<int32>(duration / 10000ULL);
                 m_bInitialized = m_nLengthMs >= 7000;
 
                 delete[] indices;
@@ -165,7 +165,7 @@ size_t CAEWMADecoder::FillBuffer(void* dest, size_t size) {
 }
 
 // 0x502ad0
-long CAEWMADecoder::GetStreamLengthMs() {
+int32 CAEWMADecoder::GetStreamLengthMs() {
     if (m_bInitialized)
         return m_nLengthMs;
 
@@ -173,15 +173,15 @@ long CAEWMADecoder::GetStreamLengthMs() {
 }
 
 // 0x502af0
-long CAEWMADecoder::GetStreamPlayTimeMs() {
+int32 CAEWMADecoder::GetStreamPlayTimeMs() {
     if (m_bInitialized)
-        return (long)((m_nSampleTime + m_nSampleDuration) / 10000.0f);
+        return static_cast<int32>((m_nSampleTime + m_nSampleDuration) / 10000.0f);
 
     return -1;
 }
 
 // 0x502b50
-void CAEWMADecoder::SetCursor(unsigned long pos) {
+void CAEWMADecoder::SetCursor(uint32 pos) {
     if (m_bInitialized)
         syncReader->SetRange(pos * 10000ULL, 0LL);
 }

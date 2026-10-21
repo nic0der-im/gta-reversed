@@ -34,7 +34,7 @@ void CPedAttractor::InjectHooks() {
     RH_ScopedOverloadedInstall(ComputeAttractHeading, "v", 0x5EA1C0, void(CPedAttractor::*)(int32, float&));
     RH_ScopedInstall(BroadcastDeparture, 0x5EF160);
     RH_ScopedInstall(BroadcastArrival, 0x5EEF80);
-    RH_ScopedInstall(AbortPedTasks, 0x5EAF60, { .Reversed = false });
+    RH_ScopedInstall(AbortPedTasks, 0x5EAF60);
 }
 
 // 0x5EAFD0
@@ -297,10 +297,14 @@ bool CPedAttractor::BroadcastArrival(CPed* ped) {
 
 // 0x5EAF60
 void CPedAttractor::AbortPedTasks() {
-    for (auto& p : m_PedTaskPairs) {
-        p.Ped = nullptr;
-        delete std::exchange(p.Task, nullptr);
-        p.Slot = TASK_SECONDARY_INVALID;
+    // NOTE: The count is captured once before the loop, as the array is never resized here
+    for (size_t i = 0, n = m_PedTaskPairs.size(); i < n; ++i) {
+        auto& pair = m_PedTaskPairs[i];
+        pair.Ped = nullptr; // Cleared before the task is destroyed
+        delete pair.Task;   // Unconditional, even if `UsedTask`
+        pair.Task = nullptr;
+        pair.Slot = TASK_SECONDARY_INVALID;
+        // NOTE: `MatchID`/`UsedTask` are deliberately left untouched
     }
-    // TODO/NOTE: Why not clear the array?
+    // NOTE: Retail leaves `m_AttractPeds`, `m_ArrivedPeds` and `ms_tasks` untouched (the latter keeps stale pointers)
 }

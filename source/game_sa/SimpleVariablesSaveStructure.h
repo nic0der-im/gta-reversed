@@ -4,6 +4,10 @@
 #include <minwinbase.h> // SYSTEMTIME
 #endif // Native builds get `SYSTEMTIME` from `nativeincl.h` (Same 16 bytes layout)
 
+//! `SYSTEMTIME` is written verbatim into the save file, so its layout must be the same everywhere
+//! (`WORD wYear, wMonth, wDayOfWeek, wDay, wHour, wMinute, wSecond, wMilliseconds`)
+VALIDATE_SIZE_ALWAYS(SYSTEMTIME, 16);
+
 #include "eWeatherType.h"
 
 class CVector;
@@ -71,4 +75,5 @@ public:
     void Extract(uint32& versionId) const;
 };
 
-VALIDATE_SIZE(CSimpleVariablesSaveStructure, 0x138);
+//! Written verbatim into the save file - Must keep this exact layout on 64 bit builds too
+VALIDATE_SIZE_ALWAYS(CSimpleVariablesSaveStructure, 0x138);

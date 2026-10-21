@@ -11,6 +11,7 @@
 
 #include "app/platform/native/ExeData.generated.h"
 #include "app/platform/native/ExeGlobals.h"
+#include "app/platform/native/NativeInput.h"
 #include "app/platform/native/NativePath.h"
 #include "app/platform/native/VideoPlayerNative.h"
 #include "app/platform/SDLWrapper.hpp"
@@ -46,6 +47,7 @@ bool ProcessGameLogic(int32 nCmdShow) {
     }
 
     notsa::SDLWrapper::ProcessEvents();
+    notsa::native::Input::Update(); // Mouse capture policy + queued gamepad hot-plug
 
     // Game is in background
     if (!NO_FOREGROUND_PAUSE && !ForegroundApp) {
@@ -86,20 +88,32 @@ bool ProcessGameLogic(int32 nCmdShow) {
     case GAME_STATE_PLAYING_INTRO: { // 0x748B17
         ZoneScopedN("PLAYING_LOGO & PLAYING_INTRO");
 
-        // Videos are skipped until B4: this performs the transition the Windows backend
-        // does on `EC_COMPLETE`.
+        // Decodes and presents the movie. On end of file it performs the same transition the
+        // Windows backend does on `EC_COMPLETE`.
         VideoPlayer::OnGraphNotify();
 
         CPad::UpdatePads();
         auto* pad = CPad::GetPad();
-        if (ControlsManager.GetJoyButtonJustDown()
-            || pad->NewState.CheckForInput()
-            || CPad::IsMouseLButtonPressed()
-            || CPad::IsEnterJustPressed()
-            || pad->IsStandardKeyJustPressed(VK_SPACE)
-            || CPad::IsMenuKeyJustPressed()
-            || CPad::IsTabJustPressed()
+
+        // `OnGraphNotify` may have just advanced the game state; in that case the movie is over
+        // and there's nothing left to skip (the state switch below has no branch for it).
+        const auto IsPlayingMovie = [] {
+            return gGameState == GAME_STATE_PLAYING_LOGO || gGameState == GAME_STATE_PLAYING_INTRO;
+        };
+
+        // ESC (menu key), Enter and Space (among others) skip the movie: stop the player here,
+        // the game state change below is what actually ends the movie state.
+        if (IsPlayingMovie() && (
+                ControlsManager.GetJoyButtonJustDown()
+                || pad->NewState.CheckForInput()
+                || CPad::IsMouseLButtonPressed()
+                || CPad::IsEnterJustPressed()
+                || pad->IsStandardKeyJustPressed(VK_SPACE)
+                || CPad::IsMenuKeyJustPressed()
+                || CPad::IsTabJustPressed()
+            )
         ) {
+            VideoPlayer::Shutdown();
             ChangeGameStateTo([] {
                 switch (gGameState) {
                 case GAME_STATE_PLAYING_LOGO:  return GAME_STATE_TITLE;
@@ -302,7 +316,9 @@ int32 NativeMain(int argc, char** argv) {
         return 1;
     }
 
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC)) {
+    // `SDL_INIT_AUDIO` is only used by the movie player (see `VideoPlayerNative.cpp`); the game's
+    // audio engine has its own backend.
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC)) {
         NOTSA_LOG_ERR("Failed to initialize SDL: {}", SDL_GetError());
         return 1;
     }
@@ -311,26 +327,25 @@ int32 NativeMain(int argc, char** argv) {
         RsEventHandler(rsPREINITCOMMANDLINE, argv[i]);
     }
 
-    SDL_Window* sdlWnd = SDL_CreateWindow(
-        "GTA: San Andreas",
-        APP_DEFAULT_WIDTH, APP_DEFAULT_HEIGHT,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
-    );
-    if (!sdlWnd) {
-        NOTSA_LOG_ERR("Failed to create the SDL window: {}", SDL_GetError());
-        return 1;
-    }
-    PSGLOBAL(sdlWindow) = sdlWnd;
-    PSGLOBAL(window)    = reinterpret_cast<HWND>(sdlWnd);
-
     ControlsManager.ReinitControls();
 
     // 0x748847
-    if (RsEventHandler(rsRWINITIALIZE, PSGLOBAL(window)) == rsEVENTERROR) {
-        SDL_DestroyWindow(sdlWnd);
+    // The native RenderWare core (librw) creates the window and the GL context in
+    // `RwEngineStart`, which runs inside `rsRWINITIALIZE`. Nothing to create here.
+    if (RsEventHandler(rsRWINITIALIZE, nullptr) == rsEVENTERROR) {
         RsEventHandler(rsTERMINATE, nullptr);
         return 1;
     }
+
+    SDL_Window* sdlWnd = PSGLOBAL(sdlWindow);
+    if (!sdlWnd) {
+        NOTSA_LOG_ERR("The RenderWare backend did not create a window");
+        RsEventHandler(rsRWTERMINATE, nullptr);
+        RsEventHandler(rsTERMINATE, nullptr);
+        return 1;
+    }
+
+    notsa::native::Input::Initialize(sdlWnd);
 
     // 0x7488EE
     for (int32 i = 0; i < argc; i++) {
@@ -364,8 +379,9 @@ int32 NativeMain(int argc, char** argv) {
 
     // now quit 0x748E75
     AudioEngine.Shutdown();
-    RsEventHandler(rsRWTERMINATE, nullptr);
-    SDL_DestroyWindow(sdlWnd);
+    VideoPlayer::Shutdown();  // Release the movie (and its GL objects) while the context is alive
+    notsa::native::Input::Shutdown();
+    RsEventHandler(rsRWTERMINATE, nullptr); // librw destroys its window in RwEngineStop
     RsEventHandler(rsTERMINATE, nullptr);
     SDL_ShowCursor();
 

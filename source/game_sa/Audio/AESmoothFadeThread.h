@@ -2,8 +2,11 @@
 
 #ifdef NOTSA_NATIVE
 #include "app/platform/native/audio_types.h"
+#include "Audio/OpenAL/OALTypes.h"
 #else
 #include "dsound.h"
+
+#include "Audio/OpenAL/OALTypes.h"
 #endif
 
 enum eSmoothFadeEntryStatus : uint32 {
@@ -13,7 +16,7 @@ enum eSmoothFadeEntryStatus : uint32 {
 };
 
 struct tSmoothFadeEntry {
-    IDirectSoundBuffer*    m_pSoundBuffer;
+    tAudioBufferHandle*    m_pSoundBuffer;
     float                  m_fStartVolume;
     float                  m_fTargetVolume;
     float                  m_fVolumeDiff;
@@ -31,8 +34,11 @@ public:
     static constexpr int32 NUM_SMOOTHFADE_ENTRIES = 64;
 
 #ifdef NOTSA_NATIVE
-    void*            m_threadHandle{};
-    uint32           m_dwThreadId{};
+    //! The worker thread and the lock guarding `m_aEntries` (both threads touch it).
+    //! Lazily allocated: this object lives in the game's `.bss`, which natively is zero-filled
+    //! and never runs a constructor, so it can't hold C++ objects directly.
+    struct NativeState;
+    NativeState*     m_nativeState{};
 #else
     HANDLE           m_threadHandle;
     DWORD            m_dwThreadId;
@@ -59,12 +65,14 @@ public:
     void Stop();
     void WaitForExit();
     void Service();
-    void CancelFade(IDirectSoundBuffer* buffer);
-    bool RequestFade(IDirectSoundBuffer* buffer, float fTargetVolume, int16 fadeTime, bool bStopBufferAfterFade);
-    void SetBufferVolume(IDirectSoundBuffer* buffer, float volume);
+    void CancelFade(tAudioBufferHandle* buffer);
+    bool RequestFade(tAudioBufferHandle* buffer, float fTargetVolume, int16 fadeTime, bool bStopBufferAfterFade);
+    void SetBufferVolume(tAudioBufferHandle* buffer, float volume);
 
 #ifdef NOTSA_NATIVE
     static void SmoothFadeProc(void* smoothFade);
+
+    NativeState& GetNativeState();
 #else
     static DWORD WINAPI SmoothFadeProc(void* smoothFade);
 #endif

@@ -84,8 +84,8 @@ HRESULT CAEDataStream::Seek(LARGE_INTEGER offset, DWORD whence, ULARGE_INTEGER* 
     if (!m_bIsOpen)
         return E_INVALIDARG;
 
-    assert(std::in_range<long>(offset.QuadPart));
-    unsigned long pos = Seek(static_cast<long>(offset.QuadPart), static_cast<int32>(whence));
+    assert(std::in_range<int32>(offset.QuadPart));
+    const uint32 pos = Seek(static_cast<int32>(offset.QuadPart), static_cast<int32>(whence));
     if (newOffset)
         newOffset->QuadPart = pos;
 
@@ -165,7 +165,7 @@ uint32 CAEDataStream::GetCurrentPosition() {
 }
 
 // 0x4dc250
-uint32 CAEDataStream::Seek(long offset, int32 whence) {
+uint32 CAEDataStream::Seek(int32 offset, int32 whence) {
     if (!m_bIsOpen)
         return uint32(-1);
 
@@ -223,7 +223,7 @@ void CAEDataStream::InjectHooks() {
     RH_ScopedInstall(Initialise, 0x4dc2b0, {.Locked = true});
     RH_ScopedInstall(FillBuffer, 0x4dc1c0, {.Locked = true});
     RH_ScopedInstall(GetCurrentPosition, 0x4dc230, {.Locked = true});
-    RH_ScopedOverloadedInstall(Seek, "OG", 0x4dc250, uint32(CAEDataStream::*)(long offset, int32 whence), {.Locked = true});
+    RH_ScopedOverloadedInstall(Seek, "OG", 0x4dc250, uint32(CAEDataStream::*)(int32 offset, int32 whence), {.Locked = true});
 
     // IStream implementation. These depend on functions above so most of them don't have to be locked.
     RH_ScopedInstall(Read, 0x4dc320);

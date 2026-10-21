@@ -250,8 +250,12 @@ static RwMemoryFunctions g_objMemFunctions = { // 0x8D6228
 
 // 0x745510
 RwMemoryFunctions* psGetMemoryFunctions() {
+#ifdef NOTSA_NATIVE
+    return notsa::native::GetRwMemoryFunctions();
+#else
     return plugin::CallAndReturn<RwMemoryFunctions*, 0x745510>();
     // return &g_objMemFunctions;
+#endif
 }
 
 // 0x619C90

@@ -150,7 +150,7 @@ bool CAEMFDecoder::Initialise() {
         m_pSourceReader = nullptr;
         return false;
     }
-    m_nLengthMs = (long)(prop.uhVal.QuadPart / 10000);
+    m_nLengthMs = static_cast<int32>(prop.uhVal.QuadPart / 10000);
     if (m_nLengthMs < 7000) {
         m_pPcmAudio->Release();
         m_pPcmAudio = nullptr;
@@ -235,7 +235,7 @@ size_t CAEMFDecoder::FillBuffer(void* dest, size_t size) {
         sample->Release();
 
         if (playTimeSet == false) {
-            m_nPlayTime = (long)(timestamp / 10000);
+            m_nPlayTime = static_cast<int32>(timestamp / 10000);
             playTimeSet = true;
         }
     }
@@ -244,7 +244,7 @@ size_t CAEMFDecoder::FillBuffer(void* dest, size_t size) {
 }
 
 // 0x4e7920
-long CAEMFDecoder::GetStreamLengthMs() {
+int32 CAEMFDecoder::GetStreamLengthMs() {
     if (m_bInitialized)
         return m_nLengthMs;
 
@@ -252,7 +252,7 @@ long CAEMFDecoder::GetStreamLengthMs() {
 }
 
 // 0x4e7940
-long CAEMFDecoder::GetStreamPlayTimeMs() {
+int32 CAEMFDecoder::GetStreamPlayTimeMs() {
     if (m_bInitialized)
         return m_nPlayTime;
 
@@ -260,7 +260,7 @@ long CAEMFDecoder::GetStreamPlayTimeMs() {
 }
 
 // 0x4e78e0
-void CAEMFDecoder::SetCursor(unsigned long pos) {
+void CAEMFDecoder::SetCursor(uint32 pos) {
     if (m_bInitialized) {
         PROPVARIANT seekDest;
         InitPropVariantFromInt64(pos * 10000ULL, &seekDest);

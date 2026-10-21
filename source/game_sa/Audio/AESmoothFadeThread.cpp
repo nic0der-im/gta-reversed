@@ -1,8 +1,17 @@
 #include "StdInc.h"
+
 #include "AESmoothFadeThread.h"
 
 #include "AEAudioChannel.h"
 #include "AEAudioUtility.h"
+
+#ifdef NOTSA_NATIVE
+#include "Audio/OpenAL/OALBase.h"
+
+#include <chrono>
+#include <mutex>
+#include <thread>
+#endif
 
 auto& AESmoothFadeThread = StaticRef<CAESmoothFadeThread>(0xB608D0);
 
@@ -24,11 +33,11 @@ void CAESmoothFadeThread::InjectHooks() {
 
 CAESmoothFadeThread::CAESmoothFadeThread() {
 #ifdef NOTSA_NATIVE
-    m_threadHandle = nullptr;
+    m_nativeState = nullptr;
 #else
     m_threadHandle         = INVALID_HANDLE_VALUE;
-#endif
     m_dwThreadId           = 0;
+#endif
     m_bInitialized       = false;
     m_bActive              = false;
     m_bSmoothFadesDisabled = false;
@@ -39,43 +48,263 @@ CAESmoothFadeThread::CAESmoothFadeThread() {
 }
 
 #ifdef NOTSA_NATIVE
-void CAESmoothFadeThread::Initialise() {
-    InitialiseRequestSlots();
-    m_bInitialized         = false; // No DirectSound buffers to fade in the silent backend
-    m_bSmoothFadesDisabled = true;
+
+struct CAESmoothFadeThread::NativeState {
+    std::thread thread;
+    std::mutex  mutex;
+};
+
+CAESmoothFadeThread::NativeState& CAESmoothFadeThread::GetNativeState() {
+    if (!m_nativeState) {
+        // Only ever allocated by `Initialise` (and by the very first volume change, both of
+        // which happen on the main thread) - i.e. before the worker thread can touch it.
+        m_nativeState = new NativeState{};
+    }
+    return *m_nativeState;
 }
 
+// 0x4EEEC0
+void CAESmoothFadeThread::Initialise() {
+    InitialiseRequestSlots();
+    GetNativeState();
+    m_bInitialized         = true;
+    m_bSmoothFadesDisabled = false;
+}
+
+// 0x4EE9F0
 void CAESmoothFadeThread::InitialiseRequestSlots() {
     for (auto& entry : m_aEntries) {
-        entry.m_nStatus = eSmoothFadeEntryStatus::STATE_IDLE;
+        entry.m_nStatus      = eSmoothFadeEntryStatus::STATE_IDLE;
         entry.m_pSoundBuffer = nullptr;
     }
 }
 
+// 0x4EEA10
 void CAESmoothFadeThread::Start() {
+    if (!m_bInitialized || m_bActive) {
+        return;
+    }
+
     m_bActive = true;
+    GetNativeState().thread = std::thread(&CAESmoothFadeThread::SmoothFadeProc, this);
 }
 
+// 0x4EEA30
 void CAESmoothFadeThread::Stop() {
     m_bActive = false;
 }
 
-void CAESmoothFadeThread::WaitForExit() {}
-
-void CAESmoothFadeThread::Service() {}
-
-void CAESmoothFadeThread::CancelFade(IDirectSoundBuffer* buffer) {
-    UNUSED(buffer);
+// 0x4EEA40
+void CAESmoothFadeThread::WaitForExit() {
+    if (m_nativeState && m_nativeState->thread.joinable()) {
+        m_nativeState->thread.join();
+    }
 }
 
-bool CAESmoothFadeThread::RequestFade(IDirectSoundBuffer* buffer, float fTargetVolume, int16 fadeTime, bool bStopBufferAfterFade) {
-    return false;
+// 0x4EED10
+void CAESmoothFadeThread::Service() {
+    std::lock_guard lock{GetNativeState().mutex};
+
+    m_currentTime = static_cast<uint32>(CAEAudioUtility::GetCurrentTimeInMS());
+    for (auto& entry : m_aEntries) {
+        if (entry.m_nStatus == eSmoothFadeEntryStatus::STATE_IDLE) {
+            continue;
+        }
+
+        if (entry.m_nStatus == eSmoothFadeEntryStatus::STATE_CANCELLED) {
+            --g_numSoundChannelsUsed;
+            if (entry.m_pSoundBuffer) {
+                entry.m_pSoundBuffer->Release();
+            }
+
+            entry.m_pSoundBuffer = nullptr;
+            entry.m_nStatus      = eSmoothFadeEntryStatus::STATE_IDLE;
+            continue;
+        }
+
+        if (!entry.m_pSoundBuffer) {
+            continue;
+        }
+
+        if (m_currentTime < entry.m_nStartTime) {
+            continue;
+        }
+
+        const auto elapsed = m_currentTime - entry.m_nStartTime;
+        if (elapsed < entry.m_wFadeTime) {
+            const auto fStep     = pow(10.0F, entry.m_fVolumeDiff / 20.0F) - 1.0F;
+            const auto fProgress = static_cast<float>(elapsed) / static_cast<float>(entry.m_wFadeTime);
+            entry.m_fCurVolume   = entry.m_fStartVolume + LOG10_2 * log2(fStep * fProgress) * 20.0F;
+            entry.m_pSoundBuffer->SetVolumeDb(entry.m_fCurVolume);
+            continue;
+        }
+
+        const auto fCurVolume = entry.m_pSoundBuffer->GetVolumeDb();
+        if (entry.m_bStopBufferAfterFade || approxEqual2(fCurVolume, entry.m_fCurVolume, 0.01F)) {
+            entry.m_pSoundBuffer->SetVolumeDb(entry.m_fTargetVolume);
+            if (entry.m_bStopBufferAfterFade) {
+                entry.m_pSoundBuffer->Stop();
+            }
+        }
+
+        --g_numSoundChannelsUsed;
+        entry.m_pSoundBuffer->Release();
+        entry.m_pSoundBuffer = nullptr;
+        entry.m_nStatus      = eSmoothFadeEntryStatus::STATE_IDLE;
+    }
 }
 
-void CAESmoothFadeThread::SetBufferVolume(IDirectSoundBuffer* buffer, float volume) {}
+// 0x4EEA50
+void CAESmoothFadeThread::CancelFade(tAudioBufferHandle* buffer) {
+    if (m_bSmoothFadesDisabled) {
+        return;
+    }
 
-void CAESmoothFadeThread::SmoothFadeProc(void* smoothFade) {}
-#else
+    std::lock_guard lock{GetNativeState().mutex};
+    for (auto& entry : m_aEntries) {
+        if (entry.m_nStatus == eSmoothFadeEntryStatus::STATE_ACTIVE && entry.m_pSoundBuffer == buffer) {
+            entry.m_nStatus = eSmoothFadeEntryStatus::STATE_CANCELLED;
+        }
+    }
+}
+
+// 0x4EEAA0
+bool CAESmoothFadeThread::RequestFade(tAudioBufferHandle* buffer, float fTargetVolume, int16 fadeTime, bool bStopBufferAfterFade) {
+    if (!buffer || !m_bInitialized || m_bSmoothFadesDisabled) {
+        return false;
+    }
+
+    std::lock_guard lock{GetNativeState().mutex};
+
+    if (!buffer->IsPlaying()) {
+        return false;
+    }
+
+    const auto fCurVolume = buffer->GetVolumeDb();
+    if (approxEqual2(fCurVolume, fTargetVolume, 0.01F)) {
+        if (bStopBufferAfterFade) {
+            buffer->Stop();
+        }
+        return true;
+    }
+
+    bool  bFound    = false;
+    int32 iFreeInd  = -1;
+    for (uint32 i = 0; i < m_nNumAvailableBuffers; ++i) {
+        auto& sound = m_aEntries[i];
+        if (sound.m_nStatus == eSmoothFadeEntryStatus::STATE_IDLE && !bFound) {
+            bFound   = true;
+            iFreeInd = i;
+            continue;
+        }
+
+        if (sound.m_nStatus != eSmoothFadeEntryStatus::STATE_ACTIVE) {
+            continue;
+        }
+
+        if (sound.m_pSoundBuffer != buffer) {
+            continue;
+        }
+
+        if (fadeTime + sound.m_nStartTime - m_currentTime <= 1) {
+            continue;
+        }
+
+        bFound   = true;
+        iFreeInd = i;
+        break;
+    }
+
+    if (!bFound) {
+        return false;
+    }
+
+    auto& sound = m_aEntries[iFreeInd];
+    if (sound.m_nStatus == eSmoothFadeEntryStatus::STATE_ACTIVE) {
+        if (sound.m_bStopBufferAfterFade) {
+            return true;
+        }
+    } else {
+        ++g_numSoundChannelsUsed;
+        buffer->AddRef();
+        sound.m_pSoundBuffer = buffer;
+    }
+
+    sound.m_fTargetVolume        = fTargetVolume;
+    sound.m_fCurVolume           = fCurVolume;
+    sound.m_fStartVolume         = fCurVolume;
+    sound.m_fVolumeDiff          = fTargetVolume - fCurVolume;
+    sound.m_bStopBufferAfterFade = bStopBufferAfterFade;
+
+    if (fadeTime == -2) {
+        sound.m_wFadeTime = 28; // Software buffer
+    } else if (fadeTime == -1) {
+        sound.m_wFadeTime = 30; // Software buffer
+    } else {
+        sound.m_wFadeTime = fadeTime;
+    }
+
+    sound.m_nStartTime = m_currentTime;
+    sound.m_nStatus    = eSmoothFadeEntryStatus::STATE_ACTIVE;
+
+    return true;
+}
+
+// 0x4EEC80
+void CAESmoothFadeThread::SetBufferVolume(tAudioBufferHandle* buffer, float volume) {
+    if (!buffer) {
+        return;
+    }
+
+    if (m_bSmoothFadesDisabled) {
+        buffer->SetVolumeDb(volume);
+        return;
+    }
+
+    std::lock_guard lock{GetNativeState().mutex};
+
+    int32 entryInd;
+    for (entryInd = 0; entryInd < NUM_SMOOTHFADE_ENTRIES; ++entryInd) {
+        auto& entry = m_aEntries[entryInd];
+        if (entry.m_nStatus == eSmoothFadeEntryStatus::STATE_ACTIVE && entry.m_pSoundBuffer == buffer) {
+            break;
+        }
+    }
+
+    if (entryInd >= NUM_SMOOTHFADE_ENTRIES) {
+        buffer->SetVolumeDb(volume);
+    } else {
+        auto& entry = m_aEntries[entryInd];
+        if (entry.m_bStopBufferAfterFade || approxEqual2(volume, entry.m_fTargetVolume, 0.01F)) {
+            return;
+        }
+
+        entry.m_nStatus = eSmoothFadeEntryStatus::STATE_CANCELLED;
+        buffer->SetVolumeDb(volume);
+    }
+}
+
+// 0x4EEE90
+void CAESmoothFadeThread::SmoothFadeProc(void* smoothFade) {
+#ifdef TRACY_ENABLE
+    tracy::SetThreadName("AESmoothFadeThread");
+#endif
+
+    // OpenAL's current context is per-thread
+    notsa::oal::MakeContextCurrent();
+
+    auto* fade = static_cast<CAESmoothFadeThread*>(smoothFade);
+    while (fade->m_bActive) {
+        ZoneScoped;
+
+        fade->Service();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    notsa::oal::ClearCurrentContext();
+}
+
+#else // NOTSA_NATIVE
 
 void CAESmoothFadeThread::Initialise() {
     InitialiseRequestSlots();
@@ -161,7 +390,7 @@ void CAESmoothFadeThread::Service() {
     }
 }
 
-void CAESmoothFadeThread::CancelFade(IDirectSoundBuffer* buffer) {
+void CAESmoothFadeThread::CancelFade(tAudioBufferHandle* buffer) {
     if (m_bSmoothFadesDisabled)
         return;
 
@@ -170,7 +399,7 @@ void CAESmoothFadeThread::CancelFade(IDirectSoundBuffer* buffer) {
             entry.m_nStatus = eSmoothFadeEntryStatus::STATE_CANCELLED;
 }
 
-bool CAESmoothFadeThread::RequestFade(IDirectSoundBuffer* buffer, float fTargetVolume, int16 fadeTime, bool bStopBufferAfterFade) {
+bool CAESmoothFadeThread::RequestFade(tAudioBufferHandle* buffer, float fTargetVolume, int16 fadeTime, bool bStopBufferAfterFade) {
     if (!m_bInitialized || m_bSmoothFadesDisabled)
         return false;
 
@@ -246,7 +475,7 @@ bool CAESmoothFadeThread::RequestFade(IDirectSoundBuffer* buffer, float fTargetV
     return true;
 }
 
-void CAESmoothFadeThread::SetBufferVolume(IDirectSoundBuffer* buffer, float volume) {
+void CAESmoothFadeThread::SetBufferVolume(tAudioBufferHandle* buffer, float volume) {
     const auto newVolume = static_cast<LONG>(volume * 100.0F);
     if (m_bSmoothFadesDisabled) {
         buffer->SetVolume(newVolume);
