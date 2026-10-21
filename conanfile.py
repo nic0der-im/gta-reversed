@@ -32,6 +32,11 @@ class saRecipe(ConanFile):
 
         # Native build mode: executable for the host OS, without the retail exe
         "native": [True, False],
+
+        # Enable the Tracy profiler
+        # Without `on_demand` Tracy keeps all profiling data in memory until a profiler connects,
+        # if no client connects, the game runs out of memory in about a minute.
+        "use_tracy": ['on_demand', True, False],
     }
 
     default_options = {
@@ -40,6 +45,7 @@ class saRecipe(ConanFile):
         "standalone": False,
         "unity_build": False,
         "native": False,
+        "use_tracy": False,
     }
     
     def requirements(self):
@@ -50,10 +56,16 @@ class saRecipe(ConanFile):
         # Required for our custom stuff
         self.requires("nlohmann_json/3.12.0")
         self.requires("spdlog/1.17.0", options={"use_std_fmt": True})
-        self.requires("tracy/0.13.1")
         self.requires("imgui/1.92.9b-docking")
         self.requires("boost/1.91.0", options={"header_only": True})
-        
+        # The Tracy profiler isn't available in the native port (the native build compiles it out,
+        # see `NOTSA_NATIVE` in `StdInc.h`), so it's only a requirement for the retail-exe builds.
+        if not self.options.native:
+            self.requires("tracy/0.13.1", options={
+                "enable": str(self.options.use_tracy) != 'False',
+                "on_demand": self.options.use_tracy == 'on_demand'
+            })
+
         # Required for vanilla build
         self.requires("ogg/1.3.5")
         self.requires("vorbis/1.3.7")

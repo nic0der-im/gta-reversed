@@ -737,7 +737,7 @@
   {
     "Category": "CPedGroup",
     "Name": "PlayerGaveCommand_Gather",
-    "IsReversed": false
+    "IsReversed": true
   },
   {
     "Category": "CPedGroup",
@@ -757,7 +757,7 @@
   {
     "Category": "CPedGroup",
     "Name": "FindDistanceToFurthestMember",
-    "IsReversed": false
+    "IsReversed": true
   },
   {
     "Category": "CPedGroup",
@@ -5597,7 +5597,7 @@
   {
     "Category": "SurfaceInfos_c",
     "Name": "LoadAdhesiveLimits",
-    "IsReversed": false
+    "IsReversed": true
   },
   {
     "Category": "CRenderer",
@@ -8412,7 +8412,7 @@
   {
     "Category": "CCarCtrl",
     "Name": "FindIntersection2Lines",
-    "IsReversed": false
+    "IsReversed": true
   },
   {
     "Category": "CCarCtrl",
@@ -8437,22 +8437,22 @@
   {
     "Category": "CCarCtrl",
     "Name": "FindPercDependingOnDistToLink",
-    "IsReversed": false
+    "IsReversed": true
   },
   {
     "Category": "CCarCtrl",
     "Name": "FindSequenceElement",
-    "IsReversed": false
+    "IsReversed": true
   },
   {
     "Category": "CCarCtrl",
     "Name": "FindSpeedMultiplier",
-    "IsReversed": false
+    "IsReversed": true
   },
   {
     "Category": "CCarCtrl",
     "Name": "FindSpeedMultiplierWithSpeedFromNodes",
-    "IsReversed": false
+    "IsReversed": true
   },
   {
     "Category": "CCarCtrl",
@@ -18195,6 +18195,26 @@
     "IsReversed": true
   },
   {
+    "Category": "CPedShelterAttractor",
+    "Name": "GetDisplacement",
+    "IsReversed": true
+  },
+  {
+    "Category": "CPedShelterAttractor",
+    "Name": "ComputeAttractPos",
+    "IsReversed": true
+  },
+  {
+    "Category": "CPedShelterAttractor",
+    "Name": "ComputeAttractHeading",
+    "IsReversed": true
+  },
+  {
+    "Category": "CPedShelterAttractor",
+    "Name": "BroadcastDeparture",
+    "IsReversed": true
+  },
+  {
     "Category": "CCopPed",
     "Name": "Constructor",
     "IsReversed": true
@@ -24077,7 +24097,7 @@
   {
     "Category": "CTaskComplexDestroyCar",
     "Name": "ControlSubTask",
-    "IsReversed": false
+    "IsReversed": true
   },
   {
     "Category": "CTaskComplexDestroyCarArmed",
@@ -30737,7 +30757,7 @@
   {
     "Category": "CTaskComplexWalkRoundObject",
     "Name": "CreateRouteTask",
-    "IsReversed": false
+    "IsReversed": true
   },
   {
     "Category": "CTaskSimplePause",
@@ -31837,6 +31857,11 @@
   {
     "Category": "CTaskComplexUseWaterCannon",
     "Name": "ControlSubTask",
+    "IsReversed": true
+  },
+  {
+    "Category": "CTaskSimpleSlideToCoord",
+    "Name": "Constructor-NoAnim",
     "IsReversed": true
   },
   {

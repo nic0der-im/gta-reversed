@@ -1,5 +1,6 @@
 #include "StdInc.h"
 
+#include "TaskComplexFollowPointRoute.h"
 #include "TaskComplexWalkRoundObject.h"
 #include "TaskComplexFollowPointRoute.h"
 #include "PedGeometryAnalyser.h" // CPointRoute
@@ -51,18 +52,10 @@ CTask* CTaskComplexWalkRoundObject::CreateFirstSubTask(CPed* ped) {
     return plugin::CallMethodAndReturn<CTask*, 0x657380, CTaskComplexWalkRoundObject*, CPed*>(this, ped);
 }
 
-CTask* CTaskComplexWalkRoundObject::CreateRouteTask(CPed*) {
+// 0x655140
+CTask* CTaskComplexWalkRoundObject::CreateRouteTask(CPed*) const {
     if (m_pointRoute->IsEmpty()) {
         return nullptr;
     }
-    return new CTaskComplexFollowPointRoute{
-        (eMoveState)m_moveState,
-        *m_pointRoute,
-        CTaskComplexFollowPointRoute::Mode::ONE_WAY,
-        0.5f,
-        0.0f,
-        true,
-        false,
-        false
-    };
+    return new CTaskComplexFollowPointRoute{ (eMoveState)m_moveState, *m_pointRoute };
 }

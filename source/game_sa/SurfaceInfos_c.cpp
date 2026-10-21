@@ -258,11 +258,17 @@ void SurfaceInfos_c::LoadAdhesiveLimits()
 #if FIX_BUGS
     if (!file) {
         NOTSA_LOG_DEBUG("[SurfaceInfos_c] Failed to open surface.dat");
-        return; // NOTSA: The original would call `fclose(NULL)` here
+        return;
     }
 #endif
 
-    int32 row = 0;
+    const auto SkipToSpace = [](const char*& it) {
+        while (*it != ' ' && *it != '\t' && *it) {
+            it++;
+        }
+    };
+
+    auto row = 0;
     for (const char* line = CFileLoader::LoadLine(file); line; line = CFileLoader::LoadLine(file)) {
         if (*line == ';' || !*line)
             continue;
@@ -271,32 +277,26 @@ void SurfaceInfos_c::LoadAdhesiveLimits()
         if (row >= (int32)std::size(m_adhesiveLimits))
             break;
 
-        // The surface name is parsed, but never used - The row is determined by its position in the file
-        char name[32]{};
-        sscanf_s(line, "%s", SCANF_S_STR(name));
+        char name[256];
+        VERIFY(sscanf_s(line, "%s", SCANF_S_STR(name)) == 1);
+        SkipToSpace(line);
 
-        // Skip the surface name
-        while (*line != ' ' && *line != '\t' && *line != '\0')
-            ++line;
+        // The file only has the lower half of the table (row `n` has `n + 1` values), the upper half is mirrored
+        for (auto col = 0; col <= row; col++) {
+            while (*line == ' ' || *line == '\t') {
+                line++;
+            }
 
-        for (int32 col = 0; col <= row; ++col) {
-            while (*line == ' ' || *line == '\t')
-                ++line;
+            float limit = 0.f;
+            if (*line != '-') {
+                VERIFY(sscanf_s(line, "%f", &limit) == 1);
+            }
+            SkipToSpace(line);
 
-            // Values starting with a '-' aren't parsed, and are left as 0.0f
-            float limit{};
-            if (*line != '-')
-                sscanf_s(line, "%f", &limit);
-
-            while (*line != ' ' && *line != '\t' && *line != '\0')
-                ++line;
-
-            // The file only supplies the lower triangle, so the other half is mirrored here
             m_adhesiveLimits[row][col] = limit;
             m_adhesiveLimits[col][row] = limit;
         }
-
-        ++row;
+        row++;
     }
     CFileMgr::CloseFile(file);
 }

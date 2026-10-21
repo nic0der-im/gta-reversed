@@ -6,18 +6,21 @@
 #include <TaskSimpleGoToPoint.h>
 
 //! @addr 0x5FB010
-//! @returns Distance of the furthers member from the leader
+//! @returns Distance of the furthest follower from the leader (`0.f` if there's no leader or no followers)
 float CPedGroup::FindDistanceToFurthestMember() {
-    float maxDist{};
-    if (const auto leader = GetMembership().GetLeader()) {
-        for (auto* const mem : GetMembership().GetFollowers()) {
-            const auto dist = (mem->GetPosition() - leader->GetPosition()).Magnitude();
-            if (!(maxDist > dist)) { // NOTE: Unordered comparison (NaN) also updates the max, same as the original's FPU `FCOM`
-                maxDist = dist;
-            }
-        }
+    const auto* const leader = GetMembership().GetLeader();
+    if (!leader) {
+        return 0.f;
     }
-    return maxDist;
+    return rng::fold_left(
+        GetMembership().GetFollowers() | rngv::transform([&](const CPed* follower) {
+            return CVector::Dist(follower->GetPosition(), leader->GetPosition());
+        }),
+        0.f,
+        [](float a, float b) {
+            return std::max(a, b);
+        }
+    );
 }
 
 // 0x5FB0A0
@@ -81,28 +84,24 @@ void CPedGroup::PlayerGaveCommand_Attack(CPed* playerPed, CPed* target) {
 
 // 0x5FAB60
 void CPedGroup::PlayerGaveCommand_Gather(CPed* ped) {
-    CPedList members;
-    members.Empty();
-    members.BuildListFromGroup_NotInCar_NoLeader(&m_groupMembership);
+    CPedList pedList{};
+    pedList.BuildListFromGroup_NotInCar_NoLeader(&GetMembership());
 
-    if (!ped->GetIntelligence()->IsInACarOrEnteringOne() || !ped->m_pVehicle) {
-        CFormation::GenerateGatherDestinations(members, ped);
+    // 0x5FABA0 - Gather around the vehicle the ped is in (or is entering), otherwise around the ped itself
+    if (ped->GetIntelligence()->IsInACarOrEnteringOne() && ped->m_pVehicle) {
+        CFormation::GenerateGatherDestinations_AroundCar(pedList, ped->m_pVehicle);
     } else {
-        CFormation::GenerateGatherDestinations_AroundCar(members, ped->m_pVehicle);
+        CFormation::GenerateGatherDestinations(pedList, ped);
     }
+    CFormation::DistributeDestinations(pedList);
 
-    CFormation::DistributeDestinations(members);
-
-    for (auto* const mem : members.GetPeds()) {
-        CVector dest{};
-        if (CFormation::ReturnDestinationForPed(mem, &dest)) {
-            // NOTE: The original also constructed (and destroyed) an unused `CTaskSimpleLeaveGroup` here - It was never read, so it's omitted
-            m_groupIntelligence.SetTask(
-                mem,
-                CTaskSimpleGoToPoint{ PEDMOVE_SPRINT, dest, 2.0f, true, false },
-                m_groupIntelligence.GetPedTaskPairs()
-            );
+    // 0x5FAC00 - Make everyone sprint to their destination
+    for (auto* const member : pedList.GetPeds()) {
+        CVector destination{};
+        if (!CFormation::ReturnDestinationForPed(member, &destination)) {
+            continue;
         }
+        GetIntelligence().SetEventResponseTask(member, CTaskSimpleGoToPoint{ PEDMOVE_SPRINT, destination, 2.f, true, false });
     }
 }
 

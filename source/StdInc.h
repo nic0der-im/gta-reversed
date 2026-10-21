@@ -37,7 +37,12 @@
 
 #include <extensions/Casting.hpp>
 
-#include <tracy/Tracy.hpp>
+#ifdef NOTSA_NATIVE
+    // The native port doesn't ship Tracy; the macros are compiled out.
+    #include "app/platform/native/tracy_compat.h"
+#else
+    #include <tracy/Tracy.hpp>
+#endif
 
 // DirectX
 #ifdef _WIN32

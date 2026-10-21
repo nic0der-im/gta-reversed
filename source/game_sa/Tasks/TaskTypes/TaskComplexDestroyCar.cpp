@@ -50,7 +50,7 @@ bool CTaskComplexDestroyCar::MakeAbortable(CPed* ped, eAbortPriority priority, c
 
 // 0x62DA90
 CTask* CTaskComplexDestroyCar::CreateFirstSubTask(CPed* ped) {
-    m_arg0 = false;
+    m_NeedsToCreateFirstSubTask = false;
 
     if (!m_VehicleToDestroy)
         return CreateSubTask(TASK_FINISHED);
@@ -94,47 +94,47 @@ CTask* CTaskComplexDestroyCar::CreateSubTask(eTaskType taskType, CPed* ped) {
 
 // 0x6288C0
 CTask* CTaskComplexDestroyCar::ControlSubTask(CPed* ped) {
-    if (!m_VehicleToDestroy || !(m_VehicleToDestroy->m_fHealth > 0.0f)) {
+    // Vehicle is gone or already destroyed
+    if (!m_VehicleToDestroy || m_VehicleToDestroy->m_fHealth <= 0.f) {
         return nullptr;
     }
 
-    if (m_arg0) {
+    if (m_NeedsToCreateFirstSubTask) {
         return CreateFirstSubTask(ped);
     }
 
-    eTaskType newType;
+    const auto TrySwitchSubTaskTo = [&](eTaskType taskType) -> CTask* {
+        if (m_pSubTask->MakeAbortable(ped, ABORT_PRIORITY_URGENT)) {
+            return CreateSubTask(taskType, ped);
+        }
+        return m_pSubTask;
+    };
+
     switch (m_pSubTask->GetTaskType()) {
-    case TASK_COMPLEX_DESTROY_CAR_MELEE:
+    case TASK_COMPLEX_DESTROY_CAR_MELEE: { // 0x628910
         if (ped->GetActiveWeapon().IsTypeMelee()) {
-            return m_pSubTask;
+            break;
         }
-        newType = TASK_COMPLEX_DESTROY_CAR_ARMED;
-        break;
-    case TASK_COMPLEX_DESTROY_CAR_ARMED: {
-        if (ped->GetActiveWeapon().m_TotalAmmo != 0 || ped->IsPlayer()) {
-            return m_pSubTask;
+        // Switched to a non-melee weapon => use the armed task
+        return TrySwitchSubTaskTo(TASK_COMPLEX_DESTROY_CAR_ARMED);
+    }
+    case TASK_COMPLEX_DESTROY_CAR_ARMED: { // 0x628930
+        if (ped->GetActiveWeapon().GetTotalAmmo() || ped->IsPlayer()) {
+            break; // Still has ammo (or is the player)
         }
-        int32 slot = 0;
-        const auto numSlots = static_cast<int32>(NUM_WEAPON_SLOTS);
-        for (; slot < numSlots; ++slot) {
-            if (static_cast<int32>(ped->m_aWeapons[slot].m_TotalAmmo) > 0) {
-                ped->SetCurrentWeapon(slot);
-                break;
-            }
+
+        // Out of ammo => find a weapon that has some, or fall back to melee
+        const auto weaponWithAmmo = rng::find_if(ped->m_aWeapons, [](const CWeapon& w) {
+            return w.GetTotalAmmo() > 0;
+        });
+        if (weaponWithAmmo == ped->m_aWeapons.end()) {
+            ped->SetCurrentWeapon((int32)eWeaponSlot::UNARMED);
+            return TrySwitchSubTaskTo(TASK_COMPLEX_DESTROY_CAR_MELEE);
         }
-        if (slot != numSlots) {
-            return m_pSubTask; // Switched to a weapon that has ammo
-        }
-        ped->SetCurrentWeapon(0); // Make unarmed
-        newType = TASK_COMPLEX_DESTROY_CAR_MELEE;
+        ped->SetCurrentWeapon((int32)std::distance(ped->m_aWeapons.begin(), weaponWithAmmo));
         break;
     }
-    default:
-        return m_pSubTask;
     }
 
-    if (!m_pSubTask->MakeAbortable(ped, ABORT_PRIORITY_URGENT, nullptr)) {
-        return m_pSubTask;
-    }
-    return CreateSubTask(newType, ped);
+    return m_pSubTask;
 }

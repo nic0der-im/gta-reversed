@@ -243,12 +243,16 @@ add_dependency(
     nlohmann_json
     Ogg
     spdlog
-    Tracy
     Vorbis
     imgui
     libjpeg-turbo
     Boost
 )
+# Tracy is a retail-exe-only dependency: the native port compiles the Tracy macros out
+# (see `app/platform/native/tracy_compat.h`), so it must not be required there.
+if (NOT ${RE_PROJECT}_NATIVE)
+    add_dependency(Tracy)
+endif()
 if (${RE_PROJECT}_USE_SDL3)
     add_dependency(SDL3)
 endif()
@@ -263,13 +267,15 @@ target_link_libraries(${RE_PROJECT_LIB_NAME} PRIVATE
     nlohmann_json::nlohmann_json
     Ogg::ogg
     spdlog::spdlog
-    Tracy::TracyClient
     vorbis::vorbis
     imgui::imgui
     libjpeg-turbo::libjpeg-turbo
     ${PLATFORM_LINK_LIBS}
     Boost::headers
 )
+if (NOT ${RE_PROJECT}_NATIVE)
+    target_link_libraries(${RE_PROJECT_LIB_NAME} PRIVATE Tracy::TracyClient)
+endif()
 if (${RE_PROJECT}_USE_SDL3)
     target_link_libraries(${RE_PROJECT_LIB_NAME} PRIVATE
         SDL3::SDL3
