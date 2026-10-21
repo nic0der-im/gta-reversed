@@ -12,15 +12,37 @@ Everything platform specific lives behind `#ifdef NOTSA_NATIVE` or in
 `gta_reversed --game-dir <dir>` creates its SDL3 window through librw (`RwEngineStart`), reads
 `models/GTA3.IMG`, initialises the RenderWare engine, attaches the game's RenderWare plugins,
 builds the camera/world, shows the EAX splash, plays the intro videos through the native video
-player and loads the text GXT. It then loads `DATA/HANDLING.CFG` (259 handlings for 210
-vehicles) and calls `SurfaceInfos_c::LoadAdhesiveLimits` (`CGame::InitialiseCoreDataAfterRW` →
-`g_surfaceInfos.Init()`), which is still a stub. The process ends with
-`Unreversed exe function 0x55D0E0 called` and `SIGABRT` (134) — the expected B1 boundary.
+player, loads the text GXT and `DATA/HANDLING.CFG` (259 handlings for 210 vehicles) and starts
+the OpenAL backend.
 
-`Rw: stub RxPipelineCreate` (`CCustomCarEnvMapPipeline::CreatePipe`, plan B3) is still logged,
-but it is only a no-op stub now, not a crash site.
+`CGame::InitialiseEssentialsAfterRW` now succeeds. `CCarFXRenderer::Initialise` and
+`CCustomBuildingRenderer::Initialise` no longer create RenderWare pipelines: the four GL3 San
+Andreas pipelines (`Building`, `BuildingDayNight`, `Vehicle`, `Ped`) are built once at the end of
+`RwEngineStart` (`notsa::native::sapipelines::RegisterSAPipelines`), and the `CCustom*Pipeline`
+classes take their handles from `sapipelines::GetPipeline` (native branch of `CreatePipe`).
+`RenderWare/librw/RxPipeline.cpp` implements the generic `Rx*` pipeline API on top of them: a
+real `RxPipeline`/`RxPipelineNode` pair with one harmless generic node, the San Andreas node
+definitions (`RxNodeDefinitionGetD3D9*AllInOne`), lock/unlock/fragment/find, and a
+`RxPipelineDestroy` that never frees the shared San Andreas handles. `RpAtomicInstance`,
+`AtomicDefaultRenderCallBack` and `RpGeometryDestroy` forward to
+`InstanceAtomic`/`RenderAtomic`/`ForgetGeometry`.
 
-Observed run (`timeout 120`, 2026-10-21):
+The native build then enters `MainLoop` and draws the frontend. The two game-side calls that
+aborted there were font draws, now native log-once no-ops: `CFont::RenderFontBuffer` (queues
+glyphs for Im2D) and `CFont::ProcessCurrentString` (text layout + that queue). Both only feed
+`FontRenderStateBuf`, which `CFont::InitPerFrame` resets every frame; the Im2D backend itself is
+B3.
+
+The next boundary is **audio, not rendering**: the main loop runs `FrontendIdle` →
+`CAudioEngine::Service` → `CAESoundManager::Service` → `CAESound::UpdateParameters`, which
+SIGSEGVs (139, `EXC_BAD_ACCESS` at 0x0) at `+332` on an unchecked virtual call. The retail code
+wraps that call in SEH (`source/game_sa/Audio/AESound.cpp:259-268`); the native branch has no
+SEH and no null/Dangling guard, so this is a B4 audio work item.
+
+`Rw: stub RpWorldAddCamera` / `RpWorldAddLight` / `RtAnimRegisterInterpolationScheme` still log;
+they are no-ops and do not gate startup.
+
+Observed run (`timeout 220`, 2026-10-21):
 
 ```
 [info]    Rw: engine started (640x448 window)
@@ -30,16 +52,20 @@ Observed run (`timeout 120`, 2026-10-21):
 [debug]   Video: playing `movies/Logo.mpg` (640x480, 29.97 fps, 15.35s)
 [debug]   Video: playing `movies/GTAtitles.mpg` (640x480, 29.97 fps, 88.72s)
 [debug]   Loading 'AMERICAN.GXT' version=04 (8-bit ASCII)
-[warning] Rw: stub RxPipelineCreate
 [debug]   Successfully loaded 259x handlings for 210x vehicles!
-[critical] Unreversed exe function 0x55D0E0 called
+[info]    OpenAL: OpenAL Soft (OpenAL Soft), 1.1 ALSOFT 1.24.3
+[debug]   Initialised SoundManager
+[warning] Native: CFont::RenderFontBuffer is a no-op until the Im2D backend (plan B3)
+# SIGSEGV (139) in CAESound::UpdateParameters
 ```
 
 | Address | Symbol | Hit by |
 | --- | --- | --- |
 | 0x5617C0 | `GetMillisecondTime` | `CTimer::Initialise` (now `RsTimer()` natively, `Timer.cpp`) |
 | 0x745510 | `psGetMemoryFunctions` | **no longer reached** (`app/platform/native/NativePs.cpp`) |
-| 0x55D0E0 | `SurfaceInfos_c::LoadAdhesiveLimits` | `CGame::InitialiseCoreDataAfterRW` → `SurfaceInfos_c::Init` (stub, `.Reversed = false`) |
+| 0x55D0E0 | `SurfaceInfos_c::LoadAdhesiveLimits` | **no longer reached** (reversed) |
+| 0x719840 | `CFont::RenderFontBuffer` | copyright/loading screen draw; native log-once no-op (B3 Im2D) |
+| 0x71A220 | `CFont::ProcessCurrentString` | menu text layout+draw; native log-once no-op (B3 Im2D) |
 
 Append a row for every address the native build aborts on. The column is the reason the native
 build reached it, so it doubles as a work list for reversing.

@@ -12,6 +12,9 @@
 #include "Tasks/TaskTypes/TaskComplexEnterCarAsPassenger.h"
 #include "Tasks/TaskTypes/TaskComplexEnterCarAsPassengerWait.h"
 #include "Tasks/TaskTypes/TaskComplexLeaveCar.h"
+#include "Tasks/TaskTypes/TaskSimpleCarDrive.h"
+#include "Tasks/TaskComplexUseSequence.h"
+#include "Tasks/TaskSequences.h"
 #include "Tasks/TaskTypes/TaskComplexLeaveCarAsPassengerWait.h"
 #include "Tasks/TaskTypes/TaskComplexSmartFleeEntity.h"
 #include "Tasks/TaskTypes/TaskSimpleWaitUntilLeaderAreaCodesMatch.h"
@@ -47,6 +50,7 @@
 #include "Events/EventNewGangMember.h"
 #include "Events/EventLeaderEntryExit.h"
 #include "Events/EventLeaderExitedCarAsDriver.h"
+#include "Events/EventLeaderEnteredCarAsDriver.h"
 
 void CGroupEventHandler::InjectHooks() {
     RH_ScopedClass(CGroupEventHandler);
@@ -64,8 +68,8 @@ void CGroupEventHandler::InjectHooks() {
     RH_ScopedInstall(ComputeResponsePedFriend, 0x5FB2D0);
     RH_ScopedInstall(ComputeResponseNewGangMember, 0x5F9840);
     RH_ScopedInstall(ComputeResponseLeaderExitedCar, 0x5F90A0);
-    RH_ScopedInstall(ComputeResponsLeaderQuitEnteringCar, 0x5F9530, { .Reversed = false });
-    RH_ScopedInstall(ComputeResponseLeaderEnteredCar, 0x5F8900, { .Reversed = false });
+    RH_ScopedInstall(ComputeResponsLeaderQuitEnteringCar, 0x5F9530);
+    RH_ScopedInstall(ComputeResponseLeaderEnteredCar, 0x5F8900);
     RH_ScopedInstall(ComputeResponseLeaderEnterExit, 0x5F9710);
     RH_ScopedInstall(ComputeResponseGunAimedAt, 0x5FBD10);
     RH_ScopedInstall(ComputeResponseGather, 0x5F99F0);
@@ -356,7 +360,98 @@ CTaskAllocator* CGroupEventHandler::ComputeResponseLeaderExitedCar(const CEventE
 
 // 0x5F8900
 CTaskAllocator* CGroupEventHandler::ComputeResponseLeaderEnteredCar(const CEvent& e, CPedGroup* pg, CPed* originator) {
-    return plugin::CallAndReturn<CTaskAllocator*, 0x5F8900, const CEvent&, CPedGroup*, CPed*>(e, pg, originator);
+    const auto& event   = static_cast<const CEventLeaderEnteredCarAsDriver&>(e);
+    auto&       pgms    = pg->GetMembership();
+    const auto  leader  = pgms.GetLeader();
+    const auto  vehicle = event.m_vehicle;
+    if (!leader || !vehicle) {
+        return nullptr;
+    }
+
+    // Mission peds board first, the rest afterwards (Original order is kept within both groups) [0x5F8996]
+    std::array<CPed*, TOTAL_PED_GROUP_FOLLOWERS> ordered{};
+    {
+        auto out = ordered.begin();
+        for (const auto createdByMission : { true, false }) {
+            for (CPed* const m : pgms.GetFollowers()) {
+                if (m->IsCreatedByMission() == createdByMission) {
+                    *out++ = m;
+                }
+            }
+        }
+    }
+
+    // 0x5F8B03
+    const auto ShouldForceFrontSeat = [&](CPed* ped) {
+        if (pgms.CountMembersExcludingLeader() != 1 || vehicle->IsBike() || vehicle->IsSubQuad()) {
+            return false;
+        }
+        const auto passenger = vehicle->m_apPassengers[0];
+        if (!passenger || passenger == ped) {
+            return true;
+        }
+        return !pgms.IsFollower(passenger) && passenger != leader && !passenger->bDontDragMeOutCar;
+    };
+
+    const auto seqId = pg->GetIntelligence().GetTaskSeqId();
+    auto&      intelligence = pg->GetIntelligence();
+
+    int32 count{};        // Count of peds that have been given a boarding task
+    CPed* prev = leader;  // Ped the next one waits for
+    for (CPed* const m : ordered) {
+        if (!m) {
+            continue;
+        }
+
+        if (count >= vehicle->m_nMaxPassengers) {
+            intelligence.SetEventResponseTask(m, CTaskComplexLeaveAnyCar{ 0, true, false });
+            continue;
+        }
+
+        const auto forceFrontSeat = ShouldForceFrontSeat(m);
+        if (    event.m_TaskId == TASK_GROUP_ENTER_CAR_AND_PERFORM_SEQUENCE
+            &&  seqId >= 0
+            &&  seqId < CTaskSequences::NUM_SEQUENCES
+            &&  CTaskSequences::ms_taskSequence[seqId].IsActive()
+        ) {
+            intelligence.SetEventResponseTask(m, CTaskComplexSequence{
+                new CTaskComplexEnterCarAsPassengerWait{ vehicle, prev, forceFrontSeat, eMoveState::PEDMOVE_RUN },
+                new CTaskComplexUseSequence{ seqId }
+            });
+        } else {
+            intelligence.SetEventResponseTask(m, CTaskComplexEnterCarAsPassengerWait{
+                vehicle,
+                prev,
+                forceFrontSeat,
+                eMoveState::PEDMOVE_RUN
+            });
+            if (!m->bHasGroupDriveTask) {
+                m->bHasGroupDriveTask = true;
+                CTaskComplexSequence driveSeq{
+                    new CTaskSimpleCarDrive{ vehicle, nullptr, true }
+                };
+                if (const auto defaultTask = intelligence.GetTaskDefault(m)) {
+                    driveSeq.AddTask(defaultTask->Clone());
+                }
+                intelligence.SetDefaultTask(m, driveSeq);
+            }
+        }
+        count++;
+        prev = m;
+    }
+
+    if (!leader->IsPlayer() && !leader->bHasGroupDriveTask) {
+        leader->bHasGroupDriveTask = true;
+        CTaskComplexSequence driveSeq{
+            new CTaskSimpleCarDrive{ vehicle, nullptr, true }
+        };
+        if (const auto defaultTask = pg->GetIntelligence().GetTaskDefault(leader)) {
+            driveSeq.AddTask(defaultTask->Clone());
+        }
+        pg->GetIntelligence().SetDefaultTask(leader, driveSeq);
+    }
+
+    return nullptr;
 }
 
 // 0x5F9710
@@ -465,8 +560,45 @@ CTaskAllocator* CGroupEventHandler::ComputeResponseDamage(const CEventDamage& e,
 }
 
 // 0x5F9530
-CTaskAllocator* CGroupEventHandler::ComputeResponsLeaderQuitEnteringCar(const CEvent& e, CPedGroup* pg, CPed* originator) {
-    return plugin::CallAndReturn<CTaskAllocator*, 0x5F9530, const CEvent&, CPedGroup*, CPed*>(e, pg, originator);
+CTaskAllocator* CGroupEventHandler::ComputeResponsLeaderQuitEnteringCar(const CEvent&, CPedGroup* pg, CPed* originator) {
+    auto& intelligence = pg->GetIntelligence();
+    for (int32 i = 0; i < TOTAL_PED_GROUP_FOLLOWERS; i++) {
+        CPed* const m = pg->GetMembership().GetMember(i);
+        if (!m) {
+            continue;
+        }
+
+        if (m->bInVehicle && m->m_pVehicle) { // In a vehicle already
+            intelligence.SetEventResponseTask(m, CTaskComplexLeaveCar{
+                m->m_pVehicle,
+                eTargetDoor::TARGET_DOOR_FRONT_LEFT,
+                i * 500,
+                true,
+                false
+            });
+            continue;
+        }
+
+        // Entering (Or was about to enter) a vehicle
+        CVehicle* veh{};
+        if (const auto t = m->GetTaskManager().Find<CTaskComplexEnterCarAsPassengerWait>(false); !t || !(veh = t->GetCar())) {
+            if (const auto t = m->GetTaskManager().Find<CTaskComplexEnterCarAsPassenger>(false); !t || !(veh = t->GetTargetCar())) {
+                continue;
+            }
+        }
+
+        // NOTE: The OG code computes this as `(int)((float)rand() * (1/32768) * -500.0f)` (Truncated towards zero),
+        //       which is why `CGeneral::GetRandomNumberInRange` (It uses 1/32767) isn't used here.
+        const auto randomDelay = static_cast<int32>(static_cast<float>(CGeneral::GetRandomNumber()) * (1.f / 32768.f) * 500.f);
+        intelligence.SetEventResponseTask(m, CTaskComplexLeaveCar{
+            veh,
+            eTargetDoor::TARGET_DOOR_FRONT_LEFT,
+            i * 500 + 250 + randomDelay,
+            true,
+            false
+        });
+    }
+    return nullptr;
 }
 
 // 0x5FAA50

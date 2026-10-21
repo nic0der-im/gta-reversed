@@ -22,7 +22,7 @@ void CTaskComplexWander::InjectHooks() {
     RH_ScopedCategory("Tasks/TaskTypes");
 
     RH_ScopedInstall(Constructor, 0x66F450);
-    RH_ScopedVMTInstall(CreateNextSubTask, 0x674140, { .Reversed = false });
+    RH_ScopedVMTInstall(CreateNextSubTask, 0x674140);
     RH_ScopedVMTInstall(CreateFirstSubTask, 0x6740E0);
     RH_ScopedVMTInstall(ControlSubTask, 0x674C30);
     RH_ScopedVMTInstall(UpdateDir, 0x669DA0);
@@ -57,52 +57,43 @@ CTaskComplexWander::CTaskComplexWander(eMoveState moveState, uint8 dir, bool bWa
 
 // 0x674140
 CTask* CTaskComplexWander::CreateNextSubTask(CPed* ped) {
-    return plugin::CallMethodAndReturn<CTask*, 0x674140, CTaskComplexWander*, CPed*>(this, ped); // untested
-
     switch (m_pSubTask->GetTaskType()) {
     case TASK_SIMPLE_SCRATCH_HEAD: {
         m_nDir++;
         UpdatePathNodes(ped, m_nDir, m_LastNode, m_NextNode, m_nDir);
 
-        if (ValidNodes()) {
+        // Inlined in the exe: Only the areas are validated, unlike `ValidNodes` which also validates the node ids
+        if (m_NextNode.IsAreaValid() && m_LastNode.IsAreaValid() && m_NextNode != m_LastNode) {
             return CreateSubTask(ped, TASK_SIMPLE_GO_TO_POINT);
         }
 
         return new CTaskSimpleScratchHead();
     }
-    case TASK_COMPLEX_CROSS_ROAD_LOOK_AND_ACHIEVE_HEADING:
     case TASK_COMPLEX_OBSERVE_TRAFFIC_LIGHTS_AND_ACHIEVE_HEADING:
-    case TASK_COMPLEX_SIT_DOWN_THEN_IDLE_THEN_STAND_UP:
+    case TASK_COMPLEX_CROSS_ROAD_LOOK_AND_ACHIEVE_HEADING:
         return CreateSubTask(ped, TASK_SIMPLE_GO_TO_POINT);
 
-    case TASK_SIMPLE_CAR_DRIVE_TIMED:
-        return CreateFirstSubTask(ped);
-
-    case TASK_COMPLEX_LEAVE_CAR:
-        if (ped->bInVehicle) {
-            return CreateSubTask(ped, TASK_SIMPLE_CAR_DRIVE_TIMED);
-        }
-        return CreateFirstSubTask(ped);
-
     case TASK_COMPLEX_SEQUENCE:
-    case TASK_SIMPLE_GO_TO_POINT:
+    case TASK_SIMPLE_GO_TO_POINT: {
         if (m_bAllNodesBlocked) {
             m_bAllNodesBlocked = false;
             return new CTaskSimpleScratchHead();
         }
 
         UpdateDir(ped);
+
+        const CNodeAddress lastNode = m_LastNode; // Compared against the *new* next node below
         UpdatePathNodes(ped, m_nDir, m_LastNode, m_NextNode, m_nDir);
 
-        if (m_NextNode == m_LastNode) { // Inverted
+        if (m_NextNode == lastNode) {
+            auto* sequence = new CTaskComplexSequence{};
+            sequence->AddTask(new CTaskSimpleStandStill(500, false, false, 8.0f));
+            sequence->AddTask(new CTaskSimpleRunAnim(ped->m_nAnimGroup, ANIM_ID_ROADCROSS, 4.0f, false));
+            sequence->AddTask(new CTaskSimpleScratchHead());
             CVector outTargetPos;
-            ComputeTargetPos(ped, outTargetPos, m_NextNode); // 0x6743C8 (this is here out-of-order, but I guess it doesn't matter)
-            return new CTaskComplexSequence{ // 0x6742DA
-                new CTaskSimpleStandStill(500, false, false, 8.0f),
-                new CTaskSimpleRunAnim(ped->m_nAnimGroup, ANIM_ID_ROADCROSS, 4.0F, false),
-                new CTaskSimpleScratchHead(),
-                new CTaskSimpleGoToPoint(m_nMoveState, outTargetPos, m_fTargetRadius, false, false),
-            };
+            ComputeTargetPos(ped, outTargetPos, m_NextNode);
+            sequence->AddTask(new CTaskSimpleGoToPoint(m_nMoveState, outTargetPos, m_fTargetRadius, false, false));
+            return sequence;
         }
 
         if (!ValidNodes()) {
@@ -119,8 +110,17 @@ CTask* CTaskComplexWander::CreateNextSubTask(CPed* ped) {
         }
 
         return CreateSubTask(ped, TASK_SIMPLE_GO_TO_POINT);
+    }
 
-    case TASK_COMPLEX_IN_AIR_AND_LAND:
+    case TASK_COMPLEX_LEAVE_CAR:
+        if (ped->bInVehicle) {
+            return new CTaskSimpleCarDriveTimed(ped->m_pVehicle, 2000);
+        }
+        return CreateFirstSubTask(ped);
+
+    case TASK_SIMPLE_CAR_DRIVE_TIMED:
+        return CreateFirstSubTask(ped);
+
     default:
         return nullptr;
     }

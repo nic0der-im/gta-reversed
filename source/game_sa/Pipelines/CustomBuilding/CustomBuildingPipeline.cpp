@@ -5,6 +5,10 @@
 #include <CustomCarEnvMapPipeline.h>
 #include <PipelinesCommon.hpp>
 
+#ifdef NOTSA_NATIVE
+#include "pipelines/SAPipelines.h"
+#endif
+
 constexpr auto PLUGIN_ID = rpPDS_MAKEPIPEID(rwVENDORID_DEVELOPER, 0x9C);
 
 void CCustomBuildingPipeline::InjectHooks() {
@@ -22,15 +26,25 @@ void CCustomBuildingPipeline::InjectHooks() {
 
 // 0x5D7D90
 bool CCustomBuildingPipeline::CreatePipe() {
+#ifdef NOTSA_NATIVE
+    // The GL3 San Andreas pipelines are built once, right after `RwEngineStart`.
+    ObjPipeline = notsa::native::sapipelines::GetPipeline(notsa::native::sapipelines::Kind::Building);
+#else
     ObjPipeline = CreateCustomObjPipe();
+#endif
     return ObjPipeline != nullptr;
 }
 
 // 0x5D7380
 void CCustomBuildingPipeline::DestroyPipe() {
+#ifdef NOTSA_NATIVE
+    // Shared renderer-owned handle: nothing to destroy.
+    ObjPipeline = nullptr;
+#else
     if (auto* const pipe = std::exchange(ObjPipeline, nullptr)) {
         RxPipelineDestroy(pipe);
     }
+#endif
 }
 
 // 0x5D7E50

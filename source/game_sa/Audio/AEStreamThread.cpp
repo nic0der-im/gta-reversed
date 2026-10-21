@@ -81,8 +81,13 @@ bool CAEStreamThread::Initialise(CAEStreamingChannel* streamingChannel) {
 #endif
     m_pStreamingChannel = streamingChannel;
 
+#ifdef NOTSA_NATIVE
+    // No MP3/radio stream module natively (see `CAEAudioHardware::Initialise`)
+    m_pMp3TrackLoader = nullptr;
+#else
     m_pMp3TrackLoader = new CAEMP3TrackLoader();
     m_pMp3TrackLoader->Initialise();
+#endif
 
     return m_bActive;
 }
@@ -284,7 +289,12 @@ void CAEStreamThread::Service() {
         if (userTrackCheck) {
             ptr = AEUserRadioTrackManager.LoadUserTrack(trackId);
         } else {
+#ifdef NOTSA_NATIVE
+            // No radio stream track loader natively - only user tracks (Vorbis/WAV) exist
+            ptr = nullptr;
+#else
             ptr = new CAEVorbisDecoder(m_pMp3TrackLoader->GetDataStream(trackId), 0);
+#endif
         }
 
         if (ptr && !ptr->Initialise()) {

@@ -80,6 +80,10 @@ public:
     void SetEventResponseTask(CPed* ped, const CTask& task) { SetEventResponseTask(ped, true, task); }
     void SetEventResponseTaskAllocator(CTaskAllocator* ta);
     void SetGroupDecisionMakerType(eDecisionMakerType t) { m_DecisionMakerType = t; }
+    //! @addr notsa
+    auto GetGroupDecisionMakerType() const { return m_DecisionMakerType; }
+    //! @notsa
+    auto GetTaskSeqId() const { return m_TaskSeqId; }
     void SetPrimaryTaskAllocator(CTaskAllocator* ta);
 
     auto GetCurrentEvent()         { return m_CurrentEvent; }

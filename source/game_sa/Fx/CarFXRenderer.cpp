@@ -1,7 +1,9 @@
 #include "StdInc.h"
 
 #include "CarFXRenderer.h"
+#include "ClothesBuilder.h"
 #include "CustomCarEnvMapPipeline.h"
+#include "TxdStore.h"
 
 void CCarFXRenderer::InjectHooks() {
     RH_ScopedClass(CCarFXRenderer);
@@ -9,7 +11,7 @@ void CCarFXRenderer::InjectHooks() {
 
     RH_ScopedInstall(RegisterPlugins, 0x5D5B00);
     RH_ScopedInstall(Initialise, 0x5D5AC0);
-    RH_ScopedInstall(InitialiseDirtTexture, 0x5D5BC0, { .Reversed = false });
+    RH_ScopedInstall(InitialiseDirtTexture, 0x5D5BC0);
     RH_ScopedInstall(Shutdown, 0x5D5AD0);
     RH_ScopedInstall(PreRenderUpdate, 0x5D5B10);
     RH_ScopedInstall(IsCCPCPipelineAttached, 0x5D5B80);
@@ -30,8 +32,49 @@ bool CCarFXRenderer::Initialise() {
 }
 
 // 0x5D5BC0
-void CCarFXRenderer::InitialiseDirtTexture() {
-    plugin::Call<0x5D5BC0>();
+bool CCarFXRenderer::InitialiseDirtTexture() {
+    const auto txdSlot = CTxdStore::FindTxdSlot("vehicle");
+    CTxdStore::PushCurrentTxd();
+    CTxdStore::SetCurrentTxd(txdSlot);
+
+    const auto srcTex = RwTextureRead("vehiclegrunge256", nullptr);
+    // Inlined `RwTextureSetFilterMode(srcTex, rwFILTERLINEAR)` (only the low byte is written)
+    srcTex->filterAddressing = (srcTex->filterAddressing & ~0xFFu) | rwFILTERLINEAR;
+
+    const auto srcRaster = RwTextureGetRaster(srcTex);
+    const auto width     = RwRasterGetWidth(srcRaster);
+    const auto height    = RwRasterGetHeight(srcRaster);
+
+    for (auto i = 0; i < NUM_DIRT_TEXTURES; i++) {
+        const auto tex = CClothesBuilder::CopyTexture(srcTex);
+        ms_aDirtTextures[i] = tex;
+        RwTextureSetName(tex, "vehiclegrunge256");
+
+        const auto raster = RwTextureGetRaster(tex);
+#ifdef NOTSA_NATIVE
+        // The fill below uses `width * 4` as the row pitch (the original never reads `stride`).
+        // Detect a padded librw raster instead of silently corrupting the copy.
+        if (RwRasterGetStride(raster) != width * 4) {
+            NOTSA_LOG_WARN("Dirt texture {}: raster stride {} != width*4 ({})", i, RwRasterGetStride(raster), width * 4);
+        }
+#endif
+
+        const auto pixels = RwRasterLock(raster, 0, rwRASTERLOCKREAD | rwRASTERLOCKWRITE);
+        const auto add    = static_cast<uint8>(255 - 16 * i); // Pixel value at 0 (index 0 -> flat white)
+        for (auto y = 0; y < height; y++) {
+            const auto row = pixels + y * width * 4;
+            for (auto x = 0; x < width; x++) {
+                for (auto c = 0; c < 3; c++) { // Only the colour bytes, the 4th one is left untouched
+                    auto& channel = row[x * 4 + c];
+                    channel = static_cast<uint8>(channel * i / 16 + add);
+                }
+            }
+        }
+        RwRasterUnlock(raster);
+    }
+
+    CTxdStore::PopCurrentTxd();
+    return true;
 }
 
 // 0x5D5AD0

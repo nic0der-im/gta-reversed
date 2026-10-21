@@ -592,7 +592,19 @@ void CFont::InitPerFrame() {
 // Draw text we have in buffer
 // 0x719840
 void CFont::RenderFontBuffer() {
+#ifdef NOTSA_NATIVE
+    // Pure draw: the retail function submits the glyphs queued in `FontRenderStateBuf` through
+    // `CSprite2d`/Im2D (it only reads that buffer). The native layer has no Im2D backend until
+    // plan B3, so there is nothing to submit to; `InitPerFrame` resets the buffer every frame,
+    // so skipping the draw loses no state.
+    static bool warned = false;
+    if (!warned) {
+        warned = true;
+        NOTSA_LOG_WARN("Native: CFont::RenderFontBuffer is a no-op until the Im2D backend (plan B3)");
+    }
+#else
     plugin::Call<0x719840>();
+#endif
 }
 
 // 0x71A0E0
@@ -658,7 +670,25 @@ void CFont::DrawFonts() {
 
 // 0x71A220
 int16 CFont::ProcessCurrentString(bool print, float x, float y, const GxtChar* text) {
+#ifdef NOTSA_NATIVE
+    // Lays the string out and queues its glyphs in `FontRenderStateBuf`, which only
+    // `RenderFontBuffer` consumes — and that draw is a no-op until the Im2D backend exists
+    // (plan B3). While it is, the queued state is never read, so the native build skips the
+    // whole measurement loop. Native-only callers use the return value (line count) for text
+    // block height, which is only cosmetic here.
+    UNUSED(print);
+    UNUSED(x);
+    UNUSED(y);
+    UNUSED(text);
+    static bool warned = false;
+    if (!warned) {
+        warned = true;
+        NOTSA_LOG_WARN("Native: CFont::ProcessCurrentString is a no-op until the Im2D backend (plan B3)");
+    }
+    return 0;
+#else
     return plugin::CallAndReturn<int16, 0x71A220, bool, float, float, const GxtChar*>(print, x, y, text);
+#endif
 }
 
 // 0x71A5E0

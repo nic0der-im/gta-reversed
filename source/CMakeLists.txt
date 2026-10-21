@@ -249,7 +249,7 @@ if (${RE_PROJECT}_NATIVE)
 endif()
 
 if (${RE_PROJECT}_NATIVE)
-    set(PLATFORM_INCLUDE_DIRS app/platform/native/)
+    set(PLATFORM_INCLUDE_DIRS app/platform/native/ game_sa/RenderWare/librw)
 else()
     set(PLATFORM_INCLUDE_DIRS app/platform/win/ app/platform/win/VideoPlayer/)
 endif()

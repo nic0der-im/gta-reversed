@@ -49,7 +49,7 @@ void FxInfoManager_c::InjectHooks() {
     RH_ScopedCategory("Fx");
 
     RH_ScopedInstall(AddFxInfo, 0x4A7B00);
-    RH_ScopedInstall(Load, 0x5C0B70, { .Reversed = false });
+    RH_ScopedInstall(Load, 0x5C0B70);
     RH_ScopedInstall(ProcessEmissionInfo, 0x4A4960);
     RH_ScopedInstall(ProcessMovementInfo, 0x4A4A10);
     RH_ScopedInstall(ProcessRenderInfo, 0x4A4A80);
@@ -137,47 +137,76 @@ constexpr struct { int32 type; const char* name; } FXINFOMANAGER_C_LOAD_MAPPING[
 
 // 0x5C0B70
 void FxInfoManager_c::Load(FILESTREAM file, int32 version) {
-    plugin::CallMethod<0x5C0B70, FxInfoManager_c*, FILESTREAM, int32>(this, file, version);
-    return;
-
-    ReadField<void>(file);
-    m_nNumInfos = ReadField<int32>(file, "NUM_INFOS:");
-    m_MovementOffset = -1;
-    m_RenderOffset = -1;
-
-    m_pInfos = g_fxMan.Allocate<FxInfo_c*>(m_nNumInfos);
-    assert(m_pInfos);
-
     char line[256], field[128];
-    for (auto& info : GetInfos()) {
-        ReadLine(file, line, sizeof(line));
-        VERIFY(sscanf(line, "%s", field) == 1);
 
-        const auto GetType = [=]() -> int32 {
-            for (auto& [type, name] : FXINFOMANAGER_C_LOAD_MAPPING) {
+    ReadLine(file, line, sizeof(line)); // Separator line before `NUM_INFOS:` (content is discarded)
+    m_nNumInfos = ReadField<int32>(file, "NUM_INFOS:");
+
+    m_MovementOffset = -1;
+    m_RenderOffset   = -1;
+
+    // NOTSA: The count is not validated (same as retail) - `GetMem` doesn't bounds check either.
+    // Allocates `count * sizeof(FxInfo_c*)` (4 bytes) aligned to 4, from the FX pool, uninitialized.
+    // NOTE: Retail also pool-allocates the `FxInfo_c` objects inside `AddFxInfo`, but here that
+    // uses the global `operator new` (general heap), so `FxMemoryPool_c::Reset()` won't reclaim them.
+    m_pInfos = g_fxMan.Allocate<FxInfo_c*>(m_nNumInfos);
+
+    for (int32 i = 0; i < m_nNumInfos; i++) {
+        ReadLine(file, line, sizeof(line));
+#ifdef FIX_BUGS
+        // NOTSA/FIX_BUGS: Retail scans with an unbounded `%s`, so a keyword longer than
+        // 127 chars overflows `field`.
+        const auto numScanned = sscanf(line, "%127s", field);
+#else
+        const auto numScanned = sscanf(line, "%s", field);
+#endif
+        VERIFY(numScanned == 1);
+
+        const auto GetType = [&]() -> int32 {
+            for (const auto& [type, name] : FXINFOMANAGER_C_LOAD_MAPPING) {
                 if (strcmp(field, name) == 0) {
                     return type;
                 }
             }
-            NOTSA_UNREACHABLE("Unknown FX Info: %s", field); // NOTSA
+            // NOTSA/FIX_BUGS: Retail has no diagnostic here - it skips `AddFxInfo` and then
+            // writes/reads through the stale (uninitialized) pool pointer left in
+            // `m_pInfos[i]`, which is UB, not a recoverable parse error. Abort instead.
+            NOTSA_LOG_ERR("Unknown FX info keyword: {}", static_cast<const char*>(field));
+            std::abort();
         };
-        auto infoType = GetType();
+        const auto infoType = GetType();
 
         bool bTimeModePrt = true;
-        if ((infoType & 0xF000) > 0x1000 && version >= 0.7f) {
+        // `version` is an `int32` (retail loads it with `FILD`), but the threshold is still
+        // the Manhunt-era `0.7`, so it's always met for a non-zero version.
+        if ((infoType & 0xF000) > 0x1000 && version >= 0.7) {
             bTimeModePrt = ReadField<bool>(file, "TIMEMODEPRT:");
         }
 
-        info = AddFxInfo(infoType);
-        assert(info); // printf("Failed to load info: %s\n", field)
+        FxInfo_c* info = AddFxInfo(infoType);
+        m_pInfos[i] = info;
+
         info->Load(file, version);
-        ReadField<void>(file);
+
+        ReadLine(file, line, sizeof(line)); // Trailing blank line of the info block
 
         info->m_bTimeModeParticle = bTimeModePrt;
+
+        // Emission infos (0x1000 nibble) don't affect the movement/render ranges.
+        const auto type = (int32)info->m_nType;
+        if ((type & 0x1000) == 0) {
+            if (type & 0x2000) { // Movement
+                if (m_MovementOffset == -1)
+                    m_MovementOffset = (int8)i;
+            } else if (type & 0xC000) { // Render
+                if (m_RenderOffset == -1)
+                    m_RenderOffset = (int8)i;
+            }
+        }
     }
 
     if (m_RenderOffset == -1)
-        m_RenderOffset = m_nNumInfos;
+        m_RenderOffset = (int8)m_nNumInfos;
 
     if (m_MovementOffset == -1)
         m_MovementOffset = m_RenderOffset;

@@ -20,6 +20,14 @@
 #include <TaskTypes/TaskComplexBeInCouple.h>
 #include <TaskTypes/TaskComplexFollowLeaderInFormation.h>
 #include <TaskTypes/TaskSimpleHoldEntity.h>
+#include <TaskTypes/TaskComplexSunbathe.h>
+#include <TaskTypes/TaskComplexWanderCriminal.h>
+
+#include <SurfaceInfos_c.h>
+#include <WeaponInfo.h>
+#include <Scripts/TheScripts.h>
+#include "Entity/Ped/PlayerPed.h"
+#include "Wanted.h"
 
 #include <Events/EventSexyPed.h>
 #include "Events/EventAcquaintancePedHate.h"
@@ -63,10 +71,10 @@ void CPopulation::InjectHooks() {
     RH_ScopedGlobalInstall(PickRiotRoadBlockCar, 0x6144B0);
     RH_ScopedGlobalInstall(ConvertToRealObject, 0x614580);
     RH_ScopedGlobalInstall(ConvertToDummyObject, 0x614670);
-    RH_ScopedGlobalInstall(AddToPopulation, 0x614720, { .Reversed = false });
+    RH_ScopedGlobalInstall(AddToPopulation, 0x614720);
     RH_ScopedGlobalInstall(GeneratePedsAtAttractors, 0x615970);
     RH_ScopedGlobalInstall(GeneratePedsAtStartOfGame, 0x615C90);
-    RH_ScopedGlobalInstall(ManageObject, 0x615DC0, { .Reversed = false });
+    RH_ScopedGlobalInstall(ManageObject, 0x615DC0);
     RH_ScopedGlobalInstall(ManageDummy, 0x616000);
     RH_ScopedGlobalInstall(ManageAllPopulation, 0x6160A0);
     RH_ScopedGlobalInstall(ManagePopulation, 0x616190);
@@ -1577,10 +1585,397 @@ void CPopulation::ConvertToDummyObject(CObject* object) {
 }
 
 // 0x614720
-bool CPopulation::AddToPopulation(float arg0, float arg1, float arg2, float arg3) {
-    ZoneScoped;
+bool CPopulation::AddToPopulation(float minDist, float maxDist, float minDistClose, float maxDistClose) {
+    if (CGangWars::DontCreateCivilians() || CCheat::m_aCheatsActive[CHEAT_REDUCED_TRAFFIC]) {
+        return false;
+    }
 
-    return plugin::CallAndReturn<bool, 0x614720, float, float, float, float>(arg0, arg1, arg2, arg3);
+    const auto  playerIdx    = CWorld::PlayerInFocus;
+    const auto& player       = CWorld::Players[playerIdx];
+    const auto& playerPos    = FindPlayerCentreOfWorld(playerIdx);
+    const auto  playerWanted = player.m_pPed->GetWanted();
+
+    // Force a cop to spawn instead of a civilian if the player is wanted, but there aren't enough cops/cars around
+    bool forceCop{};
+    if (playerWanted->m_WantedLevel > eWantedLevel::WANTED_LEVEL_2
+        && (int32)ms_nNumCop < (int32)playerWanted->m_MaxCopsInPursuit
+        && !CGangWars::GangWarFightingGoingOn()
+        && !player.m_pPed->bInVehicle
+        && (   CCarCtrl::NumLawEnforcerCars >= (uint32)playerWanted->m_MaxCopCarsInPursuit
+            || (float)(int32)player.m_nCarDensityForCurrentZone * CCarCtrl::CarDensityMultiplier <= (float)CCarCtrl::NumRandomCars
+            || CCarCtrl::MaxNumberOfCarsInUse <= CCarCtrl::NumAmbulancesOnDuty + CCarCtrl::NumFireTrucksOnDuty + CCarCtrl::NumParkedCars + CCarCtrl::NumMissionCars + CCarCtrl::NumRandomCars + CCarCtrl::NumLawEnforcerCars
+           )
+    ) {
+        forceCop = true;
+        minDist  = PedCreationDistMultiplier() * 42.5f;
+        maxDist  = PedCreationDistMultiplier() * 50.5f;
+    }
+
+    if (CGameLogic::LaRiotsActiveHere() && PedDensityMultiplier > 0.1f && (int32)ms_nNumCop < 1) {
+        forceCop = true;
+    }
+
+    int32 numPeds{(int32)MaxNumberOfPedsInUse};
+    CDarkel::FrenzyOnGoing(); // Result unused
+    if (const float pedCap = CPopCycle::m_NumOther_Peds + CPopCycle::m_NumCops_Peds + CPopCycle::m_NumGangs_Peds + CPopCycle::m_NumDealers_Peds; pedCap <= (float)numPeds) {
+        numPeds = (int32)pedCap;
+    }
+    if (CGame::currArea != 0) {
+        numPeds = (int32)NumberOfPedsInUseInterior;
+    }
+
+    const bool belowTarget = (float)(int32)ms_nTotalPeds < (CCullZones::FewerPeds() ? 0.6f : 1.f) * PedDensityMultiplier * (float)numPeds;
+
+    ePedType pedType{PED_TYPE_CIVMALE};
+    eModelID model{MODEL_INVALID};
+    eModelID spouseModel{MODEL_INVALID}; // Husband
+    eModelID wifeyModel{MODEL_INVALID};  // Wife
+
+    if (belowTarget && !forceCop) {
+        // Pick a random ped
+        const bool highUp = playerPos.z > 950.f;
+        if (!CPopCycle::FindNewPedType(pedType, model, highUp, highUp)) {
+            return belowTarget;
+        }
+
+        if ((pedType == PED_TYPE_CIVMALE || pedType == PED_TYPE_CIVFEMALE) && CGeneral::GetRandomNumberInRange(0.f, 1.f) > 0.9f) {
+            ChooseCivilianCoupleOccupations(spouseModel, wifeyModel);
+            if (spouseModel == MODEL_INVALID || wifeyModel == MODEL_INVALID) {
+                return belowTarget;
+            }
+            pedType = CModelInfo::GetPedModelInfo(spouseModel)->m_nPedType;
+        }
+
+        if (m_AllRandomPedsThisType > 0) {
+            pedType = (ePedType)m_AllRandomPedsThisType;
+        }
+
+        numPeds = IsPedTypeGang(pedType) ? plugin::CallAndReturn<int32, 0x610DB0>() : 1;
+    } else if (forceCop) {
+        pedType = PED_TYPE_COP;
+        model   = (eModelID)COP_TYPE_CITYCOP; // For cops this is the cop type, not a model id (See `ChoosePolicePedOccupation`)
+        numPeds = 1;
+    } else {
+        return belowTarget;
+    }
+
+    // Gangs are spawned further away from the player
+    float minD = minDist, maxD = maxDist;
+    if (IsPedTypeGang(pedType)) {
+        minD += 30.f;
+        maxD += 30.f;
+    }
+
+    const bool isWantedCop = pedType == PED_TYPE_COP && FindPlayerWanted(-1)->m_WantedLevel > eWantedLevel::WANTED_CLEAN;
+
+    CVector     spawnPos;
+    CNodeAddress nodeA, nodeB;
+    float       unusedRandFactor{};
+    if (!plugin::CallMethodAndReturn<bool, 0x44E790, CPathFind*, float, float, float, float, float, float, CVector*, CNodeAddress*, CNodeAddress*, float*, bool, bool>(
+            &ThePaths, playerPos.x, playerPos.y, minD, maxD, minDistClose, maxDistClose, &spawnPos, &nodeA, &nodeB, &unusedRandFactor, isWantedCop, false
+        )
+    ) {
+        return belowTarget;
+    }
+
+    // Spawn probability is that of the two nodes the position was interpolated between
+    const uint32 nodeSpawnProbability = std::min<uint32>(
+        ThePaths.m_pPathNodes[nodeA.m_wAreaId][nodeA.m_wNodeId].m_nSpawnProbability,
+        ThePaths.m_pPathNodes[nodeB.m_wAreaId][nodeB.m_wNodeId].m_nSpawnProbability
+    );
+    if ((uint32)(rand() & 0xF) > nodeSpawnProbability) {
+        return belowTarget;
+    }
+
+    // Jitter the position within the width of the path
+    plugin::CallMethod<0x44DA30, CPathFind*, CNodeAddress, CNodeAddress, int32, float*, float*>(
+        &ThePaths, nodeA, nodeB, rand(), &spawnPos.x, &spawnPos.y
+    );
+
+    if (IsPedTypeGang(pedType)) {
+        PlaceGangMembers(pedType, numPeds, spawnPos);
+        return belowTarget;
+    }
+
+    if (spouseModel >= 0 && wifeyModel >= 0) {
+        // Couple
+        CVector couplePos = spawnPos;
+        if (CGameLogic::LaRiotsActiveHere()) {
+            return belowTarget;
+        }
+
+        if (TheCamera.IsSphereVisible(couplePos, 1.5f)) {
+            if ((FindPlayerPed(-1)->GetPosition() - couplePos).Magnitude2D() < PedCreationDistMultiplier() * 42.5f) {
+                return belowTarget;
+            }
+        }
+
+        if (!CPedPlacement::IsPositionClearForPed(couplePos, CModelInfo::GetPedModelInfo(spouseModel)->GetColModel()->GetBoundRadius())) {
+            return belowTarget;
+        }
+
+        bool groundHit{};
+        const float groundZ = CWorld::FindGroundZFor3DCoord(couplePos + CVector{0.f, 0.f, 1.f}, &groundHit, nullptr);
+        if (!groundHit) {
+            return belowTarget;
+        }
+        const float spawnZ = std::max(couplePos.z, groundZ + 1.f);
+
+        if (!CModelInfo::GetPedModelInfo(spouseModel)->GetRwObject()) {
+            return belowTarget;
+        }
+        CPed* const husb = AddPed(PED_TYPE_CIVMALE, spouseModel, {couplePos.x, couplePos.y, spawnZ}, true);
+        if (!husb) {
+            return belowTarget;
+        }
+        CVisibilityPlugins::SetClumpAlpha(husb->GetRpClump(), 0);
+
+        if (!CModelInfo::GetPedModelInfo(wifeyModel)->GetRwObject()) {
+            return belowTarget;
+        }
+        CPed* const wifey = AddPed(PED_TYPE_CIVFEMALE, wifeyModel, {couplePos.x, couplePos.y, spawnZ}, true);
+        if (!wifey) {
+            return belowTarget;
+        }
+
+        // If they both walk slow (or there's no real difference in their walk speed) => We're done
+        const auto wifeyWalkSpeed = wifey->GetWalkAnimSpeed(), husbWalkSpeed = husb->GetWalkAnimSpeed();
+        if (wifeyWalkSpeed >= 0.75f && husbWalkSpeed >= 0.75f && std::abs(wifeyWalkSpeed - husbWalkSpeed) <= 0.45f) {
+            if (wifeyWalkSpeed <= husbWalkSpeed) { // The male is at least as fast => He's the leader
+                wifey->GetTaskManager().SetTask(new CTaskComplexBeInCouple{husb, false}, TASK_PRIMARY_PRIMARY);
+                husb->GetTaskManager().SetTask(new CTaskComplexBeInCouple{wifey, true}, TASK_PRIMARY_PRIMARY);
+            } else { // The wife is faster => She's the leader
+                husb->GetTaskManager().SetTask(new CTaskComplexBeInCouple{wifey, false}, TASK_PRIMARY_PRIMARY);
+                wifey->GetTaskManager().SetTask(new CTaskComplexBeInCouple{husb, true}, TASK_PRIMARY_PRIMARY);
+            }
+
+            // Move the wife next to the husband
+            CVector wifeyNewPos = husb->GetPosition() + CVector{CTaskComplexFollowLeaderInFormation::ms_offsets.Offsets[4]};
+            bool wifeyGroundHit{};
+            const float wifeyGroundZ = CWorld::FindGroundZFor3DCoord(wifeyNewPos + CVector{0.f, 0.f, 1.f}, &wifeyGroundHit, nullptr);
+            if (!wifeyGroundHit) {
+                RemovePed(husb);
+                RemovePed(wifey);
+            } else {
+                wifeyNewPos.z = std::max(wifeyNewPos.z, wifeyGroundZ + 1.f);
+                wifey->SetPosn(wifeyNewPos);
+
+                // Only the couple itself may be in the way
+                CEntity* entsInTheWay[3]{};
+                CPedPlacement::IsPositionClearForPed(wifeyNewPos, CModelInfo::GetPedModelInfo(wifeyModel)->GetColModel()->GetBoundRadius(), 3, entsInTheWay, true, true, true);
+                for (const auto ent : entsInTheWay) {
+                    if (ent && ent != husb && ent != wifey) {
+                        RemovePed(husb);
+                        RemovePed(wifey);
+                        return belowTarget;
+                    }
+                }
+                CVisibilityPlugins::SetClumpAlpha(wifey->GetRpClump(), 0);
+            }
+        }
+        return belowTarget;
+    }
+
+    // Single ped(s)
+    if (numPeds <= 0) {
+        return belowTarget;
+    }
+
+    const auto IsWeaponModelLoaded = [](eWeaponType weapon) {
+        return CStreaming::IsModelLoaded(CWeaponInfo::GetWeaponInfo(weapon, eWeaponSkill::STD)->m_nModelId1);
+    };
+
+    int32 pedIdx{};
+    CPed* firstPed{};
+    while (true) {
+        CPed* const nearPed = firstPed;
+
+        if (pedType == PED_TYPE_COP) {
+            // Special cop types require their model (and weapons) to be loaded
+            if (model == (eModelID)COP_TYPE_FBI) {
+                if (!CStreaming::IsModelLoaded(MODEL_FBI) || !IsWeaponModelLoaded(WEAPON_MP5)) {
+                    return belowTarget;
+                }
+            } else if (model == (eModelID)COP_TYPE_SWAT1) {
+                if (!CStreaming::IsModelLoaded(MODEL_SWAT) || !IsWeaponModelLoaded(WEAPON_MICRO_UZI)) {
+                    return belowTarget;
+                }
+            } else if (model == (eModelID)COP_TYPE_ARMY) {
+                if (!CStreaming::IsModelLoaded(MODEL_ARMY) || !IsWeaponModelLoaded(WEAPON_MP5) || !IsWeaponModelLoaded(WEAPON_GRENADE)) {
+                    return belowTarget;
+                }
+            }
+        } else if (!CModelInfo::GetModelInfo(model)->GetRwObject()) {
+            return belowTarget;
+        }
+
+        spawnPos.z += 0.7f;
+        if (pedIdx < numPeds && rand() != 0 && nearPed) {
+            const float maxOff = ((float)pedIdx + 1.f) * 0.5f;
+            const float minOff = (float)pedIdx * 0.5f;
+            const float offX = CGeneral::GetRandomNumberInRange(minOff, maxOff);
+            const float offY = CGeneral::GetRandomNumberInRange(minOff, maxOff);
+            const auto  nearPos = nearPed->GetPosition();
+            spawnPos.x = nearPos.x + ((rand() & 1) ? -offX : offX);
+            spawnPos.y = nearPos.y + ((rand() & 1) ? -offY : offY);
+        }
+
+        if (!CPedPlacement::IsPositionClearForPed(spawnPos, -1.f, -1, nullptr, true, true, true)) {
+            return belowTarget;
+        }
+
+        const int32 nextIdx = pedIdx + 1;
+        if (nextIdx < numPeds) {
+            bool groundHit{};
+            const float groundZ = CWorld::FindGroundZFor3DCoord({spawnPos.x, spawnPos.y, spawnPos.z + 2.f}, &groundHit, nullptr);
+            if (!groundHit) {
+                return belowTarget;
+            }
+            if (spawnPos.z <= groundZ + 0.7f) {
+                spawnPos.z = groundZ + 0.7f;
+            }
+        }
+
+        bool ok = true;
+        if (TheCamera.IsSphereVisible(spawnPos, 2.f) && (spawnPos - playerPos).Magnitude2D() < PedCreationDistMultiplier() * 42.5f) {
+            ok = false;
+        } else if (CModelInfo::GetPedModelInfo(model)->m_nStatType == ePedStats::SKATER) {
+            ok = IsSkateable(spawnPos);
+        }
+
+        if (IsSunbather(model) && (CClock::ms_nGameClockHours < 8 || CClock::ms_nGameClockHours > 19)) {
+            ok = false;
+        }
+
+        if (pedType == PED_TYPE_DEALER) {
+            if (!ok) {
+                return belowTarget;
+            }
+            if (FindDistanceToNearestPedOfType(PED_TYPE_DEALER, spawnPos) < 20.f) {
+                return belowTarget;
+            }
+        }
+
+        if (!ok) {
+            return belowTarget;
+        }
+
+        // No gang peds in the stadium's parking lot
+        if (IsPedTypeGang(pedType) && pedType != PED_TYPE_GANG2
+            && spawnPos.x > 2400.f && spawnPos.x < 2540.f
+            && spawnPos.y > -1730.f && spawnPos.y < -1624.f
+        ) {
+            return belowTarget;
+        }
+
+        CPed* const ped = AddPed(pedType, model, spawnPos, true);
+
+        // Try to make the ped sunbathe (Only successful if on a beach-like surface)
+        enum class eSunbatheResult { DefaultTasks, NoTask, TaskSet };
+        const auto TrySunbathe = [&]() -> eSunbatheResult {
+            CColPoint colPoint{};
+            CEntity*  hitEnt{};
+            CWorld::ProcessVerticalLine({spawnPos.x, spawnPos.y, spawnPos.z + 2.f}, spawnPos.z - 2.f, colPoint, hitEnt, true, false, false, false, false, false, nullptr);
+            if (!hitEnt) {
+                return eSunbatheResult::DefaultTasks;
+            }
+
+            const auto surface = colPoint.m_nSurfaceTypeB;
+            if (!(g_surfaceInfos.IsBeach(surface) || surface == SURFACE_CONCRETE_BEACH || surface == SURFACE_PARKGRASS || CCheat::m_aCheatsActive[CHEAT_BEACH_PARTY])) {
+                return eSunbatheResult::DefaultTasks;
+            }
+            if (!plugin::CallAndReturn<bool, 0x632140>() && !CCheat::m_aCheatsActive[CHEAT_BEACH_PARTY]) {
+                return eSunbatheResult::DefaultTasks;
+            }
+
+            // Only the ped itself may be in the way
+            bool     free{true};
+            CEntity* entsInTheWay[2]{};
+            if (CPedPlacement::IsPositionClearForPed(spawnPos, 3.f, 2, entsInTheWay, true, true, true)) {
+                for (const auto ent : entsInTheWay) {
+                    free = free && (!ent || ent == ped);
+                }
+            }
+
+            const bool onSand = surface != SURFACE_PARKGRASS;
+            if (!free) {
+                return eSunbatheResult::DefaultTasks;
+            }
+
+            // The ground must be flat enough for the ped to lie on
+            const auto pedPos = ped->GetPosition();
+            CColPoint  groundColPoint{};
+            CEntity*   groundEnt{};
+            if (!CWorld::ProcessVerticalLine({pedPos.x, pedPos.y, pedPos.z + 10.f}, -10.f, groundColPoint, groundEnt, true, false, false, false, true, false, nullptr)) {
+                return eSunbatheResult::NoTask;
+            }
+            if (groundColPoint.m_vecNormal.z <= 0.95f) {
+                return eSunbatheResult::NoTask;
+            }
+
+            const float heading = CGeneral::GetRandomNumberInRange(0.f, 1.f) * 6.2831855f;
+            ped->m_fAimingRotation  = heading;
+            ped->m_fCurrentRotation = heading;
+            ped->SetHeading(heading);
+
+            CObject* towel{};
+            if (onSand) {
+                CVector towelPos{pedPos.x, pedPos.y, groundColPoint.m_vecPoint.z + 0.04f};
+                towel = plugin::CallAndReturn<CObject*, 0x6EABA0, CVector*, int32>(&towelPos, 11);
+                if (towel) {
+                    towel->SetHeading(heading);
+
+                    // Align the towel with the ground
+                    auto& towelMat = towel->GetMatrix();
+                    towelMat.GetUp()      = groundColPoint.m_vecNormal;
+                    towelMat.GetRight()   = CrossProduct(towelMat.GetUp(), towelMat.GetForward());
+                    towelMat.GetForward() = CrossProduct(towelMat.GetUp(), towelMat.GetRight());
+                    towel->UpdateRwMatrix();
+                    towel->UpdateRwFrame();
+
+                    // Maybe create some more beach props next to the towel
+                    if ((rand() & 3) == 0) {
+                        CVector propPos = towelPos;
+                        propPos += towelMat.GetRight()   * CGeneral::GetRandomNumberInRange(-0.5f, 0.5f);
+                        propPos += towelMat.GetForward() * CGeneral::GetRandomNumberInRange(-1.f, 1.f);
+                        plugin::CallAndReturn<CObject*, 0x6EABA0, CVector*, int32>(&propPos, 6);
+                    }
+                }
+            }
+
+            ped->GetTaskManager().SetTask(new CTaskComplexSunbathe(towel, (rand() & 3) == 0), TASK_PRIMARY_PRIMARY);
+            return eSunbatheResult::TaskSet;
+        };
+
+        if (!IsSunbather(model) || (rand() & 3) == 0 || TrySunbathe() == eSunbatheResult::DefaultTasks) {
+            if (!CGameLogic::LaRiotsActiveHere()) {
+                CTheScripts::ScriptsForBrains.CheckIfNewEntityNeedsScript(ped, 0, nullptr);
+            } else if ((rand() & 3) == 0) {
+                // Rioting peds carry an object around
+                if (pedType != PED_TYPE_COP) {
+                    auto* const obj = new CObject(ModelIndices::MI_TELLY, true);
+                    CWorld::Add(obj);
+                    ped->GetTaskManager().SetTask(CTaskComplexWander::GetWanderTaskByPedType(ped), TASK_PRIMARY_DEFAULT);
+                    ped->GetTaskManager().SetTaskSecondary(
+                        new CTaskSimpleHoldEntity(obj, CVector{0.f, 0.45f, 0.35f}, 1, 1, ANIM_ID_CRRY_PRTIAL, ANIM_GROUP_CARRY, false),
+                        TASK_SECONDARY_PARTIAL_ANIM
+                    );
+                }
+            } else {
+                ped->GetTaskManager().SetTask(new CTaskComplexWanderCriminal(PEDMOVE_RUN, (uint8)CGeneral::GetRandomNumberInRange(0, 8), true), TASK_PRIMARY_DEFAULT);
+            }
+        }
+
+        if (!firstPed) {
+            firstPed = ped;
+        }
+        CVisibilityPlugins::SetClumpAlpha(ped->GetRpClump(), 0);
+
+        pedIdx = nextIdx;
+        if (nextIdx > numPeds || numPeds < 2 || nextIdx >= numPeds) {
+            return belowTarget;
+        }
+    }
 }
 
 // 0x615970
@@ -1711,7 +2106,91 @@ void CPopulation::GeneratePedsAtStartOfGame() {
 
 // 0x615DC0
 void CPopulation::ManageObject(CObject* object, const CVector& posn) {
-    plugin::Call<0x615DC0, CObject*, const CVector&>(object, posn);
+    if (!object->CanBeDeleted()) {
+        return;
+    }
+
+    const auto model = object->m_nModelIndex;
+    const auto dist  = (object->GetPosition() - posn).Magnitude();
+
+    const auto RemoveObject = [object] {
+        CWorld::Remove(object);
+        delete object; // The exe calls the deleting destructor through the vtable
+    };
+
+    if (object->m_nObjectType != OBJECT_TEMPORARY) {
+        // Not a temporary object - Convert it to a dummy object once it's far enough away
+        const auto maxDist = FindDummyDistForModel(object->GetModelId());
+        if (dist <= maxDist) {
+            return;
+        }
+        const auto dummyDist = object->m_pDummyObject
+            ? (object->m_pDummyObject->GetPosition() - posn).Magnitude()
+            : 100'000.f;
+        if (dummyDist <= maxDist) {
+            return;
+        }
+        ConvertToDummyObject(object);
+        return;
+    }
+
+    // Temporary object - Remove it once it's too far away, or no longer visible
+    if (model == ModelIndices::MI_ROADWORKBARRIER1
+        || model == ModelIndices::MI_ROADBLOCKFUCKEDCAR1
+        || model == ModelIndices::MI_ROADBLOCKFUCKEDCAR2
+        || model == ModelIndices::MI_BEACHBALL
+    ) {
+        if (dist < 120.f) {
+            return;
+        }
+        RemoveObject();
+        return;
+    }
+
+    if (model >= ModelIndices::MI_BEACHTOWEL01 && model <= ModelIndices::MI_BEACHTOWEL04) {
+        if (dist <= 64.5f) {
+            if (dist <= 35.f) {
+                return;
+            }
+            if (object->GetIsOnScreen()) {
+                return;
+            }
+        }
+        RemoveObject();
+        return;
+    }
+
+    if (dist > 54.5f) {
+        RemoveObject();
+        return;
+    }
+    if (dist > 25.f && !object->GetIsOnScreen()) {
+        RemoveObject();
+        return;
+    }
+    if (CTimer::GetTimeInMS() > object->m_nRemovalTime) {
+        RemoveObject();
+        return;
+    }
+
+    const auto rwObject = object->GetRwObject();
+    if (!rwObject) {
+        return;
+    }
+    if (RwObjectGetType(rwObject) != rpCLUMP) {
+        return;
+    }
+    if (!object->objectFlags.bFadingIn) {
+        return;
+    }
+    if (CVisibilityPlugins::GetClumpAlpha(object->GetRpClump()) == 0) {
+        RemoveObject();
+        return;
+    }
+    if (!object->IsVisible()) {
+        RemoveObject();
+        return;
+    }
 }
 
 // 0x616000

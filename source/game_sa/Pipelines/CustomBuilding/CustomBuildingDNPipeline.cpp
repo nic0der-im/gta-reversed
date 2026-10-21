@@ -3,6 +3,10 @@
 #include "CustomBuildingDNPipeline.h"
 #include "CustomCarEnvMapPipeline.h"
 
+#ifdef NOTSA_NATIVE
+#include "pipelines/SAPipelines.h"
+#endif
+
 auto& s_Magic1 = StaticRef<uint32>(0xC02C14);
 auto& s_Magic2 = StaticRef<uint32>(0xC02C18);
 
@@ -156,7 +160,12 @@ void CCustomBuildingDNPipeline::PreRenderUpdate(RpClump* clump, bool ignoreDNBal
 
 // 0x5D7100
 bool CCustomBuildingDNPipeline::CreatePipe() {
+#ifdef NOTSA_NATIVE
+    // The GL3 San Andreas pipelines are built once, right after `RwEngineStart`.
+    ObjPipeline = notsa::native::sapipelines::GetPipeline(notsa::native::sapipelines::Kind::BuildingDayNight);
+#else
     ObjPipeline = CreateCustomObjPipe();
+#endif
     return ObjPipeline != nullptr;
 }
 
@@ -192,9 +201,14 @@ RxPipeline* CCustomBuildingDNPipeline::CreateCustomObjPipe() {
 
 // 0x5D5FA0
 void CCustomBuildingDNPipeline::DestroyPipe() {
+#ifdef NOTSA_NATIVE
+    // Shared renderer-owned handle: nothing to destroy.
+    ObjPipeline = nullptr;
+#else
     if (ObjPipeline) {
         RxPipelineDestroy(std::exchange(ObjPipeline, nullptr));
     }
+#endif
 }
 
 // 0x5D63E0

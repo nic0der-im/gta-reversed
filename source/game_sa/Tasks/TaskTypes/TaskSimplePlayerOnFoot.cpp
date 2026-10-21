@@ -30,7 +30,7 @@ void CTaskSimplePlayerOnFoot::InjectHooks() {
 
     RH_ScopedInstall(ProcessPlayerWeapon, 0x6859A0);
     RH_ScopedInstall(PlayIdleAnimations, 0x6872C0);
-    RH_ScopedInstall(PlayerControlFighter, 0x687530, {.Reversed = false});
+    RH_ScopedInstall(PlayerControlFighter, 0x687530);
     RH_ScopedInstall(PlayerControlZelda, 0x6883D0);
 
     RH_ScopedVMTInstall(Clone, 0x68AFF0);
@@ -760,7 +760,131 @@ void CTaskSimplePlayerOnFoot::PlayIdleAnimations(CPlayerPed* player) {
 
 // 0x687530
 void CTaskSimplePlayerOnFoot::PlayerControlFighter(CPlayerPed* player) {
-    plugin::CallMethod<0x687530, CTaskSimplePlayerOnFoot*, CPlayerPed*>(this, player);
+    CTaskSimpleFight* const fightTask = player->GetIntelligence()->GetTaskFighting();
+    if (!fightTask) {
+        return;
+    }
+
+    const bool bWeaponNotMelee = CWeaponInfo::GetWeaponInfo(player->GetActiveWeapon().m_Type, eWeaponSkill::STD)->m_nWeaponFire != WEAPON_FIRE_MELEE;
+
+    CPad* const pad = player->GetPadFromPlayer();
+    const float pedWalkLeftRight = pad->GetPedWalkLeftRight() / 128.0f;
+    const float pedWalkUpDown    = pad->GetPedWalkUpDown() / 128.0f;
+    const float fMaxStep         = CTimer::GetTimeStep() * 0.07f;
+
+    // Eases `current` towards `target` by at most `fMaxStep` (the exe has this inlined thrice)
+    const auto StepTowards = [fMaxStep](float current, float target) {
+        const float difference = target - current;
+        if (fabs(difference) <= fMaxStep) {
+            return target;
+        }
+        return difference > 0.0f ? current + fMaxStep : current - fMaxStep;
+    };
+
+    CVector2D moveSpeed(pedWalkLeftRight, pedWalkUpDown);
+    float pedMoveSpeedMagnitude = 0.0f;
+
+    // The three blocks the exe jumps between
+    const auto ControlFightSprintOrWalk = [&] {
+        if (pad->GetSprint()) {
+            fightTask->ControlFight(nullptr, 17);
+        } else {
+            fightTask->ControlFight(nullptr, moveSpeed.y >= -0.5f ? 15 : 16);
+        }
+    };
+
+    const auto ControlFightMoveCommands = [&] {
+        const CVector2D& vecFightMovement = player->GetPlayerData()->m_vecFightMovement;
+        if (vecFightMovement.y != 0.0f && fabs(vecFightMovement.x) < fabs(vecFightMovement.y)) {
+            fightTask->ControlFight(nullptr, vecFightMovement.y >= 0.0f ? 5 : 3);
+        } else if (vecFightMovement.x != 0.0f) {
+            fightTask->ControlFight(nullptr, vecFightMovement.x > 0.0f ? 6 : 4);
+        }
+    };
+
+    const bool bHasTarget = player->m_pTargetedObject || (CCamera::m_bUseMouse3rdPerson && pad->GetTarget());
+    if (CGameLogic::IsPlayerUse2PlayerControls(player)) {
+        pedMoveSpeedMagnitude = sqrt(pedWalkUpDown * pedWalkUpDown + pedWalkLeftRight * pedWalkLeftRight);
+        if (pedMoveSpeedMagnitude > 0.0f) {
+            const float radianAngle = CGeneral::GetRadianAngleBetweenPoints(0.0f, 0.0f, -pedWalkLeftRight, pedWalkUpDown) - TheCamera.m_fOrientation;
+            const float limitedRadianAngle = CGeneral::LimitRadianAngle(radianAngle);
+            const float negativeSinRadian = -std::sin(limitedRadianAngle);
+            const float cosRadian = std::cos(limitedRadianAngle);
+            if (CGameLogic::IsPlayerAllowedToGoInThisDirection(player, {negativeSinRadian, cosRadian, 0.0f}, 0.0f)) {
+                CMatrixLink* pedMatrix = player->m_matrix;
+                moveSpeed.x = (cosRadian * pedMatrix->GetRight().y + negativeSinRadian * pedMatrix->GetRight().x + pedMatrix->GetRight().z * 0.0f) * pedMoveSpeedMagnitude;
+                moveSpeed.y = -((cosRadian * pedMatrix->GetForward().y + negativeSinRadian * pedMatrix->GetForward().x + pedMatrix->GetForward().z * 0.0f) * pedMoveSpeedMagnitude);
+            } else {
+                moveSpeed = CVector2D(0.0f, 0.0f);
+            }
+        }
+    } else if (bHasTarget) {
+        pedMoveSpeedMagnitude = sqrt(pedWalkUpDown * pedWalkUpDown + pedWalkLeftRight * pedWalkLeftRight);
+        if (pedMoveSpeedMagnitude > 0.0f) {
+            if (pedMoveSpeedMagnitude > 1.0f) {
+                pedMoveSpeedMagnitude = 1.0f;
+            }
+            const float radianAngle = CGeneral::GetRadianAngleBetweenPoints(0.0f, 0.0f, -pedWalkLeftRight, pedWalkUpDown) - TheCamera.m_fOrientation;
+            const float limitedRadianAngle = CGeneral::LimitRadianAngle(radianAngle);
+            const float negativeSinRadian = -std::sin(limitedRadianAngle);
+            const float cosRadian = std::cos(limitedRadianAngle);
+            CMatrixLink* pedMatrix = player->m_matrix;
+            moveSpeed.x = (cosRadian * pedMatrix->GetRight().y + negativeSinRadian * pedMatrix->GetRight().x + pedMatrix->GetRight().z * 0.0f) * pedMoveSpeedMagnitude;
+            moveSpeed.y = -((cosRadian * pedMatrix->GetForward().y + negativeSinRadian * pedMatrix->GetForward().x + pedMatrix->GetForward().z * 0.0f) * pedMoveSpeedMagnitude);
+        }
+    }
+
+    CPlayerPedData* const playerData = player->GetPlayerData();
+    if (bHasTarget) {
+        playerData->m_vecFightMovement.y = StepTowards(playerData->m_vecFightMovement.y, moveSpeed.y);
+        playerData->m_vecFightMovement.x = StepTowards(playerData->m_vecFightMovement.x, moveSpeed.x);
+
+        if (player->m_pTargetedObject && CVector::DistSqr(player->m_pTargetedObject->GetPosition(), player->GetPosition()) > 16.0f && fightTask->m_nLastCommand < 0xB) {
+            return ControlFightSprintOrWalk();
+        }
+        if (pad->GetSprint() || bWeaponNotMelee) {
+            return ControlFightSprintOrWalk();
+        }
+        return ControlFightMoveCommands();
+    }
+
+    // Not targeting: backpedal with the fight task, facing the (raw) stick direction
+    {
+        const float radianAngle = CGeneral::GetRadianAngleBetweenPoints(0.0f, 0.0f, -(float)pad->GetPedWalkLeftRight(), (float)pad->GetPedWalkUpDown());
+        pedMoveSpeedMagnitude = sqrt(pedWalkUpDown * pedWalkUpDown + pedWalkLeftRight * pedWalkLeftRight);
+        if (pedMoveSpeedMagnitude == 0.0f) {
+            playerData->m_vecFightMovement.x = 0.0f;
+            playerData->m_vecFightMovement.y = 0.0f;
+        } else {
+            if (pedMoveSpeedMagnitude > 1.0f) {
+                pedMoveSpeedMagnitude = 1.0f;
+            }
+            if (moveSpeed.y != 0.0f) {
+                playerData->m_vecFightMovement.y = StepTowards(playerData->m_vecFightMovement.y, -pedMoveSpeedMagnitude);
+                playerData->m_vecFightMovement.x = 0.0f;
+                player->m_fAimingRotation = CGeneral::LimitRadianAngle(radianAngle - TheCamera.m_fOrientation);
+            }
+        }
+    }
+
+    // How long have we been backing up without a target?
+    if (!player->m_pTargetedObject && moveSpeed.y != 0.0f && fightTask->m_nLastCommand < 0xB) {
+        m_nTimer += (int32)CTimer::GetTimeStepInMS();
+    } else {
+        m_nTimer = 0;
+    }
+
+    if (!pad->GetSprint() && !pad->GetDuck() && !bWeaponNotMelee && moveSpeed.y <= 0.0f && (float)(uint32)m_nTimer < 2000.0f) {
+        return ControlFightMoveCommands();
+    }
+
+    const uint8 fightCommand = pedMoveSpeedMagnitude > 0.5f ? 16 : 15;
+    if (pad->DuckJustDown() && CTaskSimpleDuck::CanPedDuck(player)) {
+        player->GetIntelligence()->SetTaskDuckSecondary(0);
+        fightTask->ControlFight(nullptr, 18);
+        return;
+    }
+    fightTask->ControlFight(nullptr, fightCommand);
 }
 
 // 0x687C20

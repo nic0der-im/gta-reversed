@@ -20,7 +20,7 @@ void CPhysical::InjectHooks()
     RH_ScopedInstall(Constructor, 0x542260);
     RH_ScopedInstall(Destructor, 0x542450);
 
-    RH_ScopedInstall(RemoveAndAdd, 0x542560, { .Reversed = false });
+    RH_ScopedInstall(RemoveAndAdd, 0x542560);
     RH_ScopedInstall(ApplyTurnForce, 0x542A50);
     RH_ScopedInstall(ApplyForce, 0x542B50);
     RH_ScopedInstall(GetSpeed, 0x542CE0);
@@ -30,7 +30,7 @@ void CPhysical::InjectHooks()
     RH_ScopedInstall(SetDamagedPieceRecord, 0x5428C0);
     RH_ScopedInstall(RemoveFromMovingList, 0x542860);
     RH_ScopedInstall(AddToMovingList, 0x542800);
-    RH_ScopedVMTInstall(Add, 0x544A30, { .Reversed = false });
+    RH_ScopedVMTInstall(Add, 0x544A30);
     RH_ScopedVMTInstall(Remove, 0x5424C0);
     RH_ScopedVMTInstall(GetBoundRect, 0x5449B0);
     RH_ScopedVMTInstall(ProcessControl, 0x5485E0);
@@ -138,48 +138,70 @@ CPhysical::~CPhysical()
     m_pCollisionList.Flush();
 }
 
+/*!
+ * @brief Convert a world coordinate to a repeat sector index, the way the exe does it.
+ *
+ * The exe computes `(int32)floor(v * 0.02f + 60.0f)` on the x87 stack (80 bit precision, rounded once by `FSTP double`).
+ * This is *not* what `CWorld::GetSectorX` does (`v / 50.0f + 60.0f`): `0.02f` isn't exactly `1 / 50`, so exact
+ * multiples of 50 can end up a sector lower.
+ */
+static int32 GetRepeatSectorCoord(float v) {
+    return static_cast<int32>(std::floor(static_cast<double>(v) * 0.02f + 60.0f));
+}
+
 // 0x544A30
 void CPhysical::Add()
 {
-    // TODO: Refactor `CEntryInfoNode` to be templated then use it here
-#if 0
     if (m_bIsBIGBuilding) {
         CEntity::Add();
         return;
     }
 
-    const auto boundRect = GetBoundRect();
-    int32 startSectorX = CWorld::GetSectorX(boundRect.left);
-    int32 startSectorY = CWorld::GetSectorY(boundRect.bottom);
-    int32 endSectorX = CWorld::GetSectorX(boundRect.right);
-    int32 endSectorY = CWorld::GetSectorY(boundRect.top);
+    const CRect boundRect    = GetBoundRect();
+    const int32 startSectorX = GetRepeatSectorCoord(boundRect.left);
+    const int32 startSectorY = GetRepeatSectorCoord(boundRect.bottom);
+    const int32 endSectorX   = GetRepeatSectorCoord(boundRect.right);
+    const int32 endSectorY   = GetRepeatSectorCoord(boundRect.top);
+
     for (int32 sectorY = startSectorY; sectorY <= endSectorY; ++sectorY) {
         for (int32 sectorX = startSectorX; sectorX <= endSectorX; ++sectorX) {
-            CPtrListDoubleLink* list = nullptr;
-            CRepeatSector* repeatSector = GetRepeatSector(sectorX, sectorY);
-            switch (m_nType) {
-            case ENTITY_TYPE_VEHICLE:
-                list = &repeatSector.Vehicles;
-                break;
-            case ENTITY_TYPE_PED:
-                list = &repeatSector.Peds;
-                break;
-            case ENTITY_TYPE_OBJECT:
-                list = &repeatSector.Objects;
-                break;
+            // Unlike `CWorld::GetRepeatSector` the exe masks the sector indices with `& 0xF` (and not `abs() % 16`),
+            // which is what makes positions outside the world wrap around correctly.
+            CRepeatSector& repeatSector = CWorld::ms_aRepeatSectors[sectorY & 0xF][sectorX & 0xF];
+
+            // The sector lists are typed per class (`CVehicle*`, `CPed*`, `CObject*`), while the nodes stored in
+            // `CEntryInfoNode` are `CPtrNodeDoubleLink<CPhysical*>` - their layouts are identical, so reinterpret
+            // the list, just like the original code does.
+            CPtrListDoubleLink<CPhysical*>* list = nullptr;
+            switch (GetType()) {
+            case ENTITY_TYPE_VEHICLE: list = reinterpret_cast<CPtrListDoubleLink<CPhysical*>*>(&repeatSector.Vehicles); break;
+            case ENTITY_TYPE_PED:     list = reinterpret_cast<CPtrListDoubleLink<CPhysical*>*>(&repeatSector.Peds);     break;
+            case ENTITY_TYPE_OBJECT:  list = reinterpret_cast<CPtrListDoubleLink<CPhysical*>*>(&repeatSector.Objects);  break;
             }
 
-            auto newEntityInfoNode = new CEntryInfoNode();
-            if (newEntityInfoNode) {
-                newEntityInfoNode->m_doubleLink = list->AddItem(this);
-                newEntityInfoNode->m_repeatSector = repeatSector;
-                newEntityInfoNode->m_doubleLinkList = list;
+            auto* entryInfoNode = new CEntryInfoNode{};
+#ifdef FIX_BUGS
+            if (!entryInfoNode) { // The exe dereferences the null node further down
+                continue;
             }
-            newEntityInfoNode->AddToList(m_pCollisionList.m_node);
-            m_pCollisionList.m_node = newEntityInfoNode;
+#endif
+
+            auto* doubleLink = new CPtrNodeDoubleLink<CPhysical*>(this);
+#ifdef FIX_BUGS
+            if (!doubleLink) { // The exe dereferences the null link further down
+                delete entryInfoNode;
+                continue;
+            }
+#endif
+            list->AddNode(doubleLink);
+
+            entryInfoNode->m_doubleLink     = doubleLink;
+            entryInfoNode->m_repeatSector   = &repeatSector;
+            entryInfoNode->m_doubleLinkList = list;
+            entryInfoNode->AddToList(m_pCollisionList.m_node);
+            m_pCollisionList.m_node = entryInfoNode;
         }
     }
-#endif
 }
 
 // 0x5424C0
@@ -599,7 +621,6 @@ int32 CPhysical::ProcessEntityCollision(CEntity* entity, CColPoint* colPoint) {
 
 // 0x542560
 void CPhysical::RemoveAndAdd() {
-// TODO: Refactor `CEntryInfoNode` to be templated, otherwise this function will be a mess
     if (m_bIsBIGBuilding) {
         CEntity::Remove();
         CEntity::Add();
@@ -607,50 +628,64 @@ void CPhysical::RemoveAndAdd() {
     }
 
     CEntryInfoNode* entryInfoNode = m_pCollisionList.m_node;
-    CRect boundRect = GetBoundRect();
-    int32 startSectorX = CWorld::GetSectorX(boundRect.left);
-    int32 startSectorY = CWorld::GetSectorY(boundRect.bottom);
-    int32 endSectorX = CWorld::GetSectorX(boundRect.right);
-    int32 endSectorY = CWorld::GetSectorY(boundRect.top);
+
+    const CRect boundRect    = GetBoundRect();
+    const int32 startSectorX = GetRepeatSectorCoord(boundRect.left);
+    const int32 startSectorY = GetRepeatSectorCoord(boundRect.bottom);
+    const int32 endSectorX   = GetRepeatSectorCoord(boundRect.right);
+    const int32 endSectorY   = GetRepeatSectorCoord(boundRect.top);
+
     for (int32 sectorY = startSectorY; sectorY <= endSectorY; ++sectorY) {
         for (int32 sectorX = startSectorX; sectorX <= endSectorX; ++sectorX) {
-            CRepeatSector* const rs = &CWorld::GetRepeatSector(sectorX, sectorY);
-            const auto ProcessSectorList = [&]<typename PtrListType>(PtrListType& list) {
-                // The sector lists are typed per-class (CVehicle*/CPed*/CObject*), while the
-                // nodes stored in `CEntryInfoNode` are typed as `CPhysical*` - the layouts are
-                // identical, so reinterpret the node pointers (the original code did the same).
-                using ListNodeType  = typename PtrListType::NodeType;
-                using ListItemType  = typename PtrListType::ItemType;
-                using EntryNodeType = CPtrNodeDoubleLink<CPhysical*>;
+            // Unlike `CWorld::GetRepeatSector` the exe masks the sector indices with `& 0xF` (and not `abs() % 16`),
+            // which is what makes positions outside the world wrap around correctly.
+            CRepeatSector& repeatSector = CWorld::ms_aRepeatSectors[sectorY & 0xF][sectorX & 0xF];
 
-                if (entryInfoNode) {
-                    auto* doubleLink = reinterpret_cast<ListNodeType*>(entryInfoNode->m_doubleLink);
-
-                    entryInfoNode->m_doubleLinkList->UnlinkNode(reinterpret_cast<EntryNodeType*>(doubleLink));
-                    list.AddNode(doubleLink);
-
-                    entryInfoNode->m_repeatSector = rs;
-                    entryInfoNode->m_doubleLinkList = reinterpret_cast<CPtrListDoubleLink<CPhysical*>*>(&list);
-                    entryInfoNode = entryInfoNode->m_next;
-                } else {
-                    auto* newEntityInfoNode = new CEntryInfoNode{};
-                    if (newEntityInfoNode) {
-                        newEntityInfoNode->m_doubleLink = reinterpret_cast<EntryNodeType*>(list.AddItem(reinterpret_cast<std::remove_pointer_t<ListItemType>*>(this)));
-                        newEntityInfoNode->m_repeatSector = rs;
-                        newEntityInfoNode->m_doubleLinkList = reinterpret_cast<CPtrListDoubleLink<CPhysical*>*>(&list);
-                    }
-                    newEntityInfoNode->AddToList(m_pCollisionList.m_node);
-                    m_pCollisionList.m_node = newEntityInfoNode;
-                }
-            };
+            // The sector lists are typed per class (`CVehicle*`, `CPed*`, `CObject*`), while the nodes stored in
+            // `CEntryInfoNode` are `CPtrNodeDoubleLink<CPhysical*>` - their layouts are identical, so reinterpret
+            // the list, just like the original code does.
+            CPtrListDoubleLink<CPhysical*>* list = nullptr;
             switch (GetType()) {
-            case ENTITY_TYPE_VEHICLE: ProcessSectorList(rs->Vehicles); break;
-            case ENTITY_TYPE_PED:     ProcessSectorList(rs->Peds);     break;
-            case ENTITY_TYPE_OBJECT:  ProcessSectorList(rs->Objects);  break;
+            case ENTITY_TYPE_VEHICLE: list = reinterpret_cast<CPtrListDoubleLink<CPhysical*>*>(&repeatSector.Vehicles); break;
+            case ENTITY_TYPE_PED:     list = reinterpret_cast<CPtrListDoubleLink<CPhysical*>*>(&repeatSector.Peds);     break;
+            case ENTITY_TYPE_OBJECT:  list = reinterpret_cast<CPtrListDoubleLink<CPhysical*>*>(&repeatSector.Objects);  break;
+            }
+
+            if (entryInfoNode) {
+                // Re-use the node: move its list node over to the new sector's list (it's not freed/reallocated)
+                entryInfoNode->m_doubleLinkList->UnlinkNode(entryInfoNode->m_doubleLink);
+                list->AddNode(entryInfoNode->m_doubleLink);
+
+                entryInfoNode->m_repeatSector   = &repeatSector;
+                entryInfoNode->m_doubleLinkList = list;
+                entryInfoNode                   = entryInfoNode->m_next;
+            } else {
+                // The rectangle now covers more cells than before - allocate the missing nodes
+                auto* doubleLink = new CPtrNodeDoubleLink<CPhysical*>(this);
+#ifdef FIX_BUGS
+                if (!doubleLink) { // The exe dereferences the null link further down
+                    return;
+                }
+#endif
+                list->AddNode(doubleLink);
+
+                auto* newEntryInfoNode = new CEntryInfoNode{};
+#ifdef FIX_BUGS
+                if (!newEntryInfoNode) { // The exe dereferences the null node further down
+                    list->DeleteNode(doubleLink); // Don't leak the link we've just inserted
+                    return;
+                }
+#endif
+                newEntryInfoNode->m_doubleLink     = doubleLink;
+                newEntryInfoNode->m_repeatSector   = &repeatSector;
+                newEntryInfoNode->m_doubleLinkList = list;
+                newEntryInfoNode->AddToList(m_pCollisionList.m_node);
+                m_pCollisionList.m_node = newEntryInfoNode;
             }
         }
     }
 
+    // The rectangle now covers fewer cells than before - delete the surplus nodes
     while (entryInfoNode) {
         CEntryInfoNode* nextEntryInfoNode = entryInfoNode->m_next;
 

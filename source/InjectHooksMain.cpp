@@ -1132,7 +1132,7 @@ void InjectHooksMain() {
         // CTaskSimpleChat::InjectHooks();
         CTaskSimpleCower::InjectHooks();
         CTaskSimpleClearLookAt::InjectHooks();
-        // CTaskSimpleDead::InjectHooks();
+        CTaskSimpleDead::InjectHooks();
         // CTaskSimpleDetonate::InjectHooks();
         // + CTaskSimpleDieInCar
         // CTaskSimpleDoHandSignal::InjectHooks();

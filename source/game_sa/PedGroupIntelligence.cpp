@@ -37,7 +37,7 @@ void CPedGroupIntelligence::InjectHooks() {
     RH_ScopedInstall(ComputeEventResponseTasks, 0x5FC440);
     RH_ScopedInstall(Process, 0x5FC4A0);
     RH_ScopedInstall(ReportAllTasksFinished, 0x5F7730);
-    RH_ScopedInstall(ComputeScriptCommandTasks, 0x5F7800, { .Reversed = false });
+    RH_ScopedInstall(ComputeScriptCommandTasks, 0x5F7800);
 }
 
 // 0x5F7250
@@ -438,6 +438,47 @@ CTaskAllocator* CPedGroupIntelligence::ComputeEventResponseTasks() {
     return CGroupEventHandler::ComputeEventResponseTasks(*m_CurrentEvent, m_pPedGroup);
 }
 
+// 0x5F7800
 void CPedGroupIntelligence::ComputeScriptCommandTasks() {
-    plugin::CallMethod<0x5F7800>(this);
+    PedTaskPairs tmp{};
+
+    // Re-associate each script command task with the ped that now occupies the same slot
+    for (auto i = 0u; i < m_ScriptCommandPedTaskPairs.size(); i++) {
+        const auto mem = m_pPedGroup->GetMembership().GetMember(i);
+        tmp[i].Ped  = m_ScriptCommandPedTaskPairs[i].Ped;
+        tmp[i].Task = m_ScriptCommandPedTaskPairs[i].Task;
+        if (mem != m_ScriptCommandPedTaskPairs[i].Ped) {
+            tmp[i].Ped  = mem;
+            tmp[i].Task = nullptr;
+            for (const auto& tp : m_ScriptCommandPedTaskPairs) {
+                if (tp.Ped == mem) {
+                    tmp[i].Task = tp.Task;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Delete the tasks that no pair in `tmp` refers to
+    for (auto& tp : m_ScriptCommandPedTaskPairs) {
+        if (!tp.Task) {
+            continue;
+        }
+        bool keep{};
+        for (const auto& tmpTp : tmp) {
+            if (tmpTp.Ped == tp.Ped) {
+                keep = tmpTp.Task != nullptr;
+                break;
+            }
+        }
+        if (!keep) {
+            delete std::exchange(tp.Task, nullptr);
+        }
+    }
+
+    // Write back only the `Ped` and `Task` fields, leaving `Slot`, `MatchID` and `UsedTask` untouched
+    for (auto&& [i, tp] : rngv::enumerate(m_ScriptCommandPedTaskPairs)) {
+        tp.Ped  = tmp[i].Ped;
+        tp.Task = tmp[i].Task;
+    }
 }

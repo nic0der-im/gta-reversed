@@ -8,6 +8,7 @@
 
 #include "PopCycle.h"
 #include <CustomBuildingDNPipeline.h>
+#include <reversiblebugfixes/Bugs.hpp>
 
 void CPopCycle::InjectHooks() {
     RH_ScopedClass(CPopCycle);
@@ -16,7 +17,7 @@ void CPopCycle::InjectHooks() {
     RH_ScopedGlobalInstall(Initialise, 0x5BC090);
     RH_ScopedGlobalInstall(PickGangToCreateMembersOf, 0x60F8D0);
     RH_ScopedGlobalInstall(FindNewPedType, 0x60FBD0);
-    RH_ScopedGlobalInstall(PickPedMIToStreamInForCurrentZone, 0x60FFD0, { .Reversed = false });
+    RH_ScopedGlobalInstall(PickPedMIToStreamInForCurrentZone, 0x60FFD0);
     RH_ScopedGlobalInstall(IsPedAppropriateForCurrentZone, 0x610150);
     RH_ScopedGlobalInstall(IsPedInGroup, 0x610210);
     RH_ScopedGlobalInstall(PickARandomGroupOfOtherPeds, 0x610420);
@@ -296,15 +297,31 @@ ePopcycleGroup CPopCycle::PickARandomGroupOfOtherPeds() {
 
 // 0x60FFD0
 eModelID CPopCycle::PickPedMIToStreamInForCurrentZone() {
+    if (notsa::bugfixes::GenericCrashing && !m_pCurrZoneInfo) { //!< Original code has no null-check here (The only caller checks it)
+        return MODEL_INVALID;
+    }
+
     for (auto tr = 0; tr < 10; tr++) { // 10 tries
-        const auto grpId        = PickARandomGroupOfOtherPeds();
-        const auto pedGrpId     = CPopulation::GetPedGroupId(grpId, CPopulation::CurrentWorldZone);
-        const auto npeds        = CPopulation::GetNumPedsInGroup(pedGrpId);
-        auto& nextPedToLoadSlot = CStreaming::ms_NextPedToLoadFromGroup[grpId];
+        //! The original code has the group picking inlined (Instead of calling `PickARandomGroupOfOtherPeds`)
+        //! Also note that it uses `100.0f` (And not `99.0f` like the int version of `GetRandomNumberInRange`)
+        auto rndPerc = (int32)(CGeneral::GetRandomNumber() * (1.0f / 32768.0f) * 100.0f);
+
+        const auto& percs  = m_nPercTypeGroup[m_nCurrentTimeIndex][m_nCurrentTimeOfWeek][m_pCurrZoneInfo->PopType];
+        auto        grpIdx = 0;
+        while (percs[grpIdx] <= rndPerc) {
+            if (notsa::bugfixes::GenericOOB && grpIdx + 1 >= POPCYCLE_TOTAL_GROUP_PERCS) { //!< Malformed `popcycle.dat` (The percentages of the row don't add up to at least `rndPerc`)
+                return MODEL_INVALID;
+            }
+            rndPerc -= percs[grpIdx++];
+        }
+
+        const auto pedGrpId          = CPopulation::GetPedGroupId((ePopcycleGroup)grpIdx, CPopulation::CurrentWorldZone);
+        const auto npeds             = CPopulation::GetNumPedsInGroup(pedGrpId);
+        auto&      nextPedToLoadSlot = CStreaming::ms_NextPedToLoadFromGroup[grpIdx];
         for (auto p = 0; p < npeds; p++) {
-            nextPedToLoadSlot  = (nextPedToLoadSlot + 1) % npeds;
+            nextPedToLoadSlot  = (nextPedToLoadSlot + 1) % npeds; //!< Advanced before the checks (Even if the model is rejected)
             const auto modelId = (eModelID)CPopulation::GetPedGroupModelId(pedGrpId, nextPedToLoadSlot);
-            if (!notsa::contains(CStreaming::ms_pedsLoaded, modelId) && IsRaceAllowedInCurrentZone(modelId)) {
+            if (!notsa::contains(CStreaming::ms_pedsLoaded, modelId) && IsRaceAllowedInCurrentZone(modelId)) { //!< All 8 slots are checked (Not just the first `ms_numPedsLoaded` ones)
                 return modelId;
             }
         }

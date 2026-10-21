@@ -5,6 +5,10 @@
 #include "app_light.h"
 #include "CarFXRenderer.h"
 
+#ifdef NOTSA_NATIVE
+#include "pipelines/SAPipelines.h"
+#endif
+
 void CCustomCarEnvMapPipeline::InjectHooks() {
     RH_ScopedClass(CCustomCarEnvMapPipeline);
     RH_ScopedCategory("Pipelines");
@@ -103,11 +107,17 @@ bool IsEnvironmentMappingSupported() {
 
 // 0x5DA020
 bool CCustomCarEnvMapPipeline::CreatePipe() {
+#ifdef NOTSA_NATIVE
+    // The GL3 San Andreas pipelines are built once, right after `RwEngineStart`.
+    ObjPipeline = notsa::native::sapipelines::GetPipeline(notsa::native::sapipelines::Kind::Vehicle);
+    if (!ObjPipeline) {
+        return false;
+    }
+#else
     ObjPipeline = CreateCustomObjPipe();
     if (!ObjPipeline || !IsEnvironmentMappingSupported()) {
         return false;
     }
-#ifndef NOTSA_NATIVE
     std::memset(&g_GameLight, 0, sizeof(g_GameLight));
 #endif
     m_gEnvMapPipeMatDataPool = new CustomEnvMapPipeMaterialDataPool(4096, "CustomEnvMapPipeMatDataPool");
@@ -123,7 +133,12 @@ void CCustomCarEnvMapPipeline::DestroyPipe() {
     delete std::exchange(m_gSpecMapPipeMatDataPool, nullptr);
 
     if (auto* const pipe = std::exchange(ObjPipeline, nullptr)) {
+#ifdef NOTSA_NATIVE
+        // Shared renderer-owned handle: nothing to destroy.
+        UNUSED(pipe);
+#else
         RxPipelineDestroy(pipe);
+#endif
     }
 }
 

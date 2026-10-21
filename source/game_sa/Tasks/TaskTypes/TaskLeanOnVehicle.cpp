@@ -12,7 +12,7 @@ void CTaskLeanOnVehicle::InjectHooks() {
     RH_ScopedInstall(FinishAnimCB, 0x661160);
 
     RH_ScopedVMTInstall(MakeAbortable, 0x661110);
-    RH_ScopedVMTInstall(ProcessPed, 0x6648C0, { .Reversed = false });
+    RH_ScopedVMTInstall(ProcessPed, 0x6648C0);
 
 }
 
@@ -77,5 +77,65 @@ bool CTaskLeanOnVehicle::MakeAbortable(CPed* ped, eAbortPriority priority, const
 
 // 0x6648C0
 bool CTaskLeanOnVehicle::ProcessPed(CPed* ped) {
-    return plugin::CallMethodAndReturn<bool, 0x6648C0, CTaskLeanOnVehicle*, CPed*>(this, ped);
+    if (!m_Vehicle) {
+        m_StopLeaning = true;
+    }
+    ped->m_pEntityIgnoredCollision = m_Vehicle;
+
+    if (m_StopLeaning) {
+        ped->m_pEntityIgnoredCollision = nullptr;
+        return true;
+    }
+
+    ped->SetMoveState(PEDMOVE_STILL);
+
+    if (m_bFinished && !RpAnimBlendClumpGetAssociation(ped->GetRpClump(), ANIM_ID_LEANOUT)) {
+        ped->m_pEntityIgnoredCollision = nullptr;
+        return true;
+    }
+
+    if (m_LeanAnimId && m_LeanAnim) {
+        switch (m_LeanAnim->m_AnimId) {
+        case ANIM_ID_LEANIN:
+            m_LeanAnim->m_BlendDelta = -8.0f;
+            break;
+        case ANIM_ID_LEANIDLE:
+            m_LeanAnim->SetDeleteCallback(CDefaultAnimCallback::DefaultAnimCB, nullptr);
+            m_LeanAnim = CAnimManager::BlendAnimation(ped->GetRpClump(), ANIM_GROUP_GANGS, ANIM_ID_LEANOUT, 1000.0f);
+            m_LeanAnim->SetFinishCallback(FinishAnimCB, this);
+            return false;
+        case ANIM_ID_LEANOUT:
+            m_LeanAnim->m_Speed = 3.0f;
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (!m_LeanAnim) {
+        if (m_LastAnimId == ANIM_ID_UNDEFINED && !field_10) {
+            m_LeanAnim = CAnimManager::BlendAnimation(ped->GetRpClump(), ANIM_GROUP_GANGS, ANIM_ID_LEANIN, 4.0f);
+        } else {
+            if (m_LastAnimId != ANIM_ID_UNDEFINED && m_LastAnimId != ANIM_ID_LEANIN) {
+                return false;
+            }
+            m_LeanTimer.Start(m_LeanAnimDurationInMs);
+            m_LeanAnim = CAnimManager::BlendAnimation(ped->GetRpClump(), ANIM_GROUP_GANGS, ANIM_ID_LEANIDLE, 1000.0f);
+        }
+    } else {
+        if (!m_LeanTimer.m_bStarted) {
+            return false;
+        }
+        if (!m_LeanTimer.IsOutOfTime()) {
+            return false;
+        }
+        if (m_LeanAnim->m_AnimId == ANIM_ID_LEANOUT) {
+            return false;
+        }
+        m_LeanAnim->SetDeleteCallback(CDefaultAnimCallback::DefaultAnimCB, nullptr);
+        m_LeanAnim = CAnimManager::BlendAnimation(ped->GetRpClump(), ANIM_GROUP_GANGS, ANIM_ID_LEANOUT, 1000.0f);
+    }
+
+    m_LeanAnim->SetFinishCallback(FinishAnimCB, this);
+    return false;
 }

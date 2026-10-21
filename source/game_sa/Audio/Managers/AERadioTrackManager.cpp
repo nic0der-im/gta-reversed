@@ -627,7 +627,17 @@ bool CAERadioTrackManager::QueueUpTracksForStation(eRadioID id, int8* iTrackCoun
 
 // 0x4E9820
 void CAERadioTrackManager::StopRadio(tVehicleAudioSettings* settings, bool duringPause) {
-    return plugin::CallMethod<0x4E9820, CAERadioTrackManager*, tVehicleAudioSettings*, bool>(this, settings, duringPause);
+#ifdef NOTSA_NATIVE
+    // No radio stream module natively: drop the radio state so `IsRadioOn` reports false.
+    (void)settings;
+    m_nMode           = eRadioTrackMode::RADIO_STOPPED;
+    m_bInitialised    = false;
+    m_bPauseMode      = duringPause;
+    m_nStationsListed = 0;
+    m_nStationsListDown = 0;
+#else
+    plugin::CallMethod<0x4E9820, CAERadioTrackManager*, tVehicleAudioSettings*, bool>(this, settings, duringPause);
+#endif
 }
 
 // 0x4E94C0
@@ -791,7 +801,12 @@ void CAERadioTrackManager::CheckForPause() {
 
 // 0x4EB9A0
 void CAERadioTrackManager::Service(int32 playTime) {
+#ifdef NOTSA_NATIVE
+    // No MP3/radio stream module natively: there is never a track to service.
+    (void)playTime;
+#else
     plugin::CallMethod<0x4EB9A0, CAERadioTrackManager*, int32>(this, playTime);
+#endif
 }
 
 // 0x5D40E0

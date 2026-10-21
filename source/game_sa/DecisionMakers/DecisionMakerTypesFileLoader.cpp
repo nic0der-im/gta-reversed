@@ -17,7 +17,8 @@ void CDecisionMakerTypesFileLoader::InjectHooks() {
 
 // 0x607D00
 void CDecisionMakerTypesFileLoader::ReStart() {
-    for (int32 i = 0; i < +eDecisionMakerType::COUNT_GAME_DM; i++) {
+    // Only the slots above the built-in ones are removed ([10, 20)) - The built-ins ([0, 10)) are kept
+    for (int32 i = static_cast<int32>(eDecisionMakerType::COUNT_GAME_DM); i < static_cast<int32>(eDecisionMakerType::COUNT_TOTAL); i++) {
         UnloadDecisionMaker((eDecisionTypes)(i));
     }
 }

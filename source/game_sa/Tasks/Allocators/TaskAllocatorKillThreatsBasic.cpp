@@ -69,7 +69,72 @@ CTaskAllocator* CTaskAllocatorKillThreatsBasic::ProcessGroup(CPedGroupIntelligen
 
 // 0x69C850
 void CTaskAllocatorKillThreatsBasic::ComputeClosestPeds(CPedGroup& group1, CPedGroup& group2, CPed** peds) {
-    plugin::Call<0x69C850, CPedGroup&, CPedGroup&, CPed**>(group1, group2, peds);
+    auto& group1Membership = group1.GetMembership();
+    auto& group2Membership = group2.GetMembership();
+
+    std::ranges::fill_n(peds, TOTAL_PED_GROUP_MEMBERS, nullptr);
+
+    // Squared distances: row = member of `group1`, column = member of `group2`
+    // Cells for skipped peds stay `FLT_MAX`, so they're never chosen below
+    float distSq[TOTAL_PED_GROUP_MEMBERS][TOTAL_PED_GROUP_MEMBERS];
+    for (auto& row : distSq) {
+        std::ranges::fill(row, FLT_MAX);
+    }
+
+    for (int32 row = 0; row < TOTAL_PED_GROUP_MEMBERS; row++) {
+        const auto* const ped1 = group1Membership.GetMember(row);
+        if (!ped1 || !ped1->IsAlive() || ped1->IsPlayer()) {
+            continue;
+        }
+        for (int32 col = 0; col < TOTAL_PED_GROUP_MEMBERS; col++) {
+            const auto* const ped2 = group2Membership.GetMember(col);
+            if (ped2 && ped2->IsAlive()) {
+                distSq[row][col] = CVector::DistSqr(ped1->GetPosition(), ped2->GetPosition());
+            }
+        }
+    }
+
+    // Greedily match the closest pair, then eliminate its row and column (Not an optimal assignment)
+    for (int32 round = 0; round < TOTAL_PED_GROUP_MEMBERS; round++) {
+        float minDistSq = FLT_MAX;
+        int32 bestRow = -1, bestCol = -1;
+        for (int32 row = 0; row < TOTAL_PED_GROUP_MEMBERS; row++) {
+            for (int32 col = 0; col < TOTAL_PED_GROUP_MEMBERS; col++) {
+                if (distSq[row][col] < minDistSq) {
+                    minDistSq = distSq[row][col];
+                    bestRow = row;
+                    bestCol = col;
+                }
+            }
+        }
+        if (bestRow == -1) {
+            break;
+        }
+        std::ranges::fill(distSq[bestRow], FLT_MAX);
+        for (auto& row : distSq) {
+            row[bestCol] = FLT_MAX;
+        }
+        peds[bestRow] = group2Membership.GetMember(bestCol);
+    }
+
+    // Fill the still-empty slots with a living ped of the threat group (the leader if possible)
+    CPed* closestThreat = group2Membership.GetLeader();
+    if (!closestThreat || !closestThreat->IsAlive()) {
+        closestThreat = nullptr;
+        for (int32 i = 0; i < CPedGroupMembership::LEADER_MEM_ID; i++) {
+            if (auto* const member = group2Membership.GetMember(i); member && member->IsAlive()) {
+                closestThreat = member;
+                break;
+            }
+        }
+    }
+    if (closestThreat) {
+        for (int32 i = 0; i < TOTAL_PED_GROUP_MEMBERS; i++) {
+            if (group1Membership.GetMember(i) && !peds[i]) {
+                peds[i] = closestThreat;
+            }
+        }
+    }
 }
 
 void CTaskAllocatorKillThreatsBasic::InjectHooks() {
@@ -79,7 +144,7 @@ void CTaskAllocatorKillThreatsBasic::InjectHooks() {
     RH_ScopedInstall(Constructor, 0x69C710);
     RH_ScopedInstall(Destructor, 0x69C780);
 
-    RH_ScopedGlobalInstall(ComputeClosestPeds, 0x69C850, { .Reversed = false });
+    RH_ScopedGlobalInstall(ComputeClosestPeds, 0x69C850);
     RH_ScopedVMTInstall(GetType, 0x69C770);
     RH_ScopedVMTInstall(AllocateTasks, 0x69D170);
     RH_ScopedVMTInstall(ProcessGroup, 0x69C7E0);

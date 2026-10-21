@@ -8,7 +8,7 @@ void FxPrimBP_c::InjectHooks() {
     RH_ScopedCategory("Fx");
 
     RH_ScopedInstall(GetRWMatrix, 0x4A9DC0);
-    RH_ScopedInstall(Load, 0x5C2010, { .Reversed = false });
+    RH_ScopedInstall(Load, 0x5C2010);
 }
 
 // 0x4A9CF0
@@ -36,26 +36,25 @@ void FxPrimBP_c::GetRWMatrix(RwMatrix& outMatrix) {
 
 // 0x5C2010
 bool FxPrimBP_c::Load(FILESTREAM file, int32 version, FxName32_t* textureNames) {
-    return plugin::CallMethodAndReturn<bool, 0x5C2010, FxPrimBP_c*, FILESTREAM, int32, FxName32_t*>(this, file, version, textureNames);
-
     char line[256], field[128];
 
-    ReadFieldImpl(file, field, "FX_PRIM_BASE_DATA:");
-    ReadFieldImpl(file, field, "NAME:");
-    
+    ReadField<void>(file);               // `FX_PRIM_BASE_DATA:` (Content is discarded)
+    ReadFieldImpl(file, field, "NAME:"); // Name is parsed and then discarded (Retail scans it into `field` twice)
+
+    // Matrix line: right, up, at, pos
     CVector mat[4];
     ReadLine(file, line, sizeof(line));
     VERIFY(sscanf(
         line,
         "%s %f %f %f %f %f %f %f %f %f %f %f %f",
         field,
-        &mat[0].x, &mat[0].y, &mat[0].z, // right
-        &mat[1].x, &mat[1].y, &mat[1].z, // up
-        &mat[2].x, &mat[2].y, &mat[2].z, // at
-        &mat[3].x, &mat[3].y, &mat[3].z  // pos
+        &mat[0].x, &mat[0].y, &mat[0].z,
+        &mat[1].x, &mat[1].y, &mat[1].z,
+        &mat[2].x, &mat[2].y, &mat[2].z,
+        &mat[3].x, &mat[3].y, &mat[3].z
     ) == 13);
 
-    // if it's identity matrix, don't allocate it
+    // If it's the identity matrix, don't allocate it
     if (mat[0] == CVector{1.0f, 0.0f, 0.0f} &&
         mat[1] == CVector{0.0f, 1.0f, 0.0f} &&
         mat[2] == CVector{0.0f, 0.0f, 1.0f} &&
@@ -63,22 +62,39 @@ bool FxPrimBP_c::Load(FILESTREAM file, int32 version, FxName32_t* textureNames) 
     ) {
         m_pMatrixBuffered = nullptr;
     } else {
-        m_pMatrixBuffered = g_fxMan.Allocate<FxBufferedMatrix>(1);
-        assert(m_pMatrixBuffered);
-
+        // NOTE: Retail allocates with alignment 2 (Not 4 as `FxManager_c::Allocate` would),
+        // which affects the pool cursor (And hence the addresses of later allocations)
+        m_pMatrixBuffered = static_cast<FxBufferedMatrix*>(g_fxMan.GetMemPool().GetMem(sizeof(FxBufferedMatrix), 2));
         m_pMatrixBuffered->CopyFromVectors(mat[0], mat[1], mat[2], mat[3]);
     }
 
     assert(textureNames);
-    ReadFieldImpl(file, textureNames[0], "TEXTURE:");
+
+    // NOTSA/FIX_BUGS: Retail scans the names with an unbounded `%s`, overflowing the 32-byte
+    // buffers if a name in the file is longer than that.
+    const auto ReadTextureName = [file](FxName32_t& textureName, const char* fieldName) {
+        char line[256], field[128];
+        ReadLine(file, line, sizeof(line));
+#ifdef FIX_BUGS
+        const auto numScanned = sscanf(line, "%s %31s", field, textureName);
+#else
+        const auto numScanned = sscanf(line, "%s %s", field, textureName);
+#endif
+        VERIFY(numScanned == 2);
+        if (strcmp(field, fieldName) != 0) {
+            NOTSA_UNREACHABLE("Fx Project field mismatch!\nExpected:\t{}\nGot:\t{}", fieldName, field);
+        }
+    };
+    ReadTextureName(textureNames[0], "TEXTURE:");
 
     if (version > 101) {
-        ReadFieldImpl(file, textureNames[1], "TEXTURE2:");
-        ReadFieldImpl(file, textureNames[2], "TEXTURE3:");
-        ReadFieldImpl(file, textureNames[3], "TEXTURE4:");
+        ReadTextureName(textureNames[1], "TEXTURE2:");
+        ReadTextureName(textureNames[2], "TEXTURE3:");
+        ReadTextureName(textureNames[3], "TEXTURE4:");
     }
 
-    m_bAlphaOn    = ReadField<bool>(file, "ALPHAON:");
+    // Only the low byte is stored (Retail does `(uint8)ReadIntField`)
+    m_bAlphaOn    = (uint8)ReadField<int32>(file, "ALPHAON:") != 0;
     m_nSrcBlendId = ReadField<uint8>(file, "SRCBLENDID:");
     m_nDstBlendId = ReadField<uint8>(file, "DSTBLENDID:");
 

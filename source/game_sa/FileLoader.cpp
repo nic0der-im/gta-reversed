@@ -85,7 +85,7 @@ void CFileLoader::InjectHooks() {
     RH_ScopedInstall(LoadObjectTypes, 0x5B8400);
 
     RH_ScopedGlobalInstall(LinkLods, 0x5B51E0); 
-    RH_ScopedInstall(Load2dEffect, 0x5B7670, { .Reversed = false });
+    RH_ScopedInstall(Load2dEffect, 0x5B7670);
 }
 
 // copy textures from dictionary to baseDictionary
@@ -969,44 +969,249 @@ int32 CFileLoader::LoadObject(const char* line) {
 
 // 0x5B7670
 void CFileLoader::Load2dEffect(const char* line) {
-    return plugin::Call<0x5B7670, const char*>(line);
-
-    // todo:
-    auto modelId{ MODEL_INVALID };
+    int32   modelId{MODEL_INVALID};
     CVector pos{};
-    int32 type;
+    int32   type{};
     VERIFY(sscanf_s(line, "%d %f %f %f %d", &modelId, &pos.x, &pos.y, &pos.z, &type) == 5);
 
     CTxdStore::PushCurrentTxd();
     CTxdStore::SetCurrentTxd(CTxdStore::FindTxdSlot("particle"));
 
+    // NOTSA: The exe hardcodes the record's address (`store + 0x04 + count * 0x40`), which relies on the
+    //        store's count being 4 bytes wide - `CStore::m_nCount` is `size_t` here, so `AddItem` is used.
     auto& effect = CModelInfo::Get2dEffectStore()->AddItem();
     CModelInfo::GetModelInfo(modelId)->Add2dEffect(&effect);
-    effect.m_Pos = pos;
-    effect.m_Type = *reinterpret_cast<e2dEffectType*>(type);
+    effect.m_Pos  = pos;
+    effect.m_Type = static_cast<e2dEffectType>(type);
 
     switch (type) {
-    case EFFECT_LIGHT:
-        break;
-    case EFFECT_PARTICLE:
-        break;
-    case EFFECT_ATTRACTOR:
-        break;
-    case EFFECT_INTERIOR:
-        break;
-    case EFFECT_ENEX:
-        break;
-    case EFFECT_ROADSIGN:
-        break;
-    case EFFECT_TRIGGER_POINT:
-        break;
-    case EFFECT_COVER_POINT:
-        break;
-    case EFFECT_ESCALATOR:
-        break;
-    default:
+    case EFFECT_LIGHT: {
+        int32 r, g, b, a;
+        sscanf_s(line, "%d %f %f %f %d %d %d %d %d",
+            &modelId, &pos.x, &pos.y, &pos.z, &type,
+            &r, &g, &b, &a
+        );
+
+        // The two texture names are quoted - Copy them out by hand, then parse the rest
+        // starting from the character right after the second closing quote
+        char coronaTexName[32];
+        char shadowTexName[32];
+        const char* p = line;
+        for (auto* name : {coronaTexName, shadowTexName}) {
+            while (*p && *p != '"')
+                ++p;
+            if (*p)
+                ++p; // Skip the opening quote
+
+            size_t len{};
+            while (*p && *p != '"' && len < std::size(coronaTexName) - 1)
+                name[len++] = *p++;
+            name[len] = '\0';
+
+            while (*p && *p != '"') // Skip the rest of a name too long to fit (Doesn't happen with valid data)
+                ++p;
+            if (*p)
+                ++p; // Skip the closing quote
+        }
+
+        int32 shadowColorMultiplier, coronaFlashType, coronaEnableReflection, coronaFlareType,
+              flags, shadowZDistance, offsetX, offsetY, offsetZ;
+        sscanf_s(p, "%f %f %f %f %d %d %d %d %d %d %d %d %d",
+            &effect.light.m_fCoronaFarClip,
+            &effect.light.m_fPointlightRange,
+            &effect.light.m_fCoronaSize,
+            &effect.light.m_fShadowSize,
+            &shadowColorMultiplier,
+            &coronaFlashType,
+            &coronaEnableReflection,
+            &coronaFlareType,
+            &flags,
+            &shadowZDistance,
+            &offsetX,
+            &offsetY,
+            &offsetZ
+        );
+
+        effect.light.m_color                   = {static_cast<uint8>(r), static_cast<uint8>(g), static_cast<uint8>(b), static_cast<uint8>(a)};
+        effect.light.m_nCoronaFlashType        = static_cast<e2dCoronaFlashType>(coronaFlashType);
+        effect.light.m_bCoronaEnableReflection = coronaEnableReflection != 0;
+        effect.light.m_nCoronaFlareType        = static_cast<uint8>(coronaFlareType);
+        effect.light.m_nShadowColorMultiplier  = static_cast<uint8>(shadowColorMultiplier);
+        effect.light.m_nShadowZDistance        = static_cast<char>(shadowZDistance);
+        effect.light.offsetX                   = static_cast<char>(offsetX);
+        effect.light.offsetY                   = static_cast<char>(offsetY);
+        effect.light.offsetZ                   = static_cast<char>(offsetZ);
+        effect.light.m_nFlags                  = static_cast<uint16>(flags);
+        if (flags & 4) {
+            effect.light.m_nFlags &= static_cast<uint16>(~2);
+        }
+
+        effect.light.m_pCoronaTex = RwTextureRead(coronaTexName, nullptr);
+        effect.light.m_pShadowTex = RwTextureRead(shadowTexName, nullptr);
         break;
     }
+    case EFFECT_PARTICLE:
+        sscanf_s(line, "%d %f %f %f %d %s",
+            &modelId, &pos.x, &pos.y, &pos.z, &type,
+            SCANF_S_STR(effect.particle.m_szName)
+        );
+        break;
+    case EFFECT_ATTRACTOR: {
+        int32 attractorType, pedExistingProbability, field36;
+        sscanf_s(line, "%d %f %f %f %d %d %f %f %f %f %f %f %f %f %f %d %d %s",
+            &modelId, &pos.x, &pos.y, &pos.z, &type,
+            &attractorType,
+            &effect.pedAttractor.m_vecQueueDir.x, &effect.pedAttractor.m_vecQueueDir.y, &effect.pedAttractor.m_vecQueueDir.z,
+            &effect.pedAttractor.m_vecUseDir.x, &effect.pedAttractor.m_vecUseDir.y, &effect.pedAttractor.m_vecUseDir.z,
+            &effect.pedAttractor.m_vecForwardDir.x, &effect.pedAttractor.m_vecForwardDir.y, &effect.pedAttractor.m_vecForwardDir.z,
+            &pedExistingProbability,
+            &field36,
+            SCANF_S_STR(effect.pedAttractor.m_szScriptName)
+        );
+
+        effect.pedAttractor.m_nAttractorType          = static_cast<ePedAttractorType>(attractorType);
+        effect.pedAttractor.m_nPedExistingProbability = static_cast<uint8>(pedExistingProbability);
+        effect.pedAttractor.field_36                  = static_cast<uint8>(field36);
+        break;
+    }
+    case EFFECT_INTERIOR: {
+        auto& interior = *C2dEffect::Cast<C2dEffectInterior>(&effect);
+
+        int32 interiorType, door, seed, groupId, status;
+        float width, depth, height, rotation;
+        int32 doorLStart, doorLEnd, doorTStart, doorTEnd, doorRStart, doorREnd;
+        int32 windowLStart, windowLEnd, windowTStart, windowTEnd, windowRStart, windowREnd;
+        int32 noGoLeft[3], noGoBottom[3], noGoWidth[3], noGoDepth[3];
+
+        sscanf_s(line,
+            "%d %f %f %f %d %d %f %f %f %f "
+            "%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d "
+            "%d %d %d %d  %d %d %d %d  %d %d %d %d",
+            &modelId, &pos.x, &pos.y, &pos.z, &type,
+            &interiorType,
+            &width, &depth, &height, &rotation,
+            &door, &seed, &groupId, &status,
+            &doorLStart, &doorLEnd, &doorTStart, &doorTEnd, &doorRStart, &doorREnd,
+            &windowLStart, &windowLEnd, &windowTStart, &windowTEnd, &windowRStart, &windowREnd,
+            &noGoLeft[0], &noGoBottom[0], &noGoWidth[0], &noGoDepth[0],
+            &noGoLeft[1], &noGoBottom[1], &noGoWidth[1], &noGoDepth[1],
+            &noGoLeft[2], &noGoBottom[2], &noGoWidth[2], &noGoDepth[2]
+        );
+
+        interior.m_type    = static_cast<uint8>(interiorType);
+        interior.m_width   = static_cast<uint8>(static_cast<int32>(width));
+        interior.m_depth   = static_cast<uint8>(static_cast<int32>(depth));
+        interior.m_height  = static_cast<uint8>(static_cast<int32>(height));
+        interior.m_rot     = rotation;
+        interior.m_door    = static_cast<int8>(door);
+        interior.m_seed    = static_cast<uint8>(seed);
+        interior.m_groupId = static_cast<int8>(groupId);
+        interior.m_status  = static_cast<uint8>(status);
+
+        interior.m_lDoorStart   = static_cast<int8>(doorLStart);
+        interior.m_lDoorEnd     = static_cast<int8>(doorLEnd);
+        interior.m_tDoorStart   = static_cast<int8>(doorTStart);
+        interior.m_tDoorEnd     = static_cast<int8>(doorTEnd);
+        interior.m_rDoorStart   = static_cast<int8>(doorRStart);
+        interior.m_rDoorEnd     = static_cast<int8>(doorREnd);
+        interior.m_lWindowStart = static_cast<int8>(windowLStart);
+        interior.m_lWindowEnd   = static_cast<int8>(windowLEnd);
+        interior.m_tWindowStart = static_cast<int8>(windowTStart);
+        interior.m_tWindowEnd   = static_cast<int8>(windowTEnd);
+        interior.m_rWindowStart = static_cast<int8>(windowRStart);
+        interior.m_rWindowEnd   = static_cast<int8>(windowREnd);
+
+        for (auto i = 0; i < 3; i++) {
+            interior.m_noGoLeft[i]   = static_cast<int8>(noGoLeft[i]);
+            interior.m_noGoBottom[i] = static_cast<int8>(noGoBottom[i]);
+            interior.m_noGoWidth[i]  = static_cast<int8>(noGoWidth[i]);
+            interior.m_noGoDepth[i]  = static_cast<int8>(noGoDepth[i]);
+        }
+        break;
+    }
+    case EFFECT_ENEX: {
+        char  interiorName[32];
+        int32 interiorId, flags1, skyColor;
+        sscanf_s(line, "%d %f %f %f %d %f %f %f %f %f %f %f %d %d %s %d",
+            &modelId, &pos.x, &pos.y, &pos.z, &type,
+            &effect.enEx.m_fEnterAngle,
+            &effect.enEx.m_vecRadius.x, &effect.enEx.m_vecRadius.y,
+            &effect.enEx.m_vecExitPosn.x, &effect.enEx.m_vecExitPosn.y, &effect.enEx.m_vecExitPosn.z,
+            &effect.enEx.m_fExitAngle,
+            &interiorId,
+            &flags1,
+            SCANF_S_STR(interiorName),
+            &skyColor
+        );
+
+        effect.enEx.m_nInteriorId = static_cast<eAreaCodes>(interiorId);
+        effect.enEx.m_nFlags1     = static_cast<uint8>(flags1);
+        effect.enEx.m_nSkyColor   = static_cast<uint8>(skyColor);
+        strncpy(effect.enEx.m_szInteriorName, interiorName, std::size(effect.enEx.m_szInteriorName));
+        break;
+    }
+    case EFFECT_ROADSIGN: {
+        float sizeX, sizeY, rotX, rotY, rotZ;
+        int32 flags;
+        char  textLines[4][16];
+        for (auto& textLine : textLines) {
+            std::memset(textLine, 0, sizeof(textLine));
+            textLine[0] = ' ';
+        }
+
+        sscanf_s(line, "%d %f %f %f %d %f %f %f %f %f %d %s %s %s %s",
+            &modelId, &pos.x, &pos.y, &pos.z, &type,
+            &sizeX, &sizeY,
+            &rotX, &rotY, &rotZ,
+            &flags,
+            SCANF_S_STR(textLines[0]), SCANF_S_STR(textLines[1]), SCANF_S_STR(textLines[2]), SCANF_S_STR(textLines[3])
+        );
+
+        effect.roadsign.m_vecSize     = {sizeX, sizeY};
+        effect.roadsign.m_vecRotation = {rotX, rotY, rotZ};
+        effect.roadsign.m_pAtomic     = nullptr;
+
+        const auto flags16 = static_cast<uint16>(flags);
+        std::memcpy(&effect.roadsign.m_nFlags, &flags16, sizeof(flags16));
+
+        effect.roadsign.m_pText = static_cast<RwChar*>(CMemoryMgr::Malloc(0x40, 0));
+        std::memcpy(effect.roadsign.m_pText, textLines, sizeof(textLines));
+        break;
+    }
+    case EFFECT_TRIGGER_POINT:
+        sscanf_s(line, "%d %f %f %f %d %d",
+            &modelId, &pos.x, &pos.y, &pos.z, &type,
+            &effect.slotMachineIndex.m_nId
+        );
+        break;
+    case EFFECT_COVER_POINT: {
+        int32 usage;
+        sscanf_s(line, "%d %f %f %f %d %f %f %d",
+            &modelId, &pos.x, &pos.y, &pos.z, &type,
+            &effect.coverPoint.m_DirOfCover.x, &effect.coverPoint.m_DirOfCover.y,
+            &usage
+        );
+
+        effect.coverPoint.m_Usage = static_cast<CCoverPoint::eUsage>(usage);
+        break;
+    }
+    case EFFECT_ESCALATOR: {
+        int32 direction;
+        sscanf_s(line, "%d %f %f %f %d %f %f %f %f %f %f %f %f %f %d",
+            &modelId, &pos.x, &pos.y, &pos.z, &type,
+            &effect.escalator.m_vecBottom.x, &effect.escalator.m_vecBottom.y, &effect.escalator.m_vecBottom.z,
+            &effect.escalator.m_vecTop.x, &effect.escalator.m_vecTop.y, &effect.escalator.m_vecTop.z,
+            &effect.escalator.m_vecEnd.x, &effect.escalator.m_vecEnd.y, &effect.escalator.m_vecEnd.z,
+            &direction
+        );
+
+        effect.escalator.m_nDirection = direction != 0;
+        break;
+    }
+    default: // 2 (Missing/Unk), 4 (Sun glare) and anything above 10 only have `m_Pos` and `m_Type` set
+        break;
+    }
+
     CTxdStore::PopCurrentTxd();
 }
 

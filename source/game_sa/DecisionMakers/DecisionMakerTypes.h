@@ -42,10 +42,13 @@ class CDecisionMakerTypes {
 public:
     static constexpr auto NUM_TYPES = 20u;
 
-    static inline auto& ScriptReferenceIndex = StaticRef<std::array<uint16, NUM_TYPES>>(0xC0AFF4);
-    static inline auto& m_IsActive = StaticRef<std::array<bool, NUM_TYPES>>(0xC0B01C);
+    static inline auto& m_DecisionMakerSlotTypes = StaticRef<std::array<uint8, NUM_TYPES>>(0xC0AFE0); //!< `eDecisionTypes` of the decision maker in each slot (Exact semantics unknown)
+    static inline auto& ScriptReferenceIndex     = StaticRef<std::array<uint16, NUM_TYPES>>(0xC0AFF4);
+    static inline auto& m_IsActive               = StaticRef<std::array<bool, NUM_TYPES>>(0xC0B01C);
 
     static void InjectHooks();
+
+    CDecisionMakerTypes();
 
     static CDecisionMakerTypes* GetInstance();
 
@@ -67,3 +70,5 @@ public:
     CDecisionMaker m_DefaultRandomPedGroupDecisionMaker{};
     CDecisionMaker m_DefaultMissionPedGroupDecisionMaker{};
 };
+
+VALIDATE_SIZE(CDecisionMakerTypes, 0xF1C0);

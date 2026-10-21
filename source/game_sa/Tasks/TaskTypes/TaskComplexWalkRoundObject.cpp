@@ -1,14 +1,15 @@
 #include "StdInc.h"
 
 #include "TaskComplexWalkRoundObject.h"
-// #include "PointRoute.h"
+#include "TaskComplexFollowPointRoute.h"
+#include "PedGeometryAnalyser.h" // CPointRoute
 
 void CTaskComplexWalkRoundObject::InjectHooks() {
     RH_ScopedVirtualClass(CTaskComplexWalkRoundObject, 0x86F364, 11);
     RH_ScopedCategory("Tasks/TaskTypes");
 
     RH_ScopedInstall(Constructor, 0x655020);
-    RH_ScopedInstall(CreateRouteTask, 0x655140, { .Reversed = false });
+    RH_ScopedInstall(CreateRouteTask, 0x655140);
 }
 
 // 0x655020
@@ -50,6 +51,18 @@ CTask* CTaskComplexWalkRoundObject::CreateFirstSubTask(CPed* ped) {
     return plugin::CallMethodAndReturn<CTask*, 0x657380, CTaskComplexWalkRoundObject*, CPed*>(this, ped);
 }
 
-CTask* CTaskComplexWalkRoundObject::CreateRouteTask(CPed* ped) {
-    return plugin::CallMethodAndReturn<CTask*, 0x655140, CTaskComplexWalkRoundObject*, CPed*>(this, ped);
+CTask* CTaskComplexWalkRoundObject::CreateRouteTask(CPed*) {
+    if (m_pointRoute->IsEmpty()) {
+        return nullptr;
+    }
+    return new CTaskComplexFollowPointRoute{
+        (eMoveState)m_moveState,
+        *m_pointRoute,
+        CTaskComplexFollowPointRoute::Mode::ONE_WAY,
+        0.5f,
+        0.0f,
+        true,
+        false,
+        false
+    };
 }

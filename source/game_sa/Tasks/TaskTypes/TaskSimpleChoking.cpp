@@ -52,7 +52,51 @@ bool CTaskSimpleChoking::MakeAbortable(CPed* ped, eAbortPriority priority, const
 
 // 0x620490
 bool CTaskSimpleChoking::ProcessPed(CPed* ped) {
-    return plugin::CallMethodAndReturn<bool, 0x620490, CTaskSimpleChoking*, CPed*>(this, ped);
+    if (m_bIsFinished) {
+        return true;
+    }
+
+    if (m_pAttacker && !ped->IsPlayer() && !m_bIsTeargas) {
+        const auto pedToAttacker = m_pAttacker->GetPosition() - ped->GetPosition();
+        if (pedToAttacker.Dot(ped->GetForward()) > 0.f) {
+            ped->m_fAimingRotation = pedToAttacker.Heading();
+        }
+    }
+
+    const auto timeStepMS = static_cast<uint32>(CTimer::GetTimeStep() * 0.02f * 1000.f);
+    if (m_nTimeRemaining > timeStepMS) {
+        m_nTimeRemaining -= timeStepMS;
+    } else {
+        m_nTimeRemaining = 0;
+    }
+
+    constexpr auto finishAnimCB = [](CAnimBlendAssociation*, void* data) { // 0x620480
+        const auto self     = static_cast<CTaskSimpleChoking*>(data);
+        self->m_bIsFinished = true;
+        self->m_pAnim       = nullptr;
+    };
+
+    if (!m_pAnim) {
+        m_pAnim = CAnimManager::BlendAnimation(ped->GetRpClump(), ANIM_GROUP_DEFAULT, ANIM_ID_GAS_CWR, 4.f);
+        m_pAnim->SetFinishCallback(finishAnimCB, this);
+        m_pAnim->SetSpeed(CGeneral::GetRandomNumberInRange(0.75f, 1.f));
+    } else if (m_nTimeRemaining == 0) {
+        if (m_pAnim->m_AnimId == ANIM_ID_GAS_CWR) {
+            m_pAnim->SetDefaultFinishCallback();
+            m_pAnim = CAnimManager::BlendAnimation(ped->GetRpClump(), ANIM_GROUP_DEFAULT, ANIM_ID_IDLE_TIRED, 4.f);
+            m_pAnim->SetFinishCallback(finishAnimCB, this);
+            m_nTimeRemaining = CTimer::GetTimeInMS() - m_nTimeStarted;
+            if (m_nTimeRemaining >= static_cast<uint32>(CGeneral::GetRandomNumberInRange(8000, 12000))) {
+                m_nTimeRemaining = CGeneral::GetRandomNumberInRange(8000, 12000);
+            }
+        } else {
+            m_pAnim->SetBlendDelta(-4.f);
+            m_pAnim->SetFlag(ANIMATION_IS_BLEND_AUTO_REMOVE);
+        }
+    }
+
+    ped->Say(CTX_GLOBAL_PAIN_COUGH, 0, 1.f, false, false, false);
+    return false;
 }
 
 // 0x620660
@@ -88,5 +132,5 @@ void CTaskSimpleChoking::InjectHooks() {
     RH_ScopedVMTInstall(Clone, 0x623220);
     RH_ScopedVMTInstall(GetTaskType, 0x620360);
     RH_ScopedVMTInstall(MakeAbortable, 0x6203F0);
-    RH_ScopedVMTInstall(ProcessPed, 0x620490, { .Reversed = false });
+    RH_ScopedVMTInstall(ProcessPed, 0x620490);
 }

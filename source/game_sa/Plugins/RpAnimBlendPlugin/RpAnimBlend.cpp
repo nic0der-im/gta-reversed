@@ -1732,6 +1732,8 @@ void FrameUpdateCallBackOffscreen(AnimBlendFrameData* fd, void* data) {
 }
 
 // 0x4D1570
+// NOTE: The original receives `c` in EAX (Not on the stack), so this function MUST NOT be hooked
+//       unless the hook wrapper handles the usercall convention.
 void RpAnimBlendNodeUpdateKeyFrames(AnimBlendUpdateData* c, AnimBlendFrameData* frames, uint32 nFrames) {
     for (auto it = c->BlendNodeArrays; *it; it++) {
         const auto nodeArray = *it; // #nodes == nFrames
@@ -1758,11 +1760,12 @@ void RpAnimBlendNodeUpdateKeyFrames(AnimBlendUpdateData* c, AnimBlendFrameData* 
 void RpAnimBlendClumpUpdateAnimations(RpClump* clump, float timeStep, bool isOnScreen) {
     const auto bd = RpAnimBlendClumpGetData(clump);
 
+    // NOTE: Set even if the clump has no associations (As the original does)
+    gpAnimBlendClump = bd;
+
     if (bd->m_AnimList.IsEmpty()) {
         return;
     }
-
-    gpAnimBlendClump = bd;
 
     AnimBlendUpdateData ctx{};
     size_t             nodesCnt{};
@@ -1783,7 +1786,8 @@ void RpAnimBlendClumpUpdateAnimations(RpClump* clump, float timeStep, bool isOnS
             ctx.BlendNodeArrays[nodesCnt++] = a->GetNodesPtr();
         }
         if (a->IsSyncronised()) {
-            totalTime      += ah->GetTotalTime() / a->GetSpeed() * a->GetBlendAmount();
+            // NOTE: The original sums these up in x87 extended precision (Only the stores into the `float` accumulators round)
+            totalTime      = static_cast<float>(totalTime + static_cast<double>(ah->GetTotalTime()) / a->GetSpeed() * a->GetBlendAmount());
             totalBlendAmnt += a->GetBlendAmount();
         } else {
             ctx.IncludePartial = true;        
@@ -1794,7 +1798,7 @@ void RpAnimBlendClumpUpdateAnimations(RpClump* clump, float timeStep, bool isOnS
     // 0x4D35A2 - Update animation's timesteps
     const auto animTimeMult = totalTime == 0.f
         ? 1.f
-        : 1.f / totalTime * totalBlendAmnt;
+        : totalBlendAmnt / totalTime;
     RpAnimBlendClumpForEachAssociation(clump, [&](CAnimBlendAssociation* a) {
         a->UpdateTimeStep(timeStep, animTimeMult);
     });
@@ -1929,7 +1933,7 @@ void RpAnimBlendPlugin::InjectHooks() {
     RH_ScopedGlobalOverloadedInstall(RpAnimBlendGetNextAssociation, "Any", 0x4D6AB0, CAnimBlendAssociation * (*)(CAnimBlendAssociation * association));
     RH_ScopedGlobalOverloadedInstall(RpAnimBlendGetNextAssociation, "Flags", 0x4D6AD0, CAnimBlendAssociation * (*)(CAnimBlendAssociation * association, uint32 flags));
 
-    RH_ScopedGlobalInstall(RpAnimBlendClumpUpdateAnimations, 0x4D34F0, {.Reversed = false}); // TODO: Hook this again... Unhooked for testing.
+    RH_ScopedGlobalInstall(RpAnimBlendClumpUpdateAnimations, 0x4D34F0);
 #ifdef USE_COPY_PASTE_FRAME_UPDATE
 #ifndef NOTSA_NATIVE // `HS` only exists when hooks are compiled in
     const auto state = (DISABLE_CUSTOM_FRAME_UPDATE_FUNCTIONS) ? HS::RedirectToGTA : HS::RedirectToOurs;

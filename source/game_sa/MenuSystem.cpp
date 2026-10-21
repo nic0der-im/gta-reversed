@@ -26,7 +26,7 @@ void CMenuSystem::InjectHooks() {
     RH_ScopedInstall(CreateNewMenu, 0x582300);
     RH_ScopedInstall(ActivateItems, 0x581990);
     RH_ScopedInstall(ActivateOneItem, 0x581B30);
-    RH_ScopedInstall(FillGridWithCarColours, 0x5820E0, { .Reversed = false });
+    RH_ScopedInstall(FillGridWithCarColours, 0x5820E0);
     RH_ScopedInstall(InsertMenu, 0x581E00);
     RH_ScopedInstall(SwitchOffMenu, 0x580750);
 }
@@ -603,7 +603,47 @@ void CMenuSystem::ActivateOneItem(MenuId id, uint8 row, bool enable) {
 
 // 0x5820E0
 void CMenuSystem::FillGridWithCarColours(MenuId id) {
-    plugin::Call<0x5820E0, MenuId>(id);
+#ifdef FIX_BUGS
+    // NOTSA: Guard against an invalid/missing menu (Original code would just write through it)
+    if (id >= MENU_COUNT || !MenuNumber[id]) {
+        return;
+    }
+#endif
+
+    CRGBA colors[MENU_CAR_COLOR_COUNT];
+    for (auto& color : colors) {
+        color = CRGBA{0, 0, 0, 0xFF};
+    }
+
+    uint8 paletteIndex = 0; // Index into `ms_vehicleColourTable`
+    uint8 slot         = 0; // Index into `colors`/`m_anUsedCarColors`
+    for (uint8 i = 1; i < MENU_CAR_COLOR_COUNT + 1; ) { // Incremented only when a colour is accepted
+        const CRGBA& pal = CVehicleModelInfo::ms_vehicleColourTable[paletteIndex];
+        const CRGBA  color{pal, 0xFF}; // Palette alpha is ignored
+
+        bool tooSimilar = false;
+        for (uint8 j = 0; j < i; j++) { // Note: Compares the not-yet-filled `colors[i - 1]` as well (Retail behaviour)
+            if (i > 1
+                && color.r > colors[j].r - 15 && color.r < colors[j].r + 15
+                && color.g > colors[j].g - 15 && color.g < colors[j].g + 15
+                && color.b > colors[j].b - 15 && color.b < colors[j].b + 15
+            ) {
+                tooSimilar = true;
+            }
+        }
+
+        // Try the next palette entry, unless the palette is exhausted (Then accept it anyway)
+        if (tooSimilar && paletteIndex + 1 < CVehicleModelInfo::NUM_VEHICLE_COLORS) {
+            paletteIndex++;
+            continue;
+        }
+
+        colors[slot] = color;
+        MenuNumber[id]->m_anUsedCarColors[slot] = paletteIndex;
+        slot++;
+        i++;
+        paletteIndex = 0;
+    }
 }
 
 // Insert menu column

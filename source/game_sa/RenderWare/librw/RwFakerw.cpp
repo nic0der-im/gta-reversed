@@ -4,6 +4,7 @@
 
 #include "RwFakerw.h"
 
+#include "pipelines/SAPipelines.h"
 #include "plugins/RwPlugins.h"
 
 #include <unordered_set>
@@ -334,6 +335,11 @@ RwBool RwEngineStart() {
 
     g_started = true;
     g_globals->engineStatus = rwENGINESTATUSSTARTED;
+
+    // The GL context now exists: build the San Andreas object pipelines. The game's
+    // `CCustom*Pipeline::CreatePipe` (called later, from `CGame::InitialiseEssentialsAfterRW`)
+    // picks these handles up through `sapipelines::GetPipeline`.
+    notsa::native::sapipelines::RegisterSAPipelines();
 
     // The window is owned by librw; the platform layer only points at it.
     PSGLOBAL(sdlWindow) = static_cast<SDL_Window*>(g_window);

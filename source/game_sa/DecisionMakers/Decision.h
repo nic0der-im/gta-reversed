@@ -50,6 +50,18 @@ public:
         const notsa::mdarray<int32, MAX_NUM_CHOICES, 2>& bools,
         const notsa::mdarray<float, MAX_NUM_CHOICES, 6>& facialProbs //!< Unused by the exe
     );
+    void Add(eTaskType task, const float* responseChances, const int32* flags);
+    bool HasResponse() const;
+    void MakeDecision(
+        int32     relationship, //!< `eDecisionRelationship`
+        bool      bInVehicle,
+        eTaskType taskToAvoid1,
+        eTaskType taskToAvoid2,
+        eTaskType taskToAvoid3,
+        eTaskType taskToSeek,
+        int16&    taskType,
+        int16&    facialTaskType
+    );
 };
 
 VALIDATE_SIZE(CDecision, 0x3C);

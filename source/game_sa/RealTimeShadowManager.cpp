@@ -3,6 +3,8 @@
 #include "RealTimeShadowManager.h"
 #include "Shadows.h"
 
+#include <reversiblebugfixes/Bugs.hpp>
+
 auto& g_realTimeShadowMan = StaticRef<CRealTimeShadowManager>(0xC40350);
 
 void CRealTimeShadowManager::InjectHooks() {
@@ -10,7 +12,7 @@ void CRealTimeShadowManager::InjectHooks() {
     RH_ScopedCategory("Shadows");
 
     RH_ScopedInstall(Init, 0x7067C0);
-    RH_ScopedInstall(ReInit, 0x706870, {.Reversed = false});
+    RH_ScopedInstall(ReInit, 0x706870);
     RH_ScopedInstall(ReturnRealTimeShadow, 0x705B30);
     RH_ScopedInstall(GetRealTimeShadow, 0x706970, { .Reversed = false });
     RH_ScopedInstall(Update, 0x706AB0);
@@ -64,7 +66,44 @@ void CRealTimeShadowManager::ReturnRealTimeShadow(CRealTimeShadow* shdw) {
 
 // 0x706870
 void CRealTimeShadowManager::ReInit() {
-    plugin::CallMethod<0x706870, CRealTimeShadowManager*>(this);
+    // Recreate the camera's raster (Original size, always square) and attach it to both the camera and its render texture
+    const auto RecreateCameraRaster = [](CShadowCamera& cam) {
+        if (notsa::bugfixes::GenericCrashing && (!cam.m_pRwCamera || !cam.m_pRwRenderTexture)) { // FIX: Original dereferences both unconditionally
+            return;
+        }
+
+        const auto raster = cam.GetRwRenderRaster();
+        if (notsa::bugfixes::GenericCrashing && !raster) { // FIX: The raster is read (and destroyed) below, original has no check
+            return;
+        }
+
+        const auto size = RwRasterGetWidth(raster); // NOTE: Height is never read, the original forces it to be the same as the width
+
+        RwCameraSetRaster(cam.m_pRwCamera, nullptr);
+        RwRasterDestroy(raster);
+
+        const auto newRaster = RwRasterCreate(size, size, 0, rwRASTERTYPECAMERATEXTURE);
+
+        RwCameraSetRaster(cam.m_pRwCamera, newRaster);
+        RwTextureSetRaster(cam.m_pRwRenderTexture, newRaster);
+    };
+
+    for (auto& shdw : m_apShadows) {
+        if (notsa::bugfixes::GenericCrashing && !shdw) { // FIX: Entries are null if the manager wasn't initialized
+            continue;
+        }
+
+        RecreateCameraRaster(shdw->m_camera);
+        RecreateCameraRaster(shdw->m_blurCamera);
+    }
+
+    RecreateCameraRaster(m_BlurCamera);
+    RecreateCameraRaster(m_GradientCamera);
+
+    // NOTSA: `MakeGradientRaster` dereferences the camera's raster, which would be null if `RwRasterCreate` failed above
+    if (!notsa::bugfixes::GenericCrashing || m_GradientCamera.GetRwRenderRaster()) {
+        m_GradientCamera.MakeGradientRaster();
+    }
 }
 
 // 0x706AB0

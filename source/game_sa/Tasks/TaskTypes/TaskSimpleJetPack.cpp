@@ -34,7 +34,7 @@ void CTaskSimpleJetPack::InjectHooks() {
     RH_ScopedInstall(RenderJetPack, 0x67F6A0);
 
     RH_ScopedInstall(ProcessAnims, 0x67B5C0);
-    RH_ScopedInstall(DropJetPack, 0x67B660, { .Reversed = false }); // Can't hook it, because `CPickups::GenerateNewOne` doesn't work properly
+    RH_ScopedInstall(DropJetPack, 0x67B660);
     RH_ScopedInstall(ApplyRollAndPitch, 0x67B720);
     RH_ScopedInstall(DoJetPackEffect, 0x67B7F0);
     RH_ScopedInstall(StopJetPackEffect, 0x67BA10);
@@ -446,7 +446,7 @@ void CTaskSimpleJetPack::DropJetPack(CPed* ped) {
         CPickups::CreatePickupCoorsCloseToCoors(ped->GetPosition(), pickupPos);
         CPickups::GenerateNewOne(pickupPos, MODEL_JETPACK, PICKUP_ONCE_TIMEOUT_SLOW, 0, 0, true, nullptr);
     }
-    MakeAbortable(ped);
+    MakeAbortable(ped, ABORT_PRIORITY_URGENT, nullptr); // Virtual call in the original
     m_ThrustStop   = 0;
     m_ThrustFwd    = 0;
     m_ThrustStrafe = 0.f;

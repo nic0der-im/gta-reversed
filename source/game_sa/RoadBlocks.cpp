@@ -4,6 +4,7 @@
 #include "PedPlacement.h"
 #include "TaskComplexWanderCop.h"
 #include "TaskSimpleStandStill.h"
+#include "CarCtrl.h"
 #include <extensions/File.hpp>
 
 void CRoadBlocks::InjectHooks() {
@@ -13,7 +14,7 @@ void CRoadBlocks::InjectHooks() {
     RH_ScopedInstall(Init, 0x461100);
     RH_ScopedInstall(ClearScriptRoadBlocks, 0x460EC0);
     RH_ScopedInstall(ClearSpaceForRoadBlockObject, 0x461020);
-    RH_ScopedInstall(CreateRoadBlockBetween2Points, 0x4619C0, { .Reversed = false });
+    RH_ScopedInstall(CreateRoadBlockBetween2Points, 0x4619C0);
     RH_ScopedInstall(GenerateRoadBlockPedsForCar, 0x461170);
     RH_ScopedInstall(GenerateRoadBlocks, 0x4629E0);
     RH_ScopedInstall(GetRoadBlockNodeInfo, 0x460EE0);
@@ -102,7 +103,331 @@ bool CRoadBlocks::ClearSpaceForRoadBlockObject(CVector cornerA, CVector cornerB)
 
 // 0x4619C0
 void CRoadBlocks::CreateRoadBlockBetween2Points(CVector a, CVector b, bool isGangRoadBlock) {
-    plugin::Call<0x4619C0, CVector, CVector, bool>(a, b, isGangRoadBlock);
+    const CVector rawDir = b - a;
+    const float   dist   = rawDir.Magnitude();
+    const CVector mid    = (a + b) * 0.5f;
+
+    CVector dir = rawDir;
+    dir.Normalise();
+
+    CVector perp{ dir.y, -dir.x, 0.0f };
+    perp.Normalise();
+
+    // Have everything face the side of the road the player is on
+    if ((FindPlayerCoors() - mid).Dot(perp) < 0.0f) {
+        perp = -perp;
+    }
+
+    // Pick the model of the vehicle that's going to be used
+    eModelID modelId;
+    if (isGangRoadBlock) {
+        modelId = CPopulation::PickRiotRoadBlockCar();
+        if (modelId == MODEL_INVALID) {
+            return;
+        }
+    } else {
+        const auto wanted = FindPlayerWanted();
+        if (wanted->AreArmyRequired()) {
+            modelId = MODEL_BARRACKS;
+        } else if (wanted->AreFbiRequired()) {
+            modelId = MODEL_FBIRANCH;
+        } else if (wanted->AreSwatRequired()) {
+            modelId = MODEL_ENFORCER;
+        } else {
+            modelId = CStreaming::GetDefaultCopCarModel(false);
+        }
+
+        if (!CStreaming::IsModelLoaded(modelId)) {
+            modelId = CStreaming::GetDefaultCopCarModel(false);
+        }
+
+        if (modelId == MODEL_COPBIKE) { // Not an automobile, so it can't be used
+            return;
+        }
+    }
+
+    // Space needed by a car, depending on how it's parked
+    const auto& carBBox    = CModelInfo::GetModelInfo(modelId)->GetColModel()->m_boundBox;
+    const auto  carBBoxMin = carBBox.m_vecMin;
+    const auto  carBBoxMax = carBBox.m_vecMax;
+    const float acrossGap  = (carBBoxMax.x - carBBoxMin.x) + 2.0f; // Parked across the road
+    float       alongGap   = (carBBoxMax.y - carBBoxMin.y) + 0.2f; // Parked along the road
+    if (isGangRoadBlock) {
+        alongGap += 0.5f;
+    }
+
+    // Determine how many cars fit along the road, and how each of them is going to be parked
+    std::array<bool, 5> acrossRoad{};
+    float               remainingDist = dist;
+    int32               numCars       = 0;
+    for (int32 i = 0; i < (int32)(acrossRoad.size()); i++) {
+        acrossRoad[i] = !(modelId == MODEL_BARRACKS || isGangRoadBlock) && (rand() & 1);
+        const float gapNeeded = acrossRoad[i] ? acrossGap : alongGap;
+        if (remainingDist < gapNeeded) {
+            break;
+        }
+        remainingDist -= gapNeeded;
+        numCars++;
+    }
+
+    // The cars are spaced evenly, the remaining space being split between them
+    const float step = remainingDist / (float)(numCars + 1);
+
+    if (numCars > 0) {
+        const float advanceBetweenCars = alongGap * 0.5f + step;
+        float       d                  = step;
+
+        for (int32 i = 0; i < numCars; i++) {
+            bool    onSide = false; // Whether it's on its side - Reused below to mean "was blown up"
+            CMatrix mat;
+
+            if (!acrossRoad[i]) {
+                // Parked along the road
+                d += alongGap * 0.5f;
+                if (isGangRoadBlock) {
+                    onSide = (rand() & 0xFF) < 0x40; // 25% chance
+                }
+
+                mat.GetForward() = dir;
+                if (onSide) {
+                    mat.GetRight() = CVector{ 0.0f, 0.0f, 1.0f };
+                    mat.GetUp()    = CVector{ -dir.y, dir.x, 0.0f };
+                } else {
+                    mat.GetRight() = CVector{ dir.y, -dir.x, 0.0f };
+                    mat.GetUp()    = CVector{ 0.0f, 0.0f, 1.0f };
+                }
+
+                if (rand() & 1) { // 50% chance of facing the other way
+                    if (onSide) {
+                        mat.RotateY(PI);
+                    } else {
+                        mat.RotateZ(PI);
+                    }
+                }
+
+                mat.RotateZ(((float)(rand() & 0xFF) - 128.0f) * (isGangRoadBlock ? 0.006f : 0.003f));
+            } else {
+                // Parked across the road
+                d += acrossGap * 0.5f;
+
+                mat.GetForward() = perp;
+                mat.GetRight()   = CVector{ perp.y, -perp.x, 0.0f };
+                mat.GetUp()      = CVector{ 0.0f, 0.0f, 1.0f };
+
+                mat.RotateZ(((float)(rand() & 0xFF) - 128.0f) * (isGangRoadBlock ? 0.004f : 0.002f));
+            }
+
+            mat.SetTranslateOnly({
+                a.x + dir.x * d,
+                a.y + dir.y * d,
+                a.z + dir.z * d
+            });
+            mat.GetPosition().z = mat.GetPosition().z - (onSide ? carBBoxMin.x : carBBoxMin.z) + 0.3f;
+
+            d += advanceBetweenCars;
+
+            // The area occupied by the car, used to check whether it fits there
+            const CVector cornerA = mat.InverseTransformVector(carBBoxMin) + mat.GetPosition();
+            const CVector cornerB = mat.InverseTransformVector(carBBoxMax) + mat.GetPosition();
+            if (!ClearSpaceForRoadBlockObject(cornerA, cornerB)) {
+                continue;
+            }
+
+            if (!isGangRoadBlock || (!onSide && (rand() & 0xFF) >= 0x40)) {
+                // Spawn the car
+                auto* veh = new CAutomobile(modelId, RANDOM_VEHICLE, true);
+#ifdef FIX_BUGS
+                if (!veh) {
+                    continue;
+                }
+#endif
+                veh->SetStatus(STATUS_ABANDONED);
+
+                mat.GetPosition().z = (veh->GetHeightAboveRoad() - 0.6f) + mat.GetPosition().z;
+
+#ifdef FIX_BUGS
+                // The original dereferences `m_matrix` unconditionally here (null-deref hazard)
+                if (!veh->m_matrix) {
+                    delete veh;
+                    continue;
+                }
+#endif
+                veh->GetMatrix() = mat;
+
+                veh->PlaceOnRoadProperly();
+                veh->SetIsStatic(false);
+                veh->UpdateRwMatrix();
+
+                veh->m_nDoorLock = CARLOCK_UNLOCKED;
+                CCarCtrl::JoinCarWithRoadSystem(veh);
+
+                onSide = false;
+
+                // Reset the AI state, otherwise it'd drive off
+                veh->m_autoPilot.m_nCarMission  = MISSION_NONE;
+                veh->m_autoPilot.m_nTempAction  = TEMPACT_NONE;
+                veh->m_autoPilot.m_nCurrentLane = 0;
+                veh->m_autoPilot.m_nNextLane    = 0;
+                veh->m_autoPilot.m_speed        = 0.0f;
+                veh->m_autoPilot.m_nCruiseSpeed = 0;
+
+                // Parked, and out of the way of the traffic
+                veh->vehicleFlags.bNeverUseSmallerRemovalRange = true;
+                veh->vehicleFlags.bIsLocked                    = false;
+                veh->vehicleFlags.bEngineOn                    = false;
+
+                if (!isGangRoadBlock) {
+                    if (veh->UsesSiren() && (rand() & 1)) {
+                        veh->vehicleFlags.bSirenOrAlarm = true;
+                    }
+                } else {
+                    // 1/8 chance of only damaging it a bit, otherwise it gets blown up
+                    if ((int32)((float)(rand() & 0xFFFF) * (1.0f / 32768.0f) * 4.0f) == 0) {
+                        veh->SetTotalDamage(true);
+                    } else {
+                        veh->BlowUpCarCutSceneNoExtras(true, true, true, true);
+                        veh->m_nTimeWhenBlowedUp += 1'000'000;
+                        onSide = true;
+                    }
+                }
+
+                if (veh->GetMatrix().GetUp().z <= 0.94f) {
+                    // Not standing upright, discard it
+                    delete veh;
+                } else {
+                    CVisibilityPlugins::SetClumpAlpha(veh->GetRpClump(), 0); // Visible only as a collision
+                    CWorld::Add(veh);
+                    veh->vehicleFlags.bCreateRoadBlockPeds = true;
+                    veh->m_nTimeTillWeNeedThisCar = CTimer::GetTimeInMS() + 7'000;
+                    veh->m_nNumPedsForRoadBlock = numCars > 3 ? 1 : 2;
+
+                    if (!acrossRoad[i]) {
+                        // Peds are placed on the side of the car the player is on
+                        const CVector delta = veh->GetPosition() - FindPlayerCoors();
+                        veh->m_nPedsPositionForRoadBlock = (delta.Dot(veh->GetMatrix().GetRight()) < 0.0f) ? 0 : 1;
+                    } else {
+                        veh->m_nPedsPositionForRoadBlock = 2;
+
+                        const auto node = CDamageManager::GetCarNodeIndexFromDoor(DOOR_LEFT_FRONT);
+                        if (veh->m_aCarNodes[node]) {
+                            veh->OpenDoor(nullptr, node, DOOR_LEFT_FRONT, 1.0f, true);
+                        }
+
+                        if (veh->m_nNumPedsForRoadBlock > 1) {
+                            const auto node = CDamageManager::GetCarNodeIndexFromDoor(DOOR_RIGHT_FRONT);
+                            if (veh->m_aCarNodes[node]) {
+                                veh->OpenDoor(nullptr, node, DOOR_RIGHT_FRONT, 1.0f, true);
+                            }
+                        }
+                    }
+
+                    if (onSide) { // Was blown up
+                        gFireManager.StartFire(veh, nullptr, 1.4f, 1, 60'000, 2);
+                        if (veh->m_pFire) {
+                            veh->m_pFire->SetRemovalDist(0x5C);
+                        }
+                    }
+                }
+            } else {
+                // Spawn a wreck instead
+                auto* obj = new CObject(ModelIndices::MI_ROADBLOCKFUCKEDCAR1, true);
+#ifdef FIX_BUGS
+                if (!obj) {
+                    continue;
+                }
+                // The original dereferences `m_matrix` unconditionally here (null-deref hazard)
+                if (!obj->m_matrix) {
+                    delete obj;
+                    continue;
+                }
+#endif
+                obj->GetMatrix() = mat;
+                obj->SetPosn(mat.GetPosition());
+                obj->SetIsStatic(false);
+                CObject::nNoTempObjects++;
+                obj->m_nObjectType  = OBJECT_TEMPORARY;
+                obj->m_nRemovalTime = CTimer::GetTimeInMS() + 600'000;
+                CWorld::Add(obj);
+                gFireManager.StartFire(obj, nullptr, 1.4f, 1, 60'000, 2);
+                if (obj->m_pFire) {
+                    obj->m_pFire->SetRemovalDist(0x5C);
+                }
+            }
+        }
+    }
+
+    // Barriers are only used at cop road blocks
+    if (!isGangRoadBlock) {
+        const auto  barrierModelId = ModelIndices::MI_ROADWORKBARRIER1;
+        const auto& barrierBBox    = CModelInfo::GetModelInfo(barrierModelId)->GetColModel()->m_boundBox;
+        const auto  barrierMin     = barrierBBox.m_vecMin;
+        const auto  barrierMax     = barrierBBox.m_vecMax;
+        const float barrierWidth   = (barrierMax.x - barrierMin.x) + 0.5f;
+
+        int32 numBarriers = (int32)(dist / barrierWidth);
+        if (numBarriers > 8) {
+            numBarriers = 8;
+        }
+
+        const float barrierStep = (dist - (float)numBarriers * barrierWidth) / (float)(numBarriers + 1);
+
+        CObject::DeleteAllTempObjectsInArea(mid, dist * 0.5f);
+
+        for (int32 i = 0; i < numBarriers; i++) {
+            const float d = ((float)i + 0.5f) * barrierWidth + (float)(i + 1) * barrierStep;
+
+            CMatrix mat;
+            mat.SetUnity();
+            mat.SetTranslate({ 0.0f, 0.0f, 0.0f });
+            mat.GetRight()   = dir;
+            mat.GetForward() = CVector{ dir.y, -dir.x, 0.0f };
+            mat.GetUp()      = CVector{ 0.0f, 0.0f, 1.0f };
+            mat.RotateZ(((float)(rand() & 0xFF) - 128.0f) * 0.003f);
+
+            // Barriers are placed a bit to the side of the cars
+            mat.SetTranslateOnly({
+                a.x + dir.x * d + perp.x * 5.0f,
+                a.y + dir.y * d + perp.y * 5.0f,
+                a.z + dir.z * d + perp.z * 5.0f
+            });
+
+            // Affects the ground query and the final position, but not the matrix assigned below
+            mat.GetPosition().x += (float)(rand() & 0xF) * 0.05f;
+            mat.GetPosition().y += (float)(rand() & 0xF) * 0.05f;
+
+            bool        groundFound{};
+            const float groundZ = CWorld::FindGroundZFor3DCoord(mat.GetPosition() + CVector{ 0.0f, 0.0f, 2.0f }, &groundFound);
+            mat.GetPosition().z = groundZ;
+            if (!groundFound) {
+                continue;
+            }
+            mat.GetPosition().z -= barrierMin.z;
+
+            const CVector cornerA = mat.InverseTransformVector(barrierMin) + mat.GetPosition();
+            const CVector cornerB = mat.InverseTransformVector(barrierMax) + mat.GetPosition();
+            if (!ClearSpaceForRoadBlockObject(cornerA, cornerB)) {
+                continue;
+            }
+
+            auto* obj = new CObject(barrierModelId, true);
+#ifdef FIX_BUGS
+            if (!obj) {
+                continue;
+            }
+            // The original dereferences `m_matrix` unconditionally here (null-deref hazard)
+            if (!obj->m_matrix) {
+                delete obj;
+                continue;
+            }
+#endif
+            obj->GetMatrix() = mat;
+            obj->SetPosn(mat.GetPosition());
+            CObject::nNoTempObjects++;
+            obj->m_nObjectType  = OBJECT_TEMPORARY;
+            obj->m_nRemovalTime = CTimer::GetTimeInMS() + 600'000;
+            CWorld::Add(obj);
+        }
+    }
 }
 
 // 0x461170

@@ -23,6 +23,15 @@ constexpr uint32 MAX_NUM_PICKUPS = 620;
 // Dump @ 0x8A5F50
 constexpr uint16 AmmoForWeapon_OnStreet[NUM_WEAPONS]{ 0u, 1u, 1u, 1u, 1u, 1u, 1u, 1u, 1u, 1u, 1u, 1u, 1u, 1u, 1u, 1u, 8u, 8u, 8u, 8u, 4u, 4u, 30u, 10u, 10u, 15u, 10u, 10u, 60u, 60u, 80u, 80u, 60u, 20u, 10u, 4u, 3u, 100u, 500u, 5u, 1u, 500u, 500u, 36u, 0u, 0u, 1u };
 
+constexpr uint32 NUM_PICKUP_MESSAGE_COLOURS = 54;
+
+// Dump @ 0x8A5FB0
+struct tPickupMessageColour {
+    CRGBA colour;
+    float field_4; // Always 1.0f (Unused)
+};
+VALIDATE_SIZE(tPickupMessageColour, 0x8);
+
 class CPickups {
 public:
     static inline auto& DisplayHelpMessage = StaticRef<uint8>(0x8A5F48);
@@ -36,6 +45,7 @@ public:
     static inline auto& NumMessages = StaticRef<uint16>(0x978678);
     static inline auto& aMessages = StaticRef<std::array<tPickupMessage, MAX_PICKUP_MESSAGES>>(0x978680);
     static inline auto& aPickUps = StaticRef<std::array<CPickup, MAX_NUM_PICKUPS>>(0x9788C0);
+    static inline auto& aMessageColours = StaticRef<tPickupMessageColour[NUM_PICKUP_MESSAGE_COLOURS]>(0x8A5FB0);
 
 public:
     static void InjectHooks();

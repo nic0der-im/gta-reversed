@@ -84,11 +84,22 @@ CAEAudioHardware::CAEAudioHardware() {
 // 0x4D9930
 bool CAEAudioHardware::Initialise() {
     m_pMP3BankLoader  = new CAEMP3BankLoader;
+#ifdef NOTSA_NATIVE
+    // Native builds have no MP3/DirectShow radio module (`AUDIO\STREAMS` + DVD path): radio
+    // broadcasts are out of scope, user radio tracks go through our Vorbis/WAV decoders.
+    // Only the sound bank loader is needed (it uses `CFileMgr`, so it is path-portable).
+    NOTSA_LOG_WARN("Audio: MP3 module not available natively");
+    if (!m_pMP3BankLoader->Initialise()) {
+        NOTSA_LOG_ERR("Failed initializing sound bank loader!");
+        return false;
+    }
+#else
     m_pMP3TrackLoader = new CAEMP3TrackLoader;
     if (!m_pMP3BankLoader->Initialise() || !m_pMP3TrackLoader->Initialise()) {
         NOTSA_LOG_ERR("Failed initializing MP3 module!");
         return false;
     }
+#endif
 
 #ifdef NOTSA_NATIVE
     if (!InitDirectSoundListener(2, 48'000, 16)) {
@@ -704,7 +715,12 @@ int32 CAEAudioHardware::GetPlayingTrackID() const {
 void CAEAudioHardware::GetBeatInfo(tBeatInfo* beatInfo) {
     const auto bi = &gBeatInfo;
 
+#ifdef NOTSA_NATIVE
+    // No MP3/radio track loader natively, so there is never beat information.
+    if (!m_pMP3TrackLoader || m_pStreamThread.GetActiveTrackID() == -1) {
+#else
     if (m_pStreamThread.GetActiveTrackID() == -1) {
+#endif
         bi->IsBeatInfoPresent = false;
         rng::fill(bi->BeatWindow, tTrackInfo::tBeat{});
         return;
@@ -823,17 +839,29 @@ void CAEAudioHardware::SetStreamFaderScalingFactor(float factor) {
 
 // 0x4D95C0
 bool CAEAudioHardware::IsStreamingFromDVD() {
+#ifdef NOTSA_NATIVE
+    return false; // No radio streams at all natively
+#else
     return m_pMP3TrackLoader->m_bStreamingFromDVD;
+#endif
 }
 
 // 0x4D95D0
 char CAEAudioHardware::GetDVDDriveLetter() {
+#ifdef NOTSA_NATIVE
+    return '\0'; // No DVD drive natively
+#else
     return m_pMP3TrackLoader->m_pszDvdDrivePath[0];
+#endif
 }
 
 // 0x4D95E0
 bool CAEAudioHardware::CheckDVD() {
+#ifdef NOTSA_NATIVE
+    return false; // No radio streams at all natively
+#else
     return m_pMP3TrackLoader->IsCurrentAudioStreamAvailable();
+#endif
 }
 
 // 0x4D95F0

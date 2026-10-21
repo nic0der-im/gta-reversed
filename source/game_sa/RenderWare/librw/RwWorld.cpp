@@ -3,6 +3,7 @@
 #ifdef NOTSA_NATIVE
 
 #include "RwFakerw.h"
+#include "pipelines/SAPipelines.h"
 
 #include <unordered_map>
 
@@ -317,6 +318,9 @@ RwBool RpGeometryDestroy(RpGeometry* geometry) {
         return FALSE;
     }
 
+    // The SA pipelines cache GL buffers per geometry; drop them before the struct is freed.
+    notsa::native::sapipelines::ForgetGeometry(geometry);
+
     // Plugins must be destructed before the storage is released.
     g_geometryPlugins.Destruct(geometry, sizeof(RpGeometry));
 
@@ -378,7 +382,7 @@ RpAtomic* RpAtomicCreate(void) {
     atomic->geometry          = nullptr;
     atomic->clump             = nullptr;
     atomic->pipeline          = nullptr;
-    atomic->renderCallBack    = nullptr;
+    atomic->renderCallBack    = AtomicDefaultRenderCallBack;
     notsa::fakerw::ListInit(atomic->llWorldSectorsInAtomic);
 
     g_atomicPlugins.Construct(atomic, sizeof(RpAtomic));
@@ -409,6 +413,36 @@ RpAtomic* RpAtomicSetFrame(RpAtomic* atomic, RwFrame* frame) {
         _rwObjectHasFrameSetFrame(atomic, frame);
     }
     return atomic;
+}
+
+RpAtomic* AtomicDefaultRenderCallBack(RpAtomic* atomic) {
+    if (!atomic) {
+        return atomic;
+    }
+
+    notsa::native::sapipelines::Kind kind;
+    if (notsa::native::sapipelines::GetPipelineKind(atomic->pipeline, kind)) {
+        notsa::native::sapipelines::RenderAtomic(atomic);
+    } else if (atomic->pipeline) {
+        // A pipeline built through the generic `Rx*` API: nothing renders it natively.
+        notsa::fakerw::Stub("AtomicRenderCallBack(generic pipeline)");
+    } else {
+        // No pipeline at all (the atomics librw's own renderer would draw in B3).
+        notsa::fakerw::Stub("AtomicRenderCallBack(no pipeline)");
+    }
+    return atomic;
+}
+
+RwBool RpAtomicInstance(RpAtomic* atomic) {
+    if (!atomic) {
+        return FALSE;
+    }
+
+    notsa::native::sapipelines::Kind kind;
+    if (notsa::native::sapipelines::GetPipelineKind(atomic->pipeline, kind)) {
+        notsa::native::sapipelines::InstanceAtomic(atomic);
+    }
+    return TRUE;
 }
 
 RpAtomic* RpAtomicSetGeometry(RpAtomic* atomic, RpGeometry* geometry, RwUInt32 flags) {

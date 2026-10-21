@@ -429,11 +429,6 @@ RwBool _rpSkinSplitDataDestroy(RpSkin* skin) {
     return {};
 }
 
-RxNodeDefinition* RxNodeDefinitionGetD3D9SkinAtomicAllInOne() {
-    notsa::fakerw::Stub("RxNodeDefinitionGetD3D9SkinAtomicAllInOne");
-    return {};
-}
-
 _rpUVAnimCustomData* _rpUVAnimCustomDataStreamRead(RwStream* stream) {
     notsa::fakerw::Stub("_rpUVAnimCustomDataStreamRead");
     return {};
@@ -686,16 +681,6 @@ void _rpD3D9VertexShaderSetEnvMatrix(RwFrame* frame, const _rpD3D9VertexShaderDe
 
 void _rpD3D9VertexShaderSetBumpMatrix(RwFrame* frame, RwReal factor, const _rpD3D9VertexShaderDispatchDescriptor* dispatch) {
     notsa::fakerw::Stub("_rpD3D9VertexShaderSetBumpMatrix");
-}
-
-RxNodeDefinition* RxNodeDefinitionGetD3D9WorldSectorAllInOne() {
-    notsa::fakerw::Stub("RxNodeDefinitionGetD3D9WorldSectorAllInOne");
-    return {};
-}
-
-RxNodeDefinition* RxNodeDefinitionGetD3D9AtomicAllInOne() {
-    notsa::fakerw::Stub("RxNodeDefinitionGetD3D9AtomicAllInOne");
-    return {};
 }
 
 void RpMaterialSetFreeListCreateParams(RwInt32 blockSize, RwInt32 numBlocksToPrealloc) {
@@ -1184,11 +1169,6 @@ void RpClumpSetFreeListCreateParams(RwInt32 blockSize, RwInt32 numBlocksToPreall
     notsa::fakerw::Stub("RpClumpSetFreeListCreateParams");
 }
 
-RpAtomic* AtomicDefaultRenderCallBack(RpAtomic* atomic) {
-    notsa::fakerw::Stub("AtomicDefaultRenderCallBack");
-    return {};
-}
-
 void _rpAtomicResyncInterpolatedSphere(RpAtomic* atomic) {
     notsa::fakerw::Stub("_rpAtomicResyncInterpolatedSphere");
 }
@@ -1344,11 +1324,6 @@ RwBool RpAtomicValidatePlugins(const RpAtomic* atomic) {
 
 RwBool RpClumpValidatePlugins(const RpClump* clump) {
     notsa::fakerw::Stub("RpClumpValidatePlugins");
-    return {};
-}
-
-RwBool RpAtomicInstance(RpAtomic* atomic) {
-    notsa::fakerw::Stub("RpAtomicInstance");
     return {};
 }
 
@@ -2065,32 +2040,8 @@ void RxPipelineSetFreeListCreateParams(RwInt32 blockSize, RwInt32 numBlocksToPre
     notsa::fakerw::Stub("RxPipelineSetFreeListCreateParams");
 }
 
-RwBool _rxPipelineOpen() {
-    notsa::fakerw::Stub("_rxPipelineOpen");
-    return {};
-}
-
-RwBool _rxPipelineClose() {
-    notsa::fakerw::Stub("_rxPipelineClose");
-    return {};
-}
-
-RxPipeline* RxPipelineCreate() {
-    notsa::fakerw::Stub("RxPipelineCreate");
-    return {};
-}
-
-void _rxPipelineDestroy(RxPipeline* Pipeline) {
-    notsa::fakerw::Stub("_rxPipelineDestroy");
-}
-
 RxHeap* RxHeapGetGlobalHeap() {
     notsa::fakerw::Stub("RxHeapGetGlobalHeap");
-    return {};
-}
-
-RxPipeline* RxPipelineExecute(RxPipeline* pipeline, void* data, RwBool heapReset) {
-    notsa::fakerw::Stub("RxPipelineExecute");
     return {};
 }
 
@@ -2189,96 +2140,6 @@ RxNodeOutput RxPipelineNodeFindOutputByIndex(RxPipelineNode* node, RwUInt32 outp
 
 RxNodeInput RxPipelineNodeFindInput(RxPipelineNode* node) {
     notsa::fakerw::Stub("RxPipelineNodeFindInput");
-    return {};
-}
-
-RxNodeDefinition* RxPipelineNodeCloneDefinition(RxPipelineNode* node, RxClusterDefinition* cluster2add) {
-    notsa::fakerw::Stub("RxPipelineNodeCloneDefinition");
-    return {};
-}
-
-RxPipeline* RxPipelineNodeRequestCluster(RxPipeline* pipeline, RxPipelineNode* node, RxClusterDefinition* clusterDef) {
-    notsa::fakerw::Stub("RxPipelineNodeRequestCluster");
-    return {};
-}
-
-RxPipeline* RxPipelineNodeReplaceCluster(RxPipeline* pipeline, RxPipelineNode* node, RxClusterDefinition* oldClusterDef, RxClusterDefinition* newClusterDef) {
-    notsa::fakerw::Stub("RxPipelineNodeReplaceCluster");
-    return {};
-}
-
-void* RxPipelineNodeGetInitData(RxPipelineNode* node) {
-    notsa::fakerw::Stub("RxPipelineNodeGetInitData");
-    return {};
-}
-
-void* RxPipelineNodeCreateInitData(RxPipelineNode* node, RwUInt32 size) {
-    notsa::fakerw::Stub("RxPipelineNodeCreateInitData");
-    return {};
-}
-
-RxPipeline* RxPipelineClone(RxPipeline* pipeline) {
-    notsa::fakerw::Stub("RxPipelineClone");
-    return {};
-}
-
-RxPipelineNode* RxPipelineFindNodeByName(RxPipeline* pipeline, const RwChar* name, RxPipelineNode* start, RwInt32* nodeIndex) {
-    notsa::fakerw::Stub("RxPipelineFindNodeByName");
-    return {};
-}
-
-RxPipelineNode* RxPipelineFindNodeByIndex(RxPipeline* pipeline, RwUInt32 nodeindex) {
-    notsa::fakerw::Stub("RxPipelineFindNodeByIndex");
-    return {};
-}
-
-RxLockedPipe* RxPipelineLock(RxPipeline* pipeline) {
-    notsa::fakerw::Stub("RxPipelineLock");
-    return {};
-}
-
-RxPipeline* RxLockedPipeUnlock(RxLockedPipe* pipeline) {
-    notsa::fakerw::Stub("RxLockedPipeUnlock");
-    return {};
-}
-
-RxPipeline* RxLockedPipeReplaceNode(RxLockedPipe* pipeline, RxPipelineNode* node, RxNodeDefinition* nodeDef) {
-    notsa::fakerw::Stub("RxLockedPipeReplaceNode");
-    return {};
-}
-
-RxPipeline* RxLockedPipeDeleteNode(RxLockedPipe* pipeline, RxPipelineNode* node) {
-    notsa::fakerw::Stub("RxLockedPipeDeleteNode");
-    return {};
-}
-
-RxPipeline* RxLockedPipeSetEntryPoint(RxLockedPipe* pipeline, RxNodeInput in) {
-    notsa::fakerw::Stub("RxLockedPipeSetEntryPoint");
-    return {};
-}
-
-RxLockedPipe* RxLockedPipeAddFragment(RxLockedPipe* pipeline, RwUInt32* firstIndex, RxNodeDefinition* nodeDef0, RxNodeDefinition* __va_end__) {
-    notsa::fakerw::Stub("RxLockedPipeAddFragment");
-    return {};
-}
-
-RxPipelineNode* RxLockedPipeGetEntryPoint(RxLockedPipe* pipeline) {
-    notsa::fakerw::Stub("RxLockedPipeGetEntryPoint");
-    return {};
-}
-
-RxPipeline* RxLockedPipeAddPath(RxLockedPipe* pipeline, RxNodeOutput out, RxNodeInput in) {
-    notsa::fakerw::Stub("RxLockedPipeAddPath");
-    return {};
-}
-
-RxPipeline* RxLockedPipeDeletePath(RxLockedPipe* pipeline, RxNodeOutput out, RxNodeInput in) {
-    notsa::fakerw::Stub("RxLockedPipeDeletePath");
-    return {};
-}
-
-RxPipeline* RxPipelineInsertDebugNode(RxPipeline* pipeline, RxPipelineNode* before, RxPipelineNode* after, RxNodeDefinition* debugNode) {
-    notsa::fakerw::Stub("RxPipelineInsertDebugNode");
     return {};
 }
 

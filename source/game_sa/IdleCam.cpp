@@ -21,7 +21,7 @@ void CIdleCam::InjectHooks() {
     RH_ScopedInstall(IsTargetValid, 0x517770);
     RH_ScopedInstall(ProcessTargetSelection, 0x517870);
     RH_ScopedInstall(ProcessSlerp, 0x5179E0);
-    RH_ScopedInstall(ProcessFOVZoom, 0x517BF0, { .Reversed = false });
+    RH_ScopedInstall(ProcessFOVZoom, 0x517BF0);
     RH_ScopedInstall(Run, 0x51D3E0);
     RH_ScopedInstall(Process, 0x522C80);
     RH_ScopedInstall(IdleCamGeneralProcess, 0x50E690);
@@ -125,8 +125,132 @@ void CIdleCam::GetLookAtPositionOnTarget(const CEntity* target, CVector& outPos)
 }
 
 // 0x517BF0
-void CIdleCam::ProcessFOVZoom(float time) {
-    NOTSA_UNREACHABLE();
+void CIdleCam::ProcessFOVZoom(float slerpProgress) {
+    const auto now = static_cast<float>(CTimer::GetTimeInMS());
+
+    auto zoomNearest = m_ZoomNearest;
+    bool wantZoomIn  = false;
+
+    if (m_Target) {
+        CVector lookAt{};
+        GetLookAtPositionOnTarget(m_Target, lookAt);
+
+        const auto dist = DistanceBetweenPoints(m_Cam->m_vecSource, lookAt);
+        if (m_Target->GetIsTypePed()) {
+            const auto pedType = m_Target->AsPed()->m_nPedType;
+            if (pedType == PED_TYPE_PROSTITUTE || pedType == PED_TYPE_CIVFEMALE) {
+                wantZoomIn = true;
+                zoomNearest *= 0.5f;
+                if (dist < 8.0f) {
+                    m_nForceAZoomOut = true;
+                }
+            }
+        }
+        if (dist > m_DistStartFOVZoom) {
+            wantZoomIn = true;
+        }
+    }
+
+    if (slerpProgress >= 1.0f) {
+        const auto oldState = m_ZoomState;
+
+        // Both transitions below jump to the same tail in the binary, which reads the pre-transition state
+        bool  hasNewZoomTo = false;
+        float newZoomTo{};
+
+        if (wantZoomIn) {
+            if (m_TimeBeforeNewZoomIn < now - m_TimeLastZoomIn) {
+                bool losClear = true;
+                if (m_Target) {
+                    const auto oldIgnore  = CWorld::pIgnoreEntity;
+                    CWorld::pIgnoreEntity = m_Target;
+                    notsa::ScopeGuard _([&] { CWorld::pIgnoreEntity = oldIgnore; });
+
+                    CVector lookAtPos{};
+                    GetLookAtPositionOnTarget(m_Target, lookAtPos);
+                    losClear = CWorld::GetIsLineOfSightClear(
+                        m_Cam->m_vecSource,
+                        lookAtPos,
+                        true,
+                        false,
+                        false,
+                        true,
+                        false,
+                        false,
+                        true
+                    );
+                }
+
+                if (m_TargetLOSCounter > 10 && m_ZoomState == eIdleCamZoomState::UNK_2) {
+                    m_ZoomState = eIdleCamZoomState::UNK_1;
+                }
+
+                if (m_ZoomState == eIdleCamZoomState::UNK_3 && !m_bHasZoomedIn && losClear) {
+                    m_ZoomState  = eIdleCamZoomState::UNK_0;
+                    newZoomTo    = zoomNearest;
+                    hasNewZoomTo = true;
+                }
+            }
+        } else if (oldState == eIdleCamZoomState::UNK_2) {
+            m_ZoomState  = eIdleCamZoomState::UNK_1;
+            newZoomTo    = m_ZoomFarthest;
+            hasNewZoomTo = true;
+        }
+
+        if (hasNewZoomTo) {
+            m_ZoomTo = newZoomTo;
+            if (oldState != eIdleCamZoomState::UNK_0) {
+                m_TimeZoomStarted = now;
+                m_ZoomFrom        = m_CurFOV;
+            }
+        }
+    }
+
+    if (m_ZoomState == eIdleCamZoomState::UNK_2) {
+        m_TimeLastZoomIn = now;
+    }
+
+    if (m_nForceAZoomOut && m_ZoomState == eIdleCamZoomState::UNK_2) {
+        m_TimeZoomStarted = now;
+        m_ZoomFrom        = m_CurFOV;
+        m_ZoomState       = eIdleCamZoomState::UNK_1;
+        m_ZoomTo          = m_ZoomFarthest;
+    }
+    m_nForceAZoomOut = false;
+
+    const auto Interpolate = [&] {
+        const auto t = (now - m_TimeZoomStarted) / m_DurationFOVZoom;
+        const auto s = (std::sin(DegreesToRadians(270.0f - 180.0f * t)) + 1.0f) * 0.5f;
+        m_CurFOV = (m_ZoomTo - m_ZoomFrom) * s + m_ZoomFrom;
+    };
+
+    switch (m_ZoomState) {
+    case eIdleCamZoomState::UNK_0:
+        if (std::abs(m_CurFOV - zoomNearest) < 1.0f) {
+            m_ZoomState    = eIdleCamZoomState::UNK_2;
+            m_bHasZoomedIn = true;
+            m_CurFOV       = zoomNearest;
+        } else {
+            Interpolate();
+        }
+        break;
+    case eIdleCamZoomState::UNK_1:
+        if (std::abs(m_CurFOV - m_ZoomFarthest) < 1.0f) {
+            m_ZoomState = eIdleCamZoomState::UNK_3;
+            m_CurFOV    = m_ZoomFarthest;
+        } else {
+            Interpolate();
+        }
+        break;
+    case eIdleCamZoomState::UNK_2:
+        m_CurFOV = zoomNearest;
+        break;
+    case eIdleCamZoomState::UNK_3:
+        m_CurFOV = m_ZoomFarthest;
+        break;
+    }
+
+    m_Cam->m_fFOV = m_CurFOV;
 }
 
 // 0x517770
