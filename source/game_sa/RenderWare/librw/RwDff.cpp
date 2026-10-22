@@ -544,11 +544,8 @@ bool ReadClumpLight(RwStream* stream, const rwFrameList& frames, RpClump* clump)
         return false;
     }
 
-    if (!RwStreamFindChunk(stream, rwID_LIGHT, nullptr, nullptr)) {
-        BadChunk("LIGHT", rwID_LIGHT, "clump");
-        return false;
-    }
-
+    // `RpLightStreamRead` finds and consumes the `rwID_LIGHT` chunk itself, so its header must
+    // not be eaten here: doing so made every light-bearing model fail to load.
     RpLight* light = RpLightStreamRead(stream);
     if (!light) {
         // `RpLightStreamRead` is not implemented yet (RwStubs) -- drop the light, keep the model.
@@ -877,22 +874,34 @@ RpMaterialList* _rpMaterialListInitialize(RpMaterialList* matList) {
     return matList;
 }
 
+//! Releases the material array only, matching retail `_rpMaterialListDeinitialize` (0x74E150).
+//! The list does not own the materials it points at: `CVehicleModelInfo::ReduceMaterialsInVehicle`
+//! builds a temporary list out of the clump's live materials, and destroying them there would
+//! leave every geometry of that clump with dangling material pointers.
 RpMaterialList* _rpMaterialListDeinitialize(RpMaterialList* matList) {
     if (!matList) {
         return nullptr;
     }
 
-    if (matList->materials) {
-        for (int32 i = 0; i < matList->numMaterials; i++) {
-            RpMaterialDestroy(matList->materials[i]);
-        }
-        Free(matList->materials);
-    }
+    Free(matList->materials);
 
     matList->materials    = nullptr;
     matList->numMaterials = 0;
     matList->space        = 0;
     return matList;
+}
+
+//! Destroys the materials the list owns (dropping their reference), then releases the array.
+//! Used where the list really owns them: `RpGeometryDestroy` and a failed material-list read.
+static RpMaterialList* _rpMaterialListDestroy(RpMaterialList* matList) {
+    if (!matList) {
+        return nullptr;
+    }
+
+    for (int32 i = 0; i < matList->numMaterials; i++) {
+        RpMaterialDestroy(matList->materials[i]);
+    }
+    return _rpMaterialListDeinitialize(matList);
 }
 
 RpMaterial** _rpMaterialListAlloc(RwUInt32 count) {
@@ -1049,7 +1058,7 @@ RpMaterialList* _rpMaterialListStreamRead(RwStream* stream, RpMaterialList* matL
     return matList;
 
 fail:
-    _rpMaterialListDeinitialize(matList);
+    _rpMaterialListDestroy(matList);
     return nullptr;
 }
 
@@ -1221,7 +1230,7 @@ RwBool RpGeometryDestroy(RpGeometry* geometry) {
         Free(texCoords);
     }
     Free(geometry->mesh);
-    _rpMaterialListDeinitialize(&geometry->matList);
+    _rpMaterialListDestroy(&geometry->matList);
 
     Free(geometry);
     return TRUE;

@@ -66,8 +66,10 @@
 #include "Replay.h"
 #include "RGBA.h"
 #include "Shopping.h"
+#include "Tasks/Allocators/PedGroup/PedGroupDefaultTaskAllocators.h"
 #include "Tasks/PedScriptedTaskRecord.h"
 #include "Tasks/TaskSequences.h"
+#include "Tasks/TaskTypes/TaskComplexFollowLeaderInFormation.h"
 #include "Text/Text.h"
 #include "VehicleAnimGroupData.h"
 #include "WaterCannon.h"
@@ -338,6 +340,18 @@ constexpr CtorRow kCtorRows[] = {
     {0xBC4020, [] { Construct(CCutsceneMgr::ms_cutsceneAssociations); }},       // 0x850040
     {0xC03A44, [] { Construct(CPlantMgr::m_AmbientColor); }},                   // 0x850910
 
+    // `CPedGroupDefaultTaskAllocators::ms_*Allocator`: vtable-only singletons. Their constructors
+    // (`0x5F6450`, `0x5F6480`, `0x5F64B0`, `0x5F64E0`, `0x5F6510`, `0x5F6540`) only store the
+    // vtable, so the native default constructor reproduces them. Never constructed, the first
+    // `CPedGroupIntelligence::SetDefaultTaskAllocator` call (from `CPlayerPed::SetInitialState`)
+    // jumped through a null vtable.
+    {0xC09908, [] { Construct(CPedGroupDefaultTaskAllocators::ms_FollowAnyMeansAllocator); }}, // 0x851270
+    {0xC0990C, [] { Construct(CPedGroupDefaultTaskAllocators::ms_FollowLimitedAllocator); }},  // 0x851290
+    {0xC09910, [] { Construct(CPedGroupDefaultTaskAllocators::ms_StandStillAllocator); }},     // 0x8512B0
+    {0xC09914, [] { Construct(CPedGroupDefaultTaskAllocators::ms_ChatAllocator); }},           // 0x8512D0
+    {0xC09918, [] { Construct(CPedGroupDefaultTaskAllocators::ms_RandomAllocator); }},         // 0x8512F0
+    {0xC0991C, [] { Construct(CPedGroupDefaultTaskAllocators::ms_SitInLeaderCarAllocator); }}, // 0x851310
+
     // `CPedGroups::ms_groups`, 8 x 0x2D4.
     {0xC09920, [] { ConstructEach(CPedGroups::ms_groups); }},                   // 0x851330
     {0xC0B058, [] { Construct(g_InterestingEvents); }},                         // 0x8514E0
@@ -452,6 +466,29 @@ bool ApplyManualExeDataEntry(const ExeDataEntry& e) {
         // (`CAESound::UpdateParameters` faulted at `ldr x8, [x8]` with `x8 == 0`).
         if (e.Addr == 0xB6BC90) {
             ::new (static_cast<void*>(&AudioEngine)) CAudioEngine{};
+            return true;
+        }
+
+        // 0x852F10: `mov ecx, 0x00C196E8; call 0x00694850`.
+        // `CTaskComplexFollowLeaderInFormation::ms_offsets`: the constructor (not reversed) stores
+        // the eight standing formation offsets, the eight moving ones and the scale. Zeroed,
+        // every `CPedGroupDefaultTaskAllocatorRandom` follower would target the leader's own
+        // position, and `Scale` would stay 0.
+        if (e.Addr == 0xC196E8) {
+            const CVector2D STANDING[TOTAL_PED_GROUP_MEMBERS]{
+                {-1.f,  1.f}, { 1.f,  1.f}, { 0.f,  1.f}, {-1.f,  0.f},
+                { 1.f,  0.f}, {-1.f, -1.f}, { 0.f, -1.f}, { 1.f, -1.f},
+            };
+            const CVector2D MOVING[TOTAL_PED_GROUP_MEMBERS]{
+                {-1.f,   0.f}, { 1.f,   0.f}, { 0.f, -1.25f}, {-1.25f, -1.25f},
+                { 1.25f, -1.25f}, { 0.f, -2.5f}, {-1.f, -2.5f}, { 1.f, -2.5f},
+            };
+            auto& offsets = CTaskComplexFollowLeaderInFormation::ms_offsets;
+            for (auto i = 0u; i < offsets.Offsets.size(); i++) {
+                offsets.Offsets[i]       = STANDING[i];
+                offsets.MovingOffsets[i] = MOVING[i];
+            }
+            offsets.Scale = 1.f;
             return true;
         }
         break;

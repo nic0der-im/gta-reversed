@@ -64,7 +64,9 @@ void CColModel::MakeMultipleAlloc() {
     assert(colData);
 
     colData->Copy(*m_pColData);
-    delete m_pColData;
+    // The single-allocation buffer comes from `CMemoryMgr::Malloc` (see `AllocateData(int32)`),
+    // so it must be released by the same allocator; `CCollisionData` has no destructor.
+    CMemoryMgr::Free(m_pColData);
 
     m_bIsSingleColDataAlloc = false;
     m_pColData = colData;

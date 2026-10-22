@@ -59,6 +59,43 @@
 #include <eBoneTag.h>
 #include <SearchLight.h>
 
+#include <TaskTypes/TaskSimpleDuck.h>
+#include <TaskTypes/TaskSimpleSay.h>
+#include <TaskTypes/TaskSimpleShakeFist.h>
+#include <TaskTypes/TaskSimpleCower.h>
+#include <TaskTypes/TaskSimpleHandsUp.h>
+#include <TaskTypes/TaskSimpleLookAbout.h>
+#include <TaskTypes/TaskSimpleScratchHead.h>
+#include <TaskTypes/TaskSimpleTired.h>
+#include <TaskTypes/TaskSimpleDie.h>
+#include <TaskTypes/TaskSimpleGunControl.h>
+#include <TaskTypes/TaskSimpleThrowControl.h>
+#include <TaskTypes/TaskSimpleAffectSecondaryBehaviour.h>
+#include <TaskTypes/TaskSimpleClearLookAt.h>
+#include <TaskTypes/TaskSimpleGangDriveBy.h>
+#include <TaskTypes/TaskSimpleRunAnim.h>
+#include <TaskTypes/TaskSimpleSwim.h>
+#include <TaskTypes/TaskSimpleSetCharDecisionMaker.h>
+#include <TaskTypes/TaskSimpleSetCharIgnoreWeaponRangeFlag.h>
+#include <TaskTypes/TaskSimpleSetKindaStayInSamePlace.h>
+#include <TaskTypes/TaskSimpleTogglePedThreatScanner.h>
+#include <TaskTypes/TaskSimpleTriggerLookAt.h>
+#include <TaskTypes/TaskComplexJump.h>
+#include <TaskTypes/TaskComplexClimb.h>
+#include <TaskTypes/TaskComplexArrestPed.h>
+#include <TaskTypes/TaskComplexFallAndGetUp.h>
+#include <TaskTypes/TaskComplexFleePoint.h>
+#include <TaskTypes/TaskComplexFleeEntity.h>
+#include <TaskTypes/TaskComplexSmartFleeEntity.h>
+#include <TaskTypes/TaskComplexSmartFleePoint.h>
+#include <TaskTypes/TaskComplexFollowPedFootsteps.h>
+#include <TaskTypes/TaskComplexGoToPointShooting.h>
+#include <TaskTypes/TaskComplexGoToPointAiming.h>
+#include <TaskTypes/TaskComplexEvasiveDiveAndGetUp.h>
+#include <TaskTypes/TaskComplexSitDownThenIdleThenStandUp.h>
+#include <WeaponInfo.h>
+#include <Scripts/Scripted2dEffects.h>
+
 using namespace notsa::script;
 /*!
 * Various character (ped) commands
@@ -3840,21 +3877,6 @@ auto DeleteChar(CPed* ped) {
 }
 
 /*
- * @opcode 06EE
- * @command IS_GROUP_MEMBER
- * @class Char
- * @method IsGroupMember
- * 
- * @brief Returns true if the character is a member of the specified group
- * 
- * @param {Char} self
- * @param {Group} handle
- */
-//bool IsGroupMember(CPed& self, CGroup& handle) {
-    //NOTSA_UNREACHABLE("Not implemented");
-//}
-
-/*
  * @opcode 0646
  * @command GET_SEQUENCE_PROGRESS
  * @class Char
@@ -4121,36 +4143,6 @@ auto RemoveWeaponFromChar(CPed& ped, eWeaponType weaponType) {
  * @param {bool} damageArmour
  */
 //void DamageChar(CPed& self, int32 amount, bool damageArmour) {
-    //NOTSA_UNREACHABLE("Not implemented");
-//}
-
-/*
- * @opcode 074E
- * @command SET_INFORM_RESPECTED_FRIENDS
- * @class Char
- * @method SetInformRespectedFriends
- * 
- * @brief 
- * 
- * @param {Char} self
- * @param {float} radius
- * @param {int} _p3
- */
-//void SetInformRespectedFriends(CPed& self, float radius, int32 _p3) {
-    //NOTSA_UNREACHABLE("Not implemented");
-//}
-
-/*
- * @opcode 0647
- * @command CLEAR_LOOK_AT
- * @class Char
- * @method ClearLookAt
- * 
- * @brief Clears the char's look task, making them stop looking at whatever they were assigned to look at
- * 
- * @param {Char} self
- */
-//void ClearLookAt(CPed& self) {
     //NOTSA_UNREACHABLE("Not implemented");
 //}
 
@@ -5224,6 +5216,1008 @@ auto GetRandomCharInAreaOffsetNoSave(CRunningScript& S, CVector pos, CVector rad
     }
     return nullptr;
 }
+
+/*
+ * @opcode 06EE
+ * @command IS_GROUP_MEMBER
+ * @class Char
+ * @method IsGroupMember
+ *
+ * @brief Returns true if the character is a member of the specified group
+ *
+ * @param {Char} self
+ * @param {Group} handle
+ */
+auto IsGroupMember(CPed& ped, int32 groupHandle) {
+    const auto groupIdx = CTheScripts::GetActualScriptThingIndex(groupHandle, SCRIPT_THING_PED_GROUP);
+    if (groupIdx < 0 || groupIdx >= (int32)(CPedGroups::ms_activeGroups.size())) {
+        return false;
+    }
+    if (!CPedGroups::ms_activeGroups[groupIdx]) {
+        return false;
+    }
+    return CPedGroups::ms_groups[groupIdx].GetMembership().IsMember(&ped);
+}
+
+/*
+ * @opcode 0647
+ * @command CLEAR_LOOK_AT
+ * @class Char
+ * @method ClearLookAt
+ *
+ * @brief Clears the char's look task, making them stop looking at whatever they were assigned to look at
+ *
+ * @param {Char} self
+ */
+auto ClearLookAt(CRunningScript& S, eScriptCommands command, int32 pedHandle) {
+    if (pedHandle == -1) {
+        CTaskSequences::AddTaskToActiveSequence(new CTaskSimpleClearLookAt{});
+        return;
+    }
+
+    CPed* const ped = GetPedPool()->GetAtRef(pedHandle);
+    if (ped && g_ikChainMan.IsLooking(ped)) {
+        g_ikChainMan.AbortLookAt(ped, 500);
+    }
+}
+
+/*
+ * @opcode 074E
+ * @command SET_INFORM_RESPECTED_FRIENDS
+ * @class Char
+ * @method SetInformRespectedFriends
+ *
+ * @brief Sets the ranges used to find respected friends to inform about events
+ *
+ * @param {Char} self
+ * @param {float} radius
+ * @param {float} hearingRange
+ */
+auto SetInformRespectedFriends(CPed& ped, float radius, float hearingRange) {
+    ped.GetIntelligence()->SetSeeingRange(radius);      // `CPedIntelligence::m_fSeeingRange`
+    ped.GetIntelligence()->SetHearingRange(hearingRange); // `CPedIntelligence::m_fHearingRange`
+}
+
+/*
+ * @opcode 07BC
+ * @command TASK_SET_CHAR_DECISION_MAKER
+ * @class DecisionMakerChar
+ * @method SetCharDecisionMaker
+ *
+ * @brief Sets the character's decision maker
+ *
+ * @param {Char} char_
+ * @param {DecisionMakerChar} handle
+ */
+auto TaskSetCharDecisionMaker(CRunningScript& S, eScriptCommands command, int32 pedHandle, int32 dmHandle) {
+    const auto dmIdx = dmHandle != -1
+        ? CTheScripts::GetActualScriptThingIndex(dmHandle, SCRIPT_THING_DECISION_MAKER)
+        : -1;
+
+    if (pedHandle == -1) {
+        S.GivePedScriptedTask(pedHandle, new CTaskSimpleSetCharDecisionMaker{ (uint32)(dmIdx) }, (int32)(command));
+    } else if (CPed* const ped = GetPedPool()->GetAtRef(pedHandle)) {
+        ped->GetIntelligence()->SetPedDecisionMakerType(dmIdx);
+    }
+}
+
+/*
+ * @opcode 07DD
+ * @command SET_CHAR_SHOOT_RATE
+ * @class Char
+ * @method SetShootRate
+ *
+ * @brief Sets how often the character shoots (Percentage)
+ *
+ * @param {Char} self
+ * @param {int} rate
+ */
+auto SetCharShootRate(CPed& ped, int32 rate) {
+    ped.SetWeaponShootingRange((uint8)(rate));
+}
+
+/*
+ * @opcode 08AD
+ * @command SET_CHAR_HAS_USED_ENTRY_EXIT
+ * @class Char
+ * @method SetHasUsedEntryExit
+ *
+ * @brief Makes the character use the entry/exit nearest to the given position
+ *
+ * @param {Char} self
+ * @param {Vector2D} pos
+ * @param {float} range
+ */
+auto SetCharHasUsedEntryExit(CPed& ped, CVector2D pos, float range) {
+    const auto enexIdx = CEntryExitManager::FindNearestEntryExit(pos, range, -1);
+    CEntryExit* const enex = enexIdx >= 0 ? CEntryExitManager::GetPool()->GetAt(enexIdx) : nullptr;
+    if (!enex) {
+        return;
+    }
+
+    // Pair the entry with its exit (Retail does this on every call)
+    CEntryExit* used = enex;
+    if (enex->m_pLink) {
+        enex->m_pLink->m_pLink = enex;
+        used = enex->m_pLink;
+    }
+
+    // TODO(re): Retail also copies `used->m_nArea` into an as-of-yet unidentified byte field of `CPed`
+    //           (offset `0x2F`) - It's not named in this project's `CPed` layout.
+    ped.m_pEnex = used->m_nArea != 0 ? enex : nullptr;
+
+    if (ped.IsPlayer()) {
+        CEntryExitManager::ms_entryExitStackPosn = 0;
+        CEntryExitManager::AddEntryExitToStack(enex);
+        if (used->m_nSkyColor == 0) {
+            CTimeCycle::StopExtraColour(false);
+        } else {
+            CTimeCycle::StartExtraColour(used->m_nSkyColor - 1, false);
+        }
+    }
+}
+
+/*
+ * @opcode 0713
+ * @command TASK_DRIVE_BY
+ * @class Task
+ * @method DriveBy
+ * @static
+ *
+ * @brief Makes the character drive by the target
+ *
+ * @param {Char} char_
+ * @param {Char} targetChar
+ * @param {Car} targetCar
+ * @param {Vector} targetPos
+ * @param {float} abortRange
+ * @param {int} drivebyStyle
+ * @param {bool} seatRHS
+ * @param {int} frequency
+ */
+auto TaskDriveBy(CRunningScript& S, eScriptCommands command, int32 pedHandle, int32 targetPedHandle, int32 targetVehicleHandle, CVector targetPos, float abortRange, int32 drivebyStyle, bool seatRHS, int32 frequency) {
+    CEntity* target{};
+    if (targetPedHandle >= 0) {
+        target = GetPedPool()->GetAtRef(targetPedHandle);
+    }
+    if (targetVehicleHandle >= 0) {
+        target = GetVehiclePool()->GetAtRef(targetVehicleHandle);
+    }
+
+    if (pedHandle != -1) {
+        if (CPed* const ped = GetPedPool()->GetAtRef(pedHandle)) {
+            CTask* const activeTask = ped->GetIntelligence()->GetTaskManager().GetActiveTask();
+            if (activeTask
+                && activeTask->GetTaskType() == TASK_SIMPLE_GANG_DRIVEBY
+                && static_cast<CTaskSimpleGangDriveBy*>(activeTask)->m_pTargetEntity == target
+            ) {
+                return; // Already drive-by-ing this target
+            }
+        }
+    }
+
+    auto* const task = new CTaskSimpleGangDriveBy{ target, &targetPos, abortRange, (int8)(frequency), (eDrivebyStyle)(drivebyStyle), seatRHS };
+    task->m_bFromScriptCommand = true;
+    S.GivePedScriptedTask(pedHandle, task, (int32)(command));
+}
+
+/*
+ * @opcode 0668
+ * @command TASK_SHOOT_AT_COORD
+ * @class Task
+ * @method ShootAtCoord
+ * @static
+ *
+ * @brief Makes the character shoot at the given position
+ *
+ * @param {Char} char_
+ * @param {Vector} pos
+ * @param {int} duration
+ */
+auto TaskShootAtCoord(CRunningScript& S, eScriptCommands command, int32 pedHandle, CVector pos, int32 duration) {
+    auto makeGunControlTask = [&] {
+        return new CTaskSimpleGunControl{ nullptr, pos, CVector{}, eGunCommand::FIREBURST, 5, duration };
+    };
+
+    CPed* const ped = pedHandle != -1 ? GetPedPool()->GetAtRef(pedHandle) : nullptr;
+    if (ped && CWeaponInfo::GetWeaponInfo(ped->GetActiveWeapon().m_Type)->flags.bThrow) {
+        S.GivePedScriptedTask(pedHandle, new CTaskSimpleThrowControl{ nullptr, &pos }, (int32)(command));
+        return;
+    }
+    S.GivePedScriptedTask(pedHandle, makeGunControlTask(), (int32)(command));
+}
+
+/*
+ * @opcode 05DD
+ * @command TASK_SMART_FLEE_CHAR
+ * @class Task
+ * @method SmartFleeChar
+ * @static
+ *
+ * @brief Makes the character smartly flee from the other character
+ *
+ * @param {Char} char_
+ * @param {Char} fleeFrom
+ * @param {float} safeDistance
+ * @param {int} fleeTime
+ */
+auto TaskSmartFleeChar(CRunningScript& S, eScriptCommands command, int32 pedHandle, CPed& fleeFrom, float safeDistance, int32 fleeTime) {
+    // TODO(re): Retail reads the position change tolerance from the global at `0xC18CF0` (runtime value, not in the exe image).
+    S.GivePedScriptedTask(pedHandle, new CTaskComplexSmartFleeEntity{ &fleeFrom, true, safeDistance, fleeTime, 1'000, 1.f, PEDMOVE_SPRINT }, (int32)(command));
+}
+
+/*
+ * @opcode 05BE
+ * @command TASK_DIE
+ * @class Task
+ * @method Die
+ * @static
+ *
+ * @brief Makes the character die
+ *
+ * @param {Char} char_
+ */
+auto TaskDie(CRunningScript& S, eScriptCommands command, int32 pedHandle) {
+    S.GivePedScriptedTask(pedHandle, new CTaskComplexDie{ WEAPON_UNARMED, ANIM_GROUP_DEFAULT, (AnimationId)(0xF), 4.f }, (int32)(command));
+}
+
+/*
+ * @opcode 05C5
+ * @command TASK_DUCK
+ * @class Task
+ * @method Duck
+ * @static
+ *
+ * @brief Makes the character duck
+ *
+ * @param {Char} char_
+ * @param {int} time (0 = until told otherwise, -1 = 20 seconds, -2 = forever)
+ */
+auto TaskDuck(CRunningScript& S, eScriptCommands command, int32 pedHandle, int32 time) {
+    const auto lengthOfDuck = time == -2
+        ? 0
+        : (time == -1 ? 20'000 : time);
+    S.GivePedScriptedTask(pedHandle, new CTaskSimpleDuck{ DUCK_STANDALONE, (uint16)(lengthOfDuck), -1 }, (int32)(command));
+}
+
+/*
+ * @opcode 085B
+ * @command TASK_KINDA_STAY_IN_SAME_PLACE
+ * @class Task
+ * @method KindaStayInSamePlace
+ * @static
+ *
+ * @brief Sets whether the character kinda stays in the same place (Won't seek out opponents)
+ *
+ * @param {Char} char_
+ * @param {bool} state
+ */
+auto TaskKindaStayInSamePlace(CRunningScript& S, eScriptCommands command, int32 pedHandle, bool state) {
+    if (pedHandle == -1) {
+        CTaskSequences::AddTaskToActiveSequence(new CTaskSimpleSetKindaStayInSamePlace{ state });
+    } else if (CPed* const ped = GetPedPool()->GetAtRef(pedHandle)) {
+        ped->bKindaStayInSamePlace = state;
+    }
+}
+
+/*
+ * @opcode 0667
+ * @command TASK_AIM_GUN_AT_COORD
+ * @class Task
+ * @method AimGunAtCoord
+ * @static
+ *
+ * @brief Makes the character aim their gun at the given position
+ *
+ * @param {Char} char_
+ * @param {Vector} pos
+ * @param {int} duration
+ */
+auto TaskAimGunAtCoord(CRunningScript& S, eScriptCommands command, int32 pedHandle, CVector pos, int32 duration) {
+    S.GivePedScriptedTask(pedHandle, new CTaskSimpleGunControl{ nullptr, pos, CVector{}, eGunCommand::NONE, 500, duration }, (int32)(command));
+}
+
+/*
+ * @opcode 0637
+ * @command TASK_GO_TO_COORD_WHILE_SHOOTING
+ * @class Task
+ * @method GoToCoordWhileShooting
+ * @static
+ *
+ * @brief Makes the character go to the given position while shooting at the target
+ *
+ * @param {Char} char_
+ * @param {Vector} pos
+ * @param {int} moveState
+ * @param {float} radius
+ * @param {float} slowDownDist
+ * @param {Char} target
+ */
+auto TaskGoToCoordWhileShooting(CRunningScript& S, eScriptCommands command, int32 pedHandle, CVector pos, eMoveState moveState, float radius, float slowDownDist, int32 targetHandle) {
+    CPed* const target = targetHandle >= 0 ? GetPedPool()->GetAtRef(targetHandle) : nullptr;
+    S.GivePedScriptedTask(pedHandle, new CTaskComplexGoToPointShooting{ moveState, pos, target, CVector{}, radius, slowDownDist }, (int32)(command));
+}
+
+/*
+ * @opcode 0688
+ * @command TASK_TOGGLE_PED_THREAT_SCANNER
+ * @class Task
+ * @method TogglePedThreatScanner
+ * @static
+ *
+ * @brief Enables/disables the character's threat scanner
+ *
+ * @param {Char} char_
+ * @param {bool} scanInScriptPed
+ * @param {bool} scanInVehicle
+ * @param {bool} scanInScriptedTask
+ */
+auto TaskTogglePedThreatScanner(CRunningScript& S, eScriptCommands command, int32 pedHandle, bool scanInScriptPed, bool scanInVehicle, bool scanInScriptedTask) {
+    if (pedHandle == -1) {
+        CTaskSequences::AddTaskToActiveSequence(new CTaskSimpleTogglePedThreatScanner{ scanInScriptPed, scanInVehicle, scanInScriptedTask });
+    } else if (CPed* const ped = GetPedPool()->GetAtRef(pedHandle)) {
+        auto* const task = new CTaskSimpleTogglePedThreatScanner{ scanInScriptPed, scanInVehicle, scanInScriptedTask };
+        task->ProcessPed(ped);
+        delete task;
+    }
+}
+
+/*
+ * @opcode 05DE
+ * @command TASK_WANDER_STANDARD
+ * @class Task
+ * @method WanderStandard
+ * @static
+ *
+ * @brief Makes the character wander around
+ *
+ * @param {Char} char_
+ */
+auto TaskWanderStandard(CRunningScript& S, eScriptCommands command, int32 pedHandle) {
+    S.GivePedScriptedTask(
+        pedHandle,
+        new CTaskComplexWanderStandard{ PEDMOVE_WALK, (uint8)(CGeneral::GetRandomNumberInRange(0, 8)), true },
+        (int32)(command)
+    );
+}
+
+/*
+ * @opcode 06A9
+ * @command TASK_LOOK_AT_COORD
+ * @class Task
+ * @method LookAtCoord
+ * @static
+ *
+ * @brief Makes the character look at the given position
+ *
+ * @param {Char} observer
+ * @param {Vector} pos
+ * @param {int} time (-1 = 20s, -2 = forever)
+ */
+auto TaskLookAtCoord(CRunningScript& S, eScriptCommands command, int32 pedHandle, CVector pos, int32 time) {
+    time = time == -1 ? 20'000 : (time == -2 ? 0x7FFFFFFF : time);
+
+    if (pedHandle != -1) {
+        g_ikChainMan.LookAt(
+            "COMMAND_TASK_LOOK_AT_COORD",
+            GetPedPool()->GetAtRef(pedHandle),
+            nullptr,
+            time,
+            BONE_UNKNOWN,
+            &pos,
+            false,
+            0.25f,
+            500,
+            6,
+            true
+        );
+    } else {
+        // Look-at used inside of a task sequence (No ped to give the task to)
+        // TODO(re): Retail allocates a `CTaskSimpleTriggerLookAt` here, which is still abstract in this project.
+        CTaskSequences::AddTaskToActiveSequence(
+            new CTaskSimpleIKLookAt{ "COMMAND_TASK_LOOK_AT_COORD", nullptr, time, BONE_UNKNOWN, pos, true, 0.25f, 1'000, 3 }
+        );
+    }
+}
+
+/*
+ * @opcode 05C8
+ * @command TASK_SCRATCH_HEAD
+ * @class Task
+ * @method ScratchHead
+ * @static
+ *
+ * @brief Makes the character scratch their head
+ *
+ * @param {Char} char_
+ */
+auto TaskScratchHead(CRunningScript& S, eScriptCommands command, int32 pedHandle) {
+    S.GivePedScriptedTask(pedHandle, new CTaskSimpleScratchHead{}, (int32)(command));
+}
+
+/*
+ * @opcode 05C4
+ * @command TASK_HANDS_UP
+ * @class Task
+ * @method HandsUp
+ * @static
+ *
+ * @brief Makes the character put their hands up
+ *
+ * @param {Char} char_
+ * @param {int} time (-1 = 20s, -2 = forever)
+ */
+auto TaskHandsUp(CRunningScript& S, eScriptCommands command, int32 pedHandle, int32 time) {
+    S.GivePedScriptedTask(
+        pedHandle,
+        new CTaskSimpleHandsUp{ (uint32)(time == -1 ? 20'000 : (time == -2 ? 0x7FFFFFFF : time)) },
+        (int32)(command)
+    );
+}
+
+/*
+ * @opcode 099F
+ * @command TASK_SET_IGNORE_WEAPON_RANGE_FLAG
+ * @class Char
+ * @method SetIgnoreWeaponRangeFlag
+ *
+ * @brief Sets whether the character ignores weapon range when attacking
+ *
+ * @param {Char} self
+ * @param {bool} ignore
+ */
+auto TaskSetIgnoreWeaponRangeFlag(CRunningScript& S, eScriptCommands command, int32 pedHandle, bool ignore) {
+    if (pedHandle == -1) {
+        S.GivePedScriptedTask(pedHandle, new CTaskSimpleSetCharIgnoreWeaponRangeFlag{ ignore }, (int32)(command));
+    } else if (CPed* const ped = GetPedPool()->GetAtRef(pedHandle)) {
+        ped->bIgnoreWeaponRange = ignore;
+    }
+}
+
+/*
+ * @opcode 078F
+ * @command TASK_CLIMB
+ * @class Task
+ * @method Climb
+ * @static
+ *
+ * @brief Makes the character climb
+ *
+ * @param {Char} char_
+ * @param {bool} usePlayerLaunchForce
+ */
+auto TaskClimb(CRunningScript& S, eScriptCommands command, int32 pedHandle, bool usePlayerLaunchForce) {
+    auto* const task = new CTaskComplexClimb{};
+    task->m_UsePlayerLaunchForce = usePlayerLaunchForce;
+    S.GivePedScriptedTask(pedHandle, task, (int32)(command));
+}
+
+/*
+ * @opcode 05C9
+ * @command TASK_LOOK_ABOUT
+ * @class Task
+ * @method LookAbout
+ * @static
+ *
+ * @brief Makes the character look around
+ *
+ * @param {Char} char_
+ * @param {int} time (-1 = 20s, -2 = forever)
+ */
+auto TaskLookAbout(CRunningScript& S, eScriptCommands command, int32 pedHandle, int32 time) {
+    S.GivePedScriptedTask(
+        pedHandle,
+        new CTaskSimpleLookAbout{ (uint32)(time == -1 ? 20'000 : (time == -2 ? 0x7FFFFFFF : time)) },
+        (int32)(command)
+    );
+}
+
+/*
+ * @opcode 0829
+ * @command TASK_DIE_NAMED_ANIM
+ * @class Task
+ * @method DieNamedAnim
+ * @static
+ *
+ * @brief Makes the character die with the given animation
+ *
+ * @param {Char} char_
+ * @param {string} animName
+ * @param {string} animBlock
+ * @param {float} blendDelta
+ * @param {bool} useExtractVelocity
+ */
+auto TaskDieNamedAnim(CRunningScript& S, eScriptCommands command, int32 pedHandle, const char* animName, const char* animBlock, float blendDelta, bool useExtractVelocity) {
+    const eAnimationFlags animFlags = useExtractVelocity
+        ? (eAnimationFlags)(ANIMATION_IS_PARTIAL | ANIMATION_CAN_EXTRACT_VELOCITY | ANIMATION_CAN_EXTRACT_X_VELOCITY) // 0xD0
+        : ANIMATION_IS_PARTIAL;                                                                                     // 0x10
+    S.GivePedScriptedTask(pedHandle, new CTaskSimpleDie{ animName, animBlock, animFlags, blendDelta, 1.f }, (int32)(command));
+}
+
+/*
+ * @opcode 074D
+ * @command TASK_SHOOT_AT_CHAR
+ * @class Task
+ * @method ShootAtChar
+ * @static
+ *
+ * @brief Makes the character shoot at the other character
+ *
+ * @param {Char} char_
+ * @param {Char} target
+ * @param {int} duration
+ */
+auto TaskShootAtChar(CRunningScript& S, eScriptCommands command, int32 pedHandle, CPed& target, int32 duration) {
+    S.GivePedScriptedTask(pedHandle, new CTaskSimpleGunControl{ &target, CVector{}, CVector{}, eGunCommand::FIREBURST, 1, duration }, (int32)(command));
+}
+
+/*
+ * @opcode 0635
+ * @command TASK_AIM_GUN_AT_CHAR
+ * @class Task
+ * @method AimGunAtChar
+ * @static
+ *
+ * @brief Makes the character aim their gun at the other character
+ *
+ * @param {Char} char_
+ * @param {Char} target
+ * @param {int} duration
+ */
+auto TaskAimGunAtChar(CRunningScript& S, eScriptCommands command, int32 pedHandle, CPed& target, int32 duration) {
+    S.GivePedScriptedTask(pedHandle, new CTaskSimpleGunControl{ &target, CVector{}, CVector{}, eGunCommand::NONE, 1, duration }, (int32)(command));
+}
+
+/*
+ * @opcode 05DB
+ * @command TASK_FLEE_CHAR
+ * @class Task
+ * @method FleeChar
+ * @static
+ *
+ * @brief Makes the character flee from the other character
+ *
+ * @param {Char} char_
+ * @param {Char} fleeFrom
+ * @param {float} safeDistance
+ * @param {int} fleeTime
+ */
+auto TaskFleeChar(CRunningScript& S, eScriptCommands command, int32 pedHandle, CPed& fleeFrom, float safeDistance, int32 fleeTime) {
+    S.GivePedScriptedTask(pedHandle, new CTaskComplexFleeEntity{ &fleeFrom, true, safeDistance, fleeTime, 1'000, 1.f }, (int32)(command));
+}
+
+/*
+ * @opcode 05DA
+ * @command TASK_FLEE_POINT
+ * @class Task
+ * @method FleePoint
+ * @static
+ *
+ * @brief Makes the character flee from the given position
+ *
+ * @param {Char} char_
+ * @param {Vector} point
+ * @param {float} safeDistance
+ * @param {int} fleeTime
+ */
+auto TaskFleePoint(CRunningScript& S, eScriptCommands command, int32 pedHandle, CVector point, float safeDistance, int32 fleeTime) {
+    S.GivePedScriptedTask(pedHandle, new CTaskComplexFleePoint{ point, true, safeDistance, fleeTime }, (int32)(command));
+}
+
+/*
+ * @opcode 05BC
+ * @command TASK_JUMP
+ * @class Task
+ * @method Jump
+ * @static
+ *
+ * @brief Makes the character jump
+ *
+ * @param {Char} char_
+ * @param {bool} usePlayerLaunchForce
+ */
+auto TaskJump(CRunningScript& S, eScriptCommands command, int32 pedHandle, bool usePlayerLaunchForce) {
+    auto* const task = new CTaskComplexJump{ CTaskComplexJump::eForceClimb::OK };
+    task->m_UsePlayerLaunchForce = usePlayerLaunchForce;
+    S.GivePedScriptedTask(pedHandle, task, (int32)(command));
+}
+
+/*
+ * @opcode 06B0
+ * @command TASK_SIT_DOWN
+ * @class Task
+ * @method SitDown
+ * @static
+ *
+ * @brief Makes the character sit down
+ *
+ * @param {Char} char_
+ * @param {int} time (-1 = 20 seconds)
+ */
+auto TaskSitDown(CRunningScript& S, eScriptCommands command, int32 pedHandle, int32 time) {
+    S.GivePedScriptedTask(
+        pedHandle,
+        new CTaskComplexSitDownThenIdleThenStandUp{ time == -1 ? 20'000 : time, false, false },
+        (int32)(command)
+    );
+}
+
+/*
+ * @opcode 06E3
+ * @command TASK_WEAPON_ROLL
+ * @class Task
+ * @method WeaponRoll
+ * @static
+ *
+ * @brief Makes the character roll
+ *
+ * @param {Char} char_
+ * @param {bool} backwards
+ */
+auto TaskWeaponRoll(CRunningScript& S, eScriptCommands command, int32 pedHandle, bool backwards) {
+    S.GivePedScriptedTask(
+        pedHandle,
+        new CTaskSimpleRunAnim{ ANIM_GROUP_DEFAULT, backwards ? ANIM_ID_CROUCH_ROLL_R : ANIM_ID_CROUCH_ROLL_L, 4.f },
+        (int32)(command)
+    );
+}
+
+/*
+ * @opcode 05C0
+ * @command TASK_LOOK_AT_VEHICLE
+ * @class Task
+ * @method LookAtVehicle
+ * @static
+ *
+ * @brief Makes the character look at the vehicle
+ *
+ * @param {Char} observer
+ * @param {Car} vehicle
+ * @param {int} time (-1 = 20s, -2 = forever)
+ */
+auto TaskLookAtVehicle(CRunningScript& S, eScriptCommands command, int32 pedHandle, CVehicle& vehicle, int32 time) {
+    time = time == -1 ? 20'000 : (time == -2 ? 0x7FFFFFFF : time);
+
+    if (pedHandle != -1) {
+        g_ikChainMan.LookAt(
+            "COMMAND_TASK_LOOK_AT_VEHICLE",
+            GetPedPool()->GetAtRef(pedHandle),
+            &vehicle,
+            time,
+            BONE_UNKNOWN,
+            nullptr,
+            false,
+            0.25f,
+            500,
+            6,
+            true
+        );
+    } else {
+        // Look-at used inside of a task sequence (No ped to give the task to)
+        // TODO(re): Retail allocates a `CTaskSimpleTriggerLookAt` here, which is still incomplete in this project.
+        CTaskSequences::AddTaskToActiveSequence(
+            new CTaskSimpleIKLookAt{ "COMMAND_TASK_LOOK_AT_VEHICLE", &vehicle, time, BONE_UNKNOWN, CVector{}, true, 0.25f, 1'000, 3 }
+        );
+    }
+}
+
+/*
+ * @opcode 05DC
+ * @command TASK_SMART_FLEE_POINT
+ * @class Task
+ * @method SmartFleePoint
+ * @static
+ *
+ * @brief Makes the character smartly flee from the given position
+ *
+ * @param {Char} char_
+ * @param {Vector} point
+ * @param {float} safeDistance
+ * @param {int} fleeTime
+ */
+auto TaskSmartFleePoint(CRunningScript& S, eScriptCommands command, int32 pedHandle, CVector point, float safeDistance, int32 fleeTime) {
+    S.GivePedScriptedTask(pedHandle, new CTaskComplexSmartFleePoint{ point, true, safeDistance, fleeTime }, (int32)(command));
+}
+
+/*
+ * @opcode 0850
+ * @command TASK_FOLLOW_FOOTSTEPS
+ * @class Task
+ * @method FollowFootsteps
+ * @static
+ *
+ * @brief Makes the character follow the footsteps of the other character
+ *
+ * @param {Char} char_
+ * @param {Char} target
+ */
+auto TaskFollowFootsteps(CRunningScript& S, eScriptCommands command, int32 pedHandle, CPed& target) {
+    S.GivePedScriptedTask(pedHandle, new CTaskComplexFollowPedFootsteps{ &target }, (int32)(command));
+}
+
+/*
+ * @opcode 05BB
+ * @command TASK_FALL_AND_GET_UP
+ * @class Task
+ * @method FallAndGetUp
+ * @static
+ *
+ * @brief Makes the character fall and get up
+ *
+ * @param {Char} char_
+ * @param {int} direction
+ * @param {int} fallDownTime
+ */
+auto TaskFallAndGetUp(CRunningScript& S, eScriptCommands command, int32 pedHandle, int32 direction, int32 fallDownTime) {
+    S.GivePedScriptedTask(pedHandle, new CTaskComplexFallAndGetUp{ direction, fallDownTime }, (int32)(command));
+}
+
+/*
+ * @opcode 074C
+ * @command TASK_USE_ATTRACTOR
+ * @class Task
+ * @method UseAttractor
+ * @static
+ *
+ * @brief Makes the character use the given attractor
+ *
+ * @param {Char} char_
+ * @param {int} attractor
+ */
+auto TaskUseAttractor(CRunningScript& S, eScriptCommands command, int32 pedHandle, int32 attractorHandle) {
+    const auto idx = CTheScripts::GetActualScriptThingIndex(attractorHandle, SCRIPT_THING_2D_EFFECT);
+    if (idx < 0 || idx >= (int32)(CScripted2dEffects::ms_effects.size())) {
+        return;
+    }
+    S.GivePedScriptedTask(pedHandle, new CTaskComplexUseEffect{ CScripted2dEffects::GetEffect(idx), nullptr }, (int32)(command));
+}
+
+/*
+ * @opcode 07E1
+ * @command TASK_SWIM_TO_COORD
+ * @class Task
+ * @method SwimToCoord
+ * @static
+ *
+ * @brief Makes the character swim to the given position
+ *
+ * @param {Char} char_
+ * @param {Vector} pos
+ */
+auto TaskSwimToCoord(CRunningScript& S, eScriptCommands command, int32 pedHandle, CVector pos) {
+    CPed* const ped = pedHandle != -1 ? GetPedPool()->GetAtRef(pedHandle) : nullptr;
+    if (ped) {
+        if (CTaskSimpleSwim* const swim = ped->GetIntelligence()->GetTaskSwim()) {
+            swim->m_vecPos = pos;
+            return;
+        }
+    }
+    S.GivePedScriptedTask(pedHandle, new CTaskSimpleSwim{ &pos, nullptr }, (int32)(command));
+}
+
+/*
+ * @opcode 0673
+ * @command TASK_DIVE_AND_GET_UP
+ * @class Task
+ * @method DiveAndGetUp
+ * @static
+ *
+ * @brief Makes the character dive in the given direction and get up
+ *
+ * @param {Char} char_
+ * @param {Vector} direction
+ * @param {int} unconsciousTime
+ */
+auto TaskDiveAndGetUp(CRunningScript& S, eScriptCommands command, int32 pedHandle, float directionX, float directionY, int32 unconsciousTime) {
+    CVector direction{ directionX, directionY, 0.f };
+    direction.Normalise();
+    S.GivePedScriptedTask(pedHandle, new CTaskComplexEvasiveDiveAndGetUp{ nullptr, unconsciousTime, direction, true }, (int32)(command));
+}
+
+/*
+ * @opcode 0655
+ * @command TASK_LOOK_AT_OBJECT
+ * @class Task
+ * @method LookAtObject
+ * @static
+ *
+ * @brief Makes the character look at the object
+ *
+ * @param {Char} observer
+ * @param {Object} object
+ * @param {int} time (-1 = 20s, -2 = forever)
+ */
+auto TaskLookAtObject(CRunningScript& S, eScriptCommands command, int32 pedHandle, CObject& object, int32 time) {
+    time = time == -1 ? 20'000 : (time == -2 ? 0x7FFFFFFF : time);
+
+    if (pedHandle != -1) {
+        g_ikChainMan.LookAt(
+            "COMMAND_TASK_LOOK_AT_OBJECT",
+            GetPedPool()->GetAtRef(pedHandle),
+            &object,
+            time,
+            BONE_UNKNOWN,
+            nullptr,
+            false,
+            0.25f,
+            500,
+            6,
+            true
+        );
+    } else {
+        // Look-at used inside of a task sequence (No ped to give the task to)
+        // TODO(re): Retail allocates a `CTaskSimpleTriggerLookAt` here, which is still incomplete in this project.
+        CTaskSequences::AddTaskToActiveSequence(
+            new CTaskSimpleIKLookAt{ "COMMAND_TASK_LOOK_AT_OBJECT", &object, time, BONE_UNKNOWN, CVector{}, true, 0.25f, 1'000, 3 }
+        );
+    }
+}
+
+/*
+ * @opcode 05BD
+ * @command TASK_TIRED
+ * @class Task
+ * @method Tired
+ * @static
+ *
+ * @brief Makes the character act tired
+ *
+ * @param {Char} char_
+ * @param {int} time
+ */
+auto TaskTired(CRunningScript& S, eScriptCommands command, int32 pedHandle, int32 time) {
+    S.GivePedScriptedTask(pedHandle, new CTaskSimpleTired{ (uint32)(time) }, (int32)(command));
+}
+
+/*
+ * @opcode 05C2
+ * @command TASK_SHAKE_FIST
+ * @class Task
+ * @method ShakeFist
+ * @static
+ *
+ * @brief Makes the character shake their fist (Secondary task)
+ *
+ * @param {Char} char_
+ */
+auto TaskShakeFist(CRunningScript& S, eScriptCommands command, int32 pedHandle) {
+    if (pedHandle != -1) {
+        GetPedPool()->GetAtRef(pedHandle)->GetIntelligence()->GetTaskManager().SetTaskSecondary(
+            new CTaskSimpleShakeFist{},
+            TASK_SECONDARY_PARTIAL_ANIM
+        );
+    } else {
+        CTaskSequences::AddTaskToActiveSequence(
+            new CTaskSimpleAffectSecondaryBehaviour{ true, TASK_SECONDARY_PARTIAL_ANIM, new CTaskSimpleShakeFist{} }
+        );
+    }
+}
+
+/*
+ * @opcode 05C1
+ * @command TASK_SAY
+ * @class Task
+ * @method Say
+ * @static
+ *
+ * @brief Makes the character say the given speech
+ *
+ * @param {Char} char_
+ * @param {SpeechId} phrase
+ */
+auto TaskSay(CRunningScript& S, eScriptCommands command, int32 pedHandle, eGlobalSpeechContext phrase) {
+    if (pedHandle != -1) {
+        GetPedPool()->GetAtRef(pedHandle)->GetIntelligence()->GetTaskManager().SetTaskSecondary(
+            new CTaskSimpleSay{ phrase },
+            TASK_SECONDARY_SAY
+        );
+    } else {
+        CTaskSequences::AddTaskToActiveSequence(
+            new CTaskSimpleAffectSecondaryBehaviour{ true, TASK_SECONDARY_SAY, new CTaskSimpleSay{ phrase } }
+        );
+    }
+}
+
+/*
+ * @opcode 05C3
+ * @command TASK_COWER
+ * @class Task
+ * @method Cower
+ * @static
+ *
+ * @brief Makes the character cower
+ *
+ * @param {Char} char_
+ */
+auto TaskCower(CRunningScript& S, eScriptCommands command, int32 pedHandle) {
+    S.GivePedScriptedTask(pedHandle, new CTaskSimpleCower{}, (int32)(command));
+}
+
+/*
+ * @opcode 06C2
+ * @command TASK_GO_TO_COORD_WHILE_AIMING
+ * @class Task
+ * @method GoToCoordWhileAiming
+ * @static
+ *
+ * @brief Makes the character go to the given position while aiming at the target/aim position
+ *
+ * @param {Char} char_
+ * @param {Vector} pos
+ * @param {int} moveState
+ * @param {float} radius
+ * @param {float} slowDownDist
+ * @param {Char} target
+ * @param {Vector} aimPos
+ */
+auto TaskGoToCoordWhileAiming(CRunningScript& S, eScriptCommands command, int32 pedHandle, CVector pos, eMoveState moveState, float radius, float slowDownDist, int32 targetHandle, CVector aimPos) {
+    CPed* const target = targetHandle >= 0 ? GetPedPool()->GetAtRef(targetHandle) : nullptr;
+    S.GivePedScriptedTask(pedHandle, new CTaskComplexGoToPointAiming{ moveState, pos, target, aimPos, radius, slowDownDist }, (int32)(command));
+}
+
+/*
+ * @opcode 06E2
+ * @command TASK_GO_TO_OBJECT
+ * @class Task
+ * @method GoToObject
+ * @static
+ *
+ * @brief Makes the character go to the object
+ *
+ * @param {Char} char_
+ * @param {Object} object
+ * @param {int} time
+ * @param {float} radius
+ */
+auto TaskGoToObject(CRunningScript& S, eScriptCommands command, int32 pedHandle, CObject& object, int32 time, float radius) {
+    S.GivePedScriptedTask(pedHandle, new CTaskComplexSeekEntityStandard{ &object, time, 1'000, radius, 2.f, 2.f, true, true }, (int32)(command));
+}
+
+/*
+ * @opcode 06E4
+ * @command TASK_ARREST_PED
+ * @class Task
+ * @method ArrestPed
+ * @static
+ *
+ * @brief Makes the character arrest the other character
+ *
+ * @param {Char} char_
+ * @param {Char} target
+ */
+auto TaskArrestPed(CRunningScript& S, eScriptCommands command, int32 pedHandle, CPed& target) {
+    S.GivePedScriptedTask(pedHandle, new CTaskComplexArrestPed{ &target }, (int32)(command));
+}
+
+/*
+ * @opcode 0770
+ * @command SET_CHAR_IS_TARGET_PRIORITY
+ * @class Char
+ * @method SetIsTargetPriority
+ *
+ * @brief Sets whether other peds should prioritize targeting this ped
+ *
+ * @param {Char} self
+ * @param {bool} state
+ */
+auto SetCharIsTargetPriority(CPed& ped, bool state) {
+    ped.bThisPedIsATargetPriority = state;
+}
+
+/*
+ * @opcode 0816
+ * @command SET_CHAR_KINDA_STAY_IN_SAME_PLACE
+ * @class Char
+ * @method SetKindaStayInSamePlace
+ *
+ * @brief Sets whether the character stays mostly in the same place (Won't seek out opponents)
+ *
+ * @param {Char} self
+ * @param {bool} state
+ */
+auto SetCharKindaStayInSamePlace(CPed& ped, bool state) {
+    ped.bKindaStayInSamePlace = state;
+}
 }; // namespace
 
 void notsa::script::commands::character::RegisterHandlers() {
@@ -5231,7 +6225,7 @@ void notsa::script::commands::character::RegisterHandlers() {
     REGISTER_COMMAND_HANDLER(COMMAND_ADD_AMMO_TO_CHAR, AddAmmoToChar);
     //REGISTER_COMMAND_HANDLER(COMMAND_ADD_ARMOUR_TO_CHAR, AddArmourToChar);
     REGISTER_COMMAND_HANDLER(COMMAND_ARE_ANY_CHARS_NEAR_CHAR, AreAnyCharsNearChar);
-    //REGISTER_COMMAND_HANDLER(COMMAND_CLEAR_LOOK_AT, ClearLookAt);
+    REGISTER_COMMAND_HANDLER(COMMAND_CLEAR_LOOK_AT, ClearLookAt);
     REGISTER_COMMAND_HANDLER(COMMAND_CREATE_CHAR, CreateChar);
     REGISTER_COMMAND_HANDLER(COMMAND_CREATE_CHAR_AS_PASSENGER, CreateCharAsPassenger);
     REGISTER_COMMAND_HANDLER(COMMAND_CREATE_RANDOM_CHAR, CreateRandomChar);
@@ -5252,7 +6246,7 @@ void notsa::script::commands::character::RegisterHandlers() {
     //REGISTER_COMMAND_HANDLER(COMMAND_IS_CHAR_STOPPED_IN_ANGLED_AREA_IN_CAR_2D, IsCharStoppedInAngledAreaInCar2d);
     //REGISTER_COMMAND_HANDLER(COMMAND_IS_CHAR_STOPPED_IN_ANGLED_AREA_IN_CAR_3D, IsCharStoppedInAngledAreaInCar3d);
     //REGISTER_COMMAND_HANDLER(COMMAND_IS_GROUP_LEADER, IsGroupLeader);
-    //REGISTER_COMMAND_HANDLER(COMMAND_IS_GROUP_MEMBER, IsGroupMember);
+    REGISTER_COMMAND_HANDLER(COMMAND_IS_GROUP_MEMBER, IsGroupMember);
     //REGISTER_COMMAND_HANDLER(COMMAND_LISTEN_TO_PLAYER_GROUP_COMMANDS, ListenToPlayerGroupCommands);
     //REGISTER_COMMAND_HANDLER(COMMAND_LOCATE_CHAR_IN_CAR_OBJECT_2D, LocateCharInCarObject2d);
     //REGISTER_COMMAND_HANDLER(COMMAND_LOCATE_CHAR_IN_CAR_OBJECT_3D, LocateCharInCarObject3d);
@@ -5264,7 +6258,7 @@ void notsa::script::commands::character::RegisterHandlers() {
     //REGISTER_COMMAND_HANDLER(COMMAND_SET_DEATH_WEAPONS_PERSIST, SetDeathWeaponsPersist);
     //REGISTER_COMMAND_HANDLER(COMMAND_SET_FOLLOW_NODE_THRESHOLD_DISTANCE, SetFollowNodeThresholdDistance);
     //REGISTER_COMMAND_HANDLER(COMMAND_SET_HEADING_LIMIT_FOR_ATTACHED_CHAR, SetHeadingLimitForAttachedChar);
-    //REGISTER_COMMAND_HANDLER(COMMAND_SET_INFORM_RESPECTED_FRIENDS, SetInformRespectedFriends);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_INFORM_RESPECTED_FRIENDS, SetInformRespectedFriends);
     //REGISTER_COMMAND_HANDLER(COMMAND_SET_NEXT_DESIRED_MOVE_STATE, SetNextDesiredMoveState);
     //REGISTER_COMMAND_HANDLER(COMMAND_SET_SENSE_RANGE, SetSenseRange);
     //REGISTER_COMMAND_HANDLER(COMMAND_SET_SWIM_SPEED, SetSwimSpeed);
@@ -5446,7 +6440,6 @@ void notsa::script::commands::character::RegisterHandlers() {
     REGISTER_COMMAND_HANDLER(COMMAND_TASK_GOTO_CHAR_OFFSET, TaskGotoCharOffset);
     REGISTER_COMMAND_HANDLER(COMMAND_HIDE_CHAR_WEAPON_FOR_SCRIPTED_CUTSCENE, HideCharWeaponForScriptedCutscene);
     REGISTER_COMMAND_HANDLER(COMMAND_TASK_TURN_CHAR_TO_FACE_COORD, TaskTurnCharToFaceCoord);
-    //REGISTER_COMMAND_HANDLER(COMMAND_TASK_CHAR_ARREST_CHAR, TaskCharArrestChar);
     REGISTER_COMMAND_HANDLER(COMMAND_CLEAR_CHAR_DECISION_MAKER_EVENT_RESPONSE, ClearCharDecisionMakerEventResponse);
     REGISTER_COMMAND_HANDLER(COMMAND_ADD_CHAR_DECISION_MAKER_EVENT_RESPONSE, AddCharDecisionMakerEventResponse);
     //REGISTER_COMMAND_HANDLER(COMMAND_TASK_WARP_CHAR_INTO_CAR_AS_DRIVER, TaskWarpCharIntoCarAsDriver);
@@ -5456,7 +6449,7 @@ void notsa::script::commands::character::RegisterHandlers() {
     //REGISTER_COMMAND_HANDLER(COMMAND_HAS_CHAR_BEEN_ARRESTED, HasCharBeenArrested);
     REGISTER_COMMAND_HANDLER(COMMAND_IS_CHAR_RESPONDING_TO_EVENT, IsCharRespondingToEvent);
     REGISTER_COMMAND_HANDLER(COMMAND_TASK_FLEE_CHAR_ANY_MEANS, TaskFleeCharAnyMeans);
-    //REGISTER_COMMAND_HANDLER(COMMAND_SET_CHAR_IS_TARGET_PRIORITY, SetCharIsTargetPriority);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_CHAR_IS_TARGET_PRIORITY, SetCharIsTargetPriority);
     REGISTER_COMMAND_HANDLER(COMMAND_SET_CHAR_RELATIONSHIP, SetCharRelationship);
     //REGISTER_COMMAND_HANDLER(COMMAND_CLEAR_CHAR_RELATIONSHIP, ClearCharRelationship);
     //REGISTER_COMMAND_HANDLER(COMMAND_CLEAR_ALL_CHAR_RELATIONSHIPS, ClearAllCharRelationships);
@@ -5464,18 +6457,18 @@ void notsa::script::commands::character::RegisterHandlers() {
     REGISTER_COMMAND_HANDLER(COMMAND_TASK_GOTO_CHAR_AIMING, TaskGotoCharAiming);
     REGISTER_COMMAND_HANDLER(COMMAND_TASK_KILL_CHAR_ON_FOOT_TIMED, TaskKillCharOnFootTimed);
     //REGISTER_COMMAND_HANDLER(COMMAND_IS_CHAR_IN_ANY_SEARCHLIGHT, IsCharInAnySearchlight);
-    //REGISTER_COMMAND_HANDLER(COMMAND_TASK_SET_CHAR_DECISION_MAKER, TaskSetCharDecisionMaker);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_SET_CHAR_DECISION_MAKER, TaskSetCharDecisionMaker);
     //REGISTER_COMMAND_HANDLER(COMMAND_TASK_CHAR_SLIDE_TO_COORD, TaskCharSlideToCoord);
-    //REGISTER_COMMAND_HANDLER(COMMAND_SET_CHAR_SHOOT_RATE, SetCharShootRate);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_CHAR_SHOOT_RATE, SetCharShootRate);
     REGISTER_COMMAND_HANDLER(COMMAND_COPY_CHAR_DECISION_MAKER, CopyCharDecisionMaker);
     REGISTER_COMMAND_HANDLER(COMMAND_TASK_CHAR_SLIDE_TO_COORD_AND_PLAY_ANIM, TaskCharSlideToCoordAndPlayAnim);
     REGISTER_COMMAND_HANDLER(COMMAND_GET_CHAR_HIGHEST_PRIORITY_EVENT, GetCharHighestPriorityEvent);
-    //REGISTER_COMMAND_HANDLER(COMMAND_SET_CHAR_KINDA_STAY_IN_SAME_PLACE, SetCharKindaStayInSamePlace);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_CHAR_KINDA_STAY_IN_SAME_PLACE, SetCharKindaStayInSamePlace);
     REGISTER_COMMAND_HANDLER(COMMAND_IS_CHAR_IN_AIR, IsCharInAir);
     REGISTER_COMMAND_HANDLER(COMMAND_GET_CHAR_HEIGHT_ABOVE_GROUND, GetCharHeightAboveGround);
     REGISTER_COMMAND_HANDLER(COMMAND_SET_CHAR_WEAPON_SKILL, SetCharWeaponSkill);
     REGISTER_COMMAND_HANDLER(COMMAND_GET_RANDOM_CHAR_IN_SPHERE_ONLY_DRUGS_BUYERS, GetRandomCharInSphereOnlyDrugsBuyers);
-    //REGISTER_COMMAND_HANDLER(COMMAND_SET_CHAR_HAS_USED_ENTRY_EXIT, SetCharHasUsedEntryExit);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_CHAR_HAS_USED_ENTRY_EXIT, SetCharHasUsedEntryExit);
     REGISTER_COMMAND_HANDLER(COMMAND_SET_CHAR_MAX_HEALTH, SetCharMaxHealth);
     //REGISTER_COMMAND_HANDLER(COMMAND_SET_CHAR_CAN_BE_KNOCKED_OFF_BIKE, SetCharCanBeKnockedOffBike);
     REGISTER_COMMAND_HANDLER(COMMAND_SET_CHAR_COORDINATES_DONT_WARP_GANG, SetCharCoordinatesDontWarpGang);
@@ -5501,6 +6494,47 @@ void notsa::script::commands::character::RegisterHandlers() {
     //REGISTER_COMMAND_HANDLER(COMMAND_IS_CHAR_HEAD_MISSING, IsCharHeadMissing);
     //REGISTER_COMMAND_HANDLER(COMMAND_IS_CHAR_IN_ANY_TRAIN, IsCharInAnyTrain);
     REGISTER_COMMAND_HANDLER(COMMAND_GET_RANDOM_CHAR_IN_AREA_OFFSET_NO_SAVE, GetRandomCharInAreaOffsetNoSave);
+
+    // Task commands
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_DRIVE_BY, TaskDriveBy);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_SHOOT_AT_COORD, TaskShootAtCoord);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_SMART_FLEE_CHAR, TaskSmartFleeChar);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_DIE, TaskDie);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_DUCK, TaskDuck);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_KINDA_STAY_IN_SAME_PLACE, TaskKindaStayInSamePlace);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_AIM_GUN_AT_COORD, TaskAimGunAtCoord);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_GO_TO_COORD_WHILE_SHOOTING, TaskGoToCoordWhileShooting);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_TOGGLE_PED_THREAT_SCANNER, TaskTogglePedThreatScanner);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_WANDER_STANDARD, TaskWanderStandard);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_LOOK_AT_COORD, TaskLookAtCoord);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_SCRATCH_HEAD, TaskScratchHead);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_HANDS_UP, TaskHandsUp);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_SET_IGNORE_WEAPON_RANGE_FLAG, TaskSetIgnoreWeaponRangeFlag);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_CLIMB, TaskClimb);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_LOOK_ABOUT, TaskLookAbout);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_DIE_NAMED_ANIM, TaskDieNamedAnim);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_SHOOT_AT_CHAR, TaskShootAtChar);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_AIM_GUN_AT_CHAR, TaskAimGunAtChar);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_FLEE_CHAR, TaskFleeChar);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_FLEE_POINT, TaskFleePoint);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_JUMP, TaskJump);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_SIT_DOWN, TaskSitDown);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_WEAPON_ROLL, TaskWeaponRoll);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_LOOK_AT_VEHICLE, TaskLookAtVehicle);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_SMART_FLEE_POINT, TaskSmartFleePoint);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_FOLLOW_FOOTSTEPS, TaskFollowFootsteps);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_FALL_AND_GET_UP, TaskFallAndGetUp);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_USE_ATTRACTOR, TaskUseAttractor);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_SWIM_TO_COORD, TaskSwimToCoord);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_DIVE_AND_GET_UP, TaskDiveAndGetUp);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_LOOK_AT_OBJECT, TaskLookAtObject);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_TIRED, TaskTired);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_SHAKE_FIST, TaskShakeFist);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_SAY, TaskSay);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_COWER, TaskCower);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_CHAR_ARREST_CHAR, TaskArrestPed);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_GO_TO_COORD_WHILE_AIMING, TaskGoToCoordWhileAiming);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_GO_TO_OBJECT, TaskGoToObject);
 
     REGISTER_COMMAND_UNIMPLEMENTED(COMMAND_SET_CHAR_GRAPHIC_TYPE);
     REGISTER_COMMAND_UNIMPLEMENTED(COMMAND_STOP_CHAR_DRIVING);

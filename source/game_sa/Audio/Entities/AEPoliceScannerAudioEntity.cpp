@@ -34,7 +34,146 @@ void CAEPoliceScannerAudioEntity::Reset() {
 
 // 0x4E71E0
 void CAEPoliceScannerAudioEntity::AddAudioEvent(eAudioEvents event, eCrimeType crimeType, const CVector& point) {
-    plugin::CallMethod<0x4E71E0, CAEPoliceScannerAudioEntity*, eAudioEvents, eCrimeType, const CVector&>(this, event, crimeType, point);
+    if (event != AE_CRIME_COMMITTED) {
+        return;
+    }
+    if (crimeType < CRIME_DAMAGED_PED || crimeType > CRIME_AIM_GUN) {
+        return;
+    }
+
+    // Scanner phrase tables (retail `.data`; zero-filled natively until the exe data replay covers them)
+    static auto& s_NoiseSoundIds      = StaticRef<int16[4]>(0x8C8160);
+    static auto& s_CrimeSpeechIds     = StaticRef<int16[24]>(0x8C8168); //!< Indexed by `eCrimeType`
+    static auto& s_ZoneNames          = StaticRef<char[194][8]>(0x8C8198); //!< Matched against `CZone::m_TextLabel`
+    static auto& s_ZonePhraseIds      = StaticRef<int16[194]>(0x8C87A8);
+    static auto& s_ZoneIsCity         = StaticRef<bool[194]>(0x8C8930);
+    static auto& s_VehAudioTypePhrases = StaticRef<int16[46]>(0x8C89F8); //!< Indexed by `eAEVehicleAudioTypeForName`
+    static auto& s_VehTypeNeedsRemap  = StaticRef<bool[46]>(0x8C8A54);
+    static auto& s_RemapPhraseIds     = StaticRef<int16[0x7F]>(0x8C8A88); //!< Indexed by primary colour
+
+    tScannerSlot first[NUM_POLICE_SCANNER_SLOTS];
+    tScannerSlot second[NUM_POLICE_SCANNER_SLOTS];
+    rng::fill(first, tScannerSlot{});  // Bank = SoundID = -1
+    rng::fill(second, tScannerSlot{});
+
+    // 1. Noise + crime code
+    first[0] = { SND_BANK_SCRIPT_SCANNER_INSTRUCTIONS, s_NoiseSoundIds[CAEAudioUtility::GetRandomNumberInRange(0, 3)] };
+    first[1] = { SND_BANK_SCRIPT_SCANNER_NUMBERS, s_CrimeSpeechIds[crimeType] };
+
+    // 2. Area (zone) - the scanner only reports zones it has a phrase for
+    const auto* zone = CTheZones::FindSmallestZoneForPosition(point, true);
+    if (!zone) {
+        return;
+    }
+
+    int32 z = 0;
+    for (; z < 194; z++) {
+        if (std::memcmp(zone->m_TextLabel, s_ZoneNames[z], sizeof(zone->m_TextLabel)) == 0
+            && s_ZonePhraseIds[z] >= 0
+        ) {
+            break;
+        }
+    }
+    if (z == 194) {
+        return;
+    }
+
+    // 3. Direction inside the zone (only for city zones)
+    if (s_ZoneIsCity[z]) {
+        const float minX = (float)zone->m_fX1, maxX = (float)zone->m_fX2;
+        const float minY = (float)zone->m_fY1, maxY = (float)zone->m_fY2;
+        const float cx   = (maxX - minX) * 0.5f + minX;
+        const float cy   = (maxY - minY) * 0.5f + minY;
+        const float rx   = (maxX - minX) * 0.25f;
+        const float ry   = (maxY - minY) * 0.25f;
+
+        if (point.y > cy + ry) {
+            first[2].SoundID = 2; // North
+        } else if (point.y < cy - ry) {
+            first[2].SoundID = 3; // South
+        }
+        if (first[2].SoundID >= 0) {
+            first[2].Bank = SND_BANK_SCRIPT_SCANNER_DIRECTIONS;
+        }
+
+        if (point.x > cx + rx) {
+            first[3] = { SND_BANK_SCRIPT_SCANNER_DIRECTIONS, 1 }; // East
+        } else if (point.x < cx - rx) {
+            first[3] = { SND_BANK_SCRIPT_SCANNER_DIRECTIONS, 4 }; // West
+        } else if (first[2].SoundID < 0) {
+            first[3] = { SND_BANK_SCRIPT_SCANNER_DIRECTIONS, 0 }; // Centre
+        }
+    }
+    first[4] = { SND_BANK_SCRIPT_SCANNER_AREAS, s_ZonePhraseIds[z] };
+
+    // 4. Suspect description - only when the crime belongs to one of the players
+    CPed* player = nullptr;
+    for (int32 i = 0; i < 2; i++) {
+        if (&FindPlayerWanted(i)->m_PoliceScannerAudioEntity == this) {
+            player = FindPlayerPed(i);
+        }
+    }
+    if (!player) {
+        PlayPoliceScannerDialogue(first, second);
+        return;
+    }
+
+    if (!player->bInVehicle) {
+        if (player->GetIntelligence()->GetTaskSwim()) {
+            second[4].SoundID = 2;
+        } else if (player->GetIntelligence()->GetTaskJetPack()) {
+            PlayPoliceScannerDialogue(first, second);
+            return;
+        } else {
+            second[4].SoundID = 4;
+        }
+        second[0] = { SND_BANK_SCRIPT_SCANNER_INSTRUCTIONS, 7 };
+        second[4].Bank = SND_BANK_SCRIPT_SCANNER_INSTRUCTIONS;
+        PlayPoliceScannerDialogue(first, second);
+        return;
+    }
+
+    CVehicle* veh = player->m_pVehicle;
+    if (!veh) {
+        PlayPoliceScannerDialogue(first, second);
+        return;
+    }
+
+    //! Retail reads the (cached) `VehicleAudioTypeForName` of the vehicle
+    const auto audioType = (int32)CAEVehicleAudioEntity::GetVehicleAudioSettings((int16)veh->m_nModelIndex).VehicleAudioTypeForName;
+    if (audioType < 0 || audioType >= (int32)std::size(s_VehAudioTypePhrases)) {
+        PlayPoliceScannerDialogue(first, second);
+        return;
+    }
+    if (s_VehAudioTypePhrases[audioType] < 0) {
+        PlayPoliceScannerDialogue(first, second);
+        return;
+    }
+
+    second[0] = { SND_BANK_SCRIPT_SCANNER_INSTRUCTIONS, 7 };
+    second[1].Bank = SND_BANK_SCRIPT_SCANNER_INSTRUCTIONS;
+    second[1].SoundID = notsa::contains(
+        { AE_VAT_MOPED, AE_VAT_BIKE, AE_VAT_QUADBIKE, AE_VAT_MOWER, AE_VAT_BICYCLE },
+        (eAEVehicleAudioTypeForName)audioType
+    ) ? 3 : 1;
+    if (audioType == AE_VAT_TRACTOR) {
+        second[1].SoundID = 1;
+    }
+
+    if (s_VehTypeNeedsRemap[audioType]) {
+        const auto remap = veh->GetRemapIndex();
+        if (remap != -1) {
+            second[2] = { SND_BANK_SCRIPT_SCANNER_COLOURS, 4 };
+        } else {
+            const uint8 colour = veh->m_nPrimaryColor;
+            if (colour != 0 && colour < 0x7F && s_RemapPhraseIds[colour] >= 0) {
+                second[2] = { SND_BANK_SCRIPT_SCANNER_COLOURS, s_RemapPhraseIds[colour] };
+            }
+        }
+    }
+    second[4] = { SND_BANK_SCRIPT_SCANNER_VEHICLES, s_VehAudioTypePhrases[audioType] };
+
+    PlayPoliceScannerDialogue(first, second);
 }
 
 // 0x4E6BC0
@@ -132,63 +271,66 @@ void CAEPoliceScannerAudioEntity::FinishedPlayingScannerDialogue() {
 
 // 0x4E6F60
 void CAEPoliceScannerAudioEntity::PlayLoadedDialogue() {
-    return plugin::CallMethod<0x4E6F60, CAEPoliceScannerAudioEntity*>(this);
-
-    int16 i;
-    for (i = 0; i < NUM_POLICE_SCANNER_SLOTS; ++i) {
-        if (s_SlotState[i] == FIVE) {
-            break;
-        }
+    // Start the search at the slot that's currently being spoken (if any)
+    int32 i = 0;
+    while (i < NUM_POLICE_SCANNER_SLOTS && s_SlotState[i] != FIVE) {
+        i++;
     }
-
     if (i == NUM_POLICE_SCANNER_SLOTS) {
-        i = 0;
-        goto LABEL_7;
+        i = 0; // Nothing being spoken - search from the beginning
     }
 
-    if (i >= NUM_POLICE_SCANNER_SLOTS) {
-    LABEL_9:
-        auto volumeChange = s_fVolumeOffset /* + flt_B61D54 */;
-        AudioEngine.ReportFrontendAudioEvent(AE_FRONTEND_SCANNER_CLICK, volumeChange);
-        AudioEngine.ReportFrontendAudioEvent(AE_FRONTEND_SCANNER_NOISE_STOP);
-        if (s_nSectionPlaying) {
-            FinishedPlayingScannerDialogue();
-        } else {
-            auto v2 = (int16*)s_ScannerSlotSecond;
-            s_pCurrentSlots = s_ScannerSlotSecond;
-            s_nSectionPlaying = 1;
-            auto v3 = s_SlotState;
-            auto v4 = 5;
-            do {
-                *v3 = *v2 < 0 || v2[1] < 0;
-                v2 += 2;
-                ++v3;
-                --v4;
-            } while (v4);
-            s_nPlaybackStartTime = 0;
-            // s_nAbortPlaybackTime = *(_DWORD*)&gSpeechContextLookup[366][0] + CTimer::GetTimeInMS();
-            s_nScannerPlaybackState = TWO;
-        }
-    } else {
-    LABEL_7:
-        while (s_SlotState[i] != 3) {
-            if (++i >= 5)
-                goto LABEL_9;
-        }
+    // Find the first slot that finished loading (state THREE) and play it
+    while (i < NUM_POLICE_SCANNER_SLOTS && s_SlotState[i] != THREE) {
+        i++;
+    }
 
-        auto volume = GetDefaultVolume(AE_CRIME_COMMITTED) + s_fVolumeOffset;
+    if (i < NUM_POLICE_SCANNER_SLOTS) {
+        const float volume = GetDefaultVolume(AE_CRIME_COMMITTED) + s_fVolumeOffset;
+
         CAESound sound;
-        sound.Initialise((eSoundBankSlot)(SND_BANK_SLOT_SCANNER_FIRST + i), s_pCurrentSlots[i].SoundID, this, { 0.0, 1.0f, 0.0f }, volume, 1.0f, 1.0f, 1.0f, 0, SOUND_DEFAULT, 0.0f, 0);
+        sound.Initialise(
+            (eSoundBankSlot)(SND_BANK_SLOT_SCANNER_FIRST + i),
+            s_pCurrentSlots[i].SoundID,
+            this,
+            { 0.0f, 1.0f, 0.0f },
+            volume,
+            1.0f,
+            1.0f,
+            1.0f,
+            0,
+            SOUND_DEFAULT,
+            0.0f,
+            0
+        );
         sound.m_ClientVariable = (float)i;
-        sound.m_Flags = SOUND_FRONT_END | SOUND_IS_CANCELLABLE | SOUND_REQUEST_UPDATES | SOUND_IS_DUCKABLE;
-        sound.m_Event = AE_CRIME_COMMITTED;
+        sound.m_Flags          = SOUND_FRONT_END | SOUND_IS_CANCELLABLE | SOUND_REQUEST_UPDATES | SOUND_IS_DUCKABLE;
+        sound.m_Event          = AE_CRIME_COMMITTED;
 
-        s_pSound = AESoundManager.RequestNewSound(&sound);
-        if (s_pSound) {
-            s_SlotState[i] = 5;
+        if ((s_pSound = AESoundManager.RequestNewSound(&sound))) {
+            s_SlotState[i]          = FIVE;
             s_nScannerPlaybackState = SEVEN;
         }
+        return;
     }
+
+    // No loaded slot left: switch over to the second (noise/click) section
+    AudioEngine.ReportFrontendAudioEvent(AE_FRONTEND_SCANNER_CLICK, s_fVolumeOffset); // NOTE: Click volume (`0xB61D54`) is 0.0f
+    AudioEngine.ReportFrontendAudioEvent(AE_FRONTEND_SCANNER_NOISE_STOP);
+
+    if (s_nSectionPlaying) {
+        FinishedPlayingScannerDialogue();
+        return;
+    }
+
+    s_pCurrentSlots   = s_ScannerSlotSecond;
+    s_nSectionPlaying = 1;
+    for (auto k = 0; k < NUM_POLICE_SCANNER_SLOTS; k++) {
+        s_SlotState[k] = s_ScannerSlotSecond[k].IsActive();
+    }
+    s_nPlaybackStartTime    = 0;
+    s_nAbortPlaybackTime    = CTimer::GetTimeInMS() + 5000u; // 0x8C8148
+    s_nScannerPlaybackState = TWO;
 }
 
 // 0x4E6B60
@@ -324,14 +466,14 @@ void CAEPoliceScannerAudioEntity::InjectHooks() {
     RH_ScopedInstall(Destructor, 0x4E6E00);
     RH_ScopedInstall(StaticInitialise, 0x5B9C30);
     RH_ScopedInstall(Reset, 0x4E6E90);
-    RH_ScopedInstall(AddAudioEvent, 0x4E71E0, { .Reversed = false });
+    RH_ScopedInstall(AddAudioEvent, 0x4E71E0);
     RH_ScopedInstall(PrepSlots, 0x4E6BC0);
     RH_ScopedInstall(LoadSlots, 0x4E6CD0, { .Reversed = false });
     RH_ScopedInstall(EnableScanner, 0x4E6DB0);
     RH_ScopedInstall(DisableScanner, 0x4E71B0);
     RH_ScopedInstall(StopScanner, 0x4E6DC0);
     RH_ScopedInstall(FinishedPlayingScannerDialogue, 0x4E6C30);
-    RH_ScopedInstall(PlayLoadedDialogue, 0x4E6F60, { .Reversed = false });
+    RH_ScopedInstall(PlayLoadedDialogue, 0x4E6F60);
     RH_ScopedInstall(PopulateScannerDialogueLists, 0x4E6B60);
     RH_ScopedInstall(CanWePlayNewScannerDialogue, 0x4E6C00);
     RH_ScopedInstall(PlayPoliceScannerDialogue, 0x4E6ED0);

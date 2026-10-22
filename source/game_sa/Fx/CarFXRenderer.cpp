@@ -51,21 +51,31 @@ bool CCarFXRenderer::InitialiseDirtTexture() {
         RwTextureSetName(tex, "vehiclegrunge256");
 
         const auto raster = RwTextureGetRaster(tex);
-#ifdef NOTSA_NATIVE
-        // The fill below uses `width * 4` as the row pitch (the original never reads `stride`).
-        // Detect a padded librw raster instead of silently corrupting the copy.
-        if (RwRasterGetStride(raster) != width * 4) {
-            NOTSA_LOG_WARN("Dirt texture {}: raster stride {} != width*4 ({})", i, RwRasterGetStride(raster), width * 4);
-        }
-#endif
-
         const auto pixels = RwRasterLock(raster, 0, rwRASTERLOCKREAD | rwRASTERLOCKWRITE);
-        const auto add    = static_cast<uint8>(255 - 16 * i); // Pixel value at 0 (index 0 -> flat white)
+        if (!pixels) {
+            NOTSA_LOG_WARN("Dirt texture {}: could not lock the raster", i);
+            continue;
+        }
+
+        // The executable walks the rows with `width * 4` and always touches three colour bytes
+        // per pixel, i.e. it assumes a 32-bit raster (D3D9 has no 24-bit texture formats).
+        // Native rasters keep the format the GL pipeline loaded (`vehiclegrunge256` is 24-bit),
+        // so the pitch and the pixel size are taken from the raster here - otherwise the fill
+        // wrote 4 bytes per pixel over 3-byte rows and ran past the allocation.
+        const auto stride         = RwRasterGetStride(raster);
+        const auto bytesPerPixel  = RwRasterGetDepth(raster) / 8;
+        if (bytesPerPixel < 3) {
+            NOTSA_LOG_WARN("Dirt texture {}: unsupported raster depth {} (stride {})", i, RwRasterGetDepth(raster), stride);
+            RwRasterUnlock(raster);
+            continue;
+        }
+
+        const auto add = static_cast<uint8>(255 - 16 * i); // Pixel value at 0 (index 0 -> flat white)
         for (auto y = 0; y < height; y++) {
-            const auto row = pixels + y * width * 4;
+            const auto row = pixels + y * stride;
             for (auto x = 0; x < width; x++) {
-                for (auto c = 0; c < 3; c++) { // Only the colour bytes, the 4th one is left untouched
-                    auto& channel = row[x * 4 + c];
+                for (auto c = 0; c < 3; c++) { // Only the colour bytes, the 4th one (if any) is left untouched
+                    auto& channel = row[x * bytesPerPixel + c];
                     channel = static_cast<uint8>(channel * i / 16 + add);
                 }
             }

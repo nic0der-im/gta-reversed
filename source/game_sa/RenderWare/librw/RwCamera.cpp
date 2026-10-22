@@ -23,6 +23,8 @@ notsa::fakerw::PluginRegistry g_rasterPlugins;
 struct CameraMirror {
     rw::Camera* camera = nullptr;
     rw::Frame*  frame  = nullptr;
+    //! Depth buffer for cameras that have no Z raster of their own (see `SyncCameraMirror`).
+    rw::Raster* zBuffer = nullptr;
 };
 
 std::unordered_map<RwCamera*, CameraMirror> g_cameraMirrors;
@@ -72,6 +74,20 @@ bool SyncCameraMirror(RwCamera* camera, CameraMirror& mirror) {
     auto* lcam = mirror.camera;
     lcam->frameBuffer  = frameBuffer;
     lcam->zBuffer      = LookupRaster(camera->zBuffer);
+    if (!lcam->zBuffer) {
+        // RenderWare allows a camera without a Z raster: the shadow cameras render into a
+        // depth-less camera texture (D3D9 just clears the depth-stencil surface in that case).
+        // librw's GL backend dereferences `cam->zBuffer` unconditionally in `setFrameBuffer`,
+        // so the mirror gets a depth buffer of the render target's size instead.
+        if (!mirror.zBuffer) {
+            auto* const renderTarget = frameBuffer->parent ? frameBuffer->parent : frameBuffer;
+            mirror.zBuffer = rw::Raster::create(renderTarget->width, renderTarget->height, 0, rwRASTERTYPEZBUFFER);
+        }
+        if (!mirror.zBuffer) {
+            return false;
+        }
+        lcam->zBuffer = mirror.zBuffer;
+    }
     lcam->viewWindow   = notsa::fakerw::ToLibrw(camera->viewWindow);
     lcam->viewOffset   = notsa::fakerw::ToLibrw(camera->viewOffset);
     lcam->nearPlane    = camera->nearPlane;
@@ -119,6 +135,9 @@ void DestroyMirror(RwCamera* camera) {
     mirror.camera->setFrame(nullptr);
     mirror.camera->destroy();
     mirror.frame->destroy();
+    if (mirror.zBuffer) {
+        mirror.zBuffer->destroy();
+    }
     g_cameraMirrors.erase(it);
 }
 
@@ -300,8 +319,17 @@ RwRaster* RwRasterCreate(RwInt32 width, RwInt32 height, RwInt32 depth, RwInt32 f
         return nullptr;
     }
 
-    // librw's raster format bits have the same layout as RenderWare's.
-    auto* librwRaster = rw::Raster::create(width, height, depth, flags);
+    // librw's raster format bits have the same layout as RenderWare's, but `rwRASTERFORMAT888`
+    // does not mean the same thing: retail's D3D driver creates it as a 32-bit X8R8G8B8 surface
+    // (4 bytes per texel), which is how the game uses it - every 888 raster is locked and written
+    // through `RwRGBA*`. librw's `C888` is a 24-bit RGB8 format (3 bytes per texel), so passing it
+    // through allocates a pixel buffer 25% too small and every locked write runs past its end
+    // (silent heap corruption). Map it onto librw's 32-bit `C8888` instead.
+    RwInt32 librwFlags = flags;
+    if ((librwFlags & rwRASTERFORMATPIXELFORMATMASK) == rwRASTERFORMAT888) {
+        librwFlags = (librwFlags & ~rwRASTERFORMATPIXELFORMATMASK) | rwRASTERFORMAT8888;
+    }
+    auto* librwRaster = rw::Raster::create(width, height, depth, librwFlags);
     if (!librwRaster) {
         notsa::fakerw::FreeObject(raster, sizeof(RwRaster), g_rasterPlugins);
         return nullptr;

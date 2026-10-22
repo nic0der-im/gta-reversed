@@ -60,6 +60,25 @@ void* BreakableDestructor(void* object, RwInt32 offsetInObject, RwInt32 sizeInOb
     return object;
 }
 
+//! The plugin header as the 32 bit retail writer stores it: the pointer slots in `BreakInfo_t`
+//! are plain 4 byte fields on disk, whatever the native pointer width is.
+struct BreakInfoDisk {
+    uint32 m_uiPosRule;
+    uint16 m_usNumVertices;
+    uint32 m_pVertexPos;               //!< Written as a pointer, ignored when read back.
+    uint32 m_pTexCoors;
+    uint32 m_pVertexColors;
+    uint16 m_usNumTriangles;
+    uint32 m_pTriangles;
+    uint32 m_pTrianglesMaterialIndices;
+    uint16 m_usNumMaterials;
+    uint32 m_pTextures;
+    uint32 m_pTextureNames;
+    uint32 m_pMaskNames;
+    uint32 m_pMaterialProperties;
+};
+static_assert(sizeof(BreakInfoDisk) == 0x34, "The breakable header is 0x34 bytes on disk (retail `BreakableStreamGetSize`, 0x59D0F0)");
+
 // 0x59CEC0
 RwStream* BreakableStreamRead(RwStream* stream, int binaryLength, void* object, RwInt32 offsetInObject, RwInt32 sizeInObject) {
     auto* plugin = RWPLUGINOFFSET(BreakablePlugin, object, g_BreakablePlugin);
@@ -67,8 +86,16 @@ RwStream* BreakableStreamRead(RwStream* stream, int binaryLength, void* object, 
     if (!plugin->m_SectionHeader)
         return stream;
 
-    BreakInfo_t infoBuffer;
-    RwStreamRead(stream, &infoBuffer, sizeof(BreakInfo_t));
+    // The header is written by the 32 bit retail writer, so its pointer slots are 4 bytes wide
+    // no matter how wide a native pointer is: it has to be read through its own layout.
+    BreakInfoDisk disk{};
+    RwStreamRead(stream, &disk, sizeof(disk));
+
+    BreakInfo_t infoBuffer{};
+    infoBuffer.m_uiPosRule      = (eBreakablePluginPositionRule)disk.m_uiPosRule;
+    infoBuffer.m_usNumVertices  = disk.m_usNumVertices;
+    infoBuffer.m_usNumTriangles = disk.m_usNumTriangles;
+    infoBuffer.m_usNumMaterials = disk.m_usNumMaterials;
 
     auto allocSize = BreakablePluginData::GetRequiredAllocationSize(infoBuffer);
     auto* data = reinterpret_cast<BreakablePluginData*>(operator new(allocSize)); // Allocated on heap dynamically sized BreakablePluginData
@@ -119,7 +146,14 @@ RwStream* BreakableStreamWrite(RwStream* stream, RwInt32 binaryLength, const voi
 
     if (plugin->m_pBreakableInfo) {
         auto* info = plugin->m_pBreakableInfo;
-        RwStreamWrite(stream, info, sizeof(BreakInfo_t));
+
+        BreakInfoDisk disk{};
+        disk.m_uiPosRule      = (uint32)info->m_uiPosRule;
+        disk.m_usNumVertices  = info->m_usNumVertices;
+        disk.m_usNumTriangles = info->m_usNumTriangles;
+        disk.m_usNumMaterials = info->m_usNumMaterials;
+        RwStreamWrite(stream, &disk, sizeof(disk));
+
         RwStreamWrite(stream, info->m_pVertexPos, sizeof(RwV3d) * info->m_usNumVertices);
         RwStreamWrite(stream, info->m_pTexCoors, sizeof(RwTexCoords) * info->m_usNumVertices);
         RwStreamWrite(stream, info->m_pVertexColors, sizeof(RwRGBA) * info->m_usNumVertices);
@@ -135,5 +169,5 @@ RwStream* BreakableStreamWrite(RwStream* stream, RwInt32 binaryLength, const voi
 
 // 0x59D0F0
 RwInt32 BreakableStreamGetSize(const void* object, RwInt32 offsetInObject, RwInt32 sizeInObject) {
-    return sizeof(BreakInfo_t);
+    return sizeof(BreakInfoDisk);
 }

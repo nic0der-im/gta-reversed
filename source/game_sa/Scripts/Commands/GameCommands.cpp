@@ -67,6 +67,22 @@
 #include "ModelIndices.h"
 #include "Pools/PedPool.h"
 #include "Pools/VehiclePool.h"
+#include "Checkpoint.h"
+#include "CutsceneMgr.h"
+#include "Explosion.h"
+#include "FireManager.h"
+#include "Timer.h"
+#include "VehicleRecording.h"
+#include "Wanted.h"
+#include "Entity/Object/Object.h"
+#include "Tasks/TaskSequences.h"
+#include "Tasks/TaskTypes/TaskComplexFollowNodeRoute.h"
+#include "Tasks/TaskTypes/TaskComplexFollowPointRoute.h"
+#include "Tasks/TaskTypes/TaskComplexGoToPointAnyMeans.h"
+#include "Tasks/TaskTypes/TaskSimpleAchieveHeading.h"
+#include "Tasks/TaskTypes/TaskSimpleDuckToggle.h"
+#include "Tasks/TaskTypes/TaskSimplePause.h"
+#include "Tasks/TaskTypes/TaskSimpleSetStayInSamePlace.h"
 
 /*!
 * Various game related commands
@@ -558,6 +574,14 @@ void ActivateGarage(const char* name) {
     }
 }
 
+/// DEACTIVATE_GARAGE(02B9)
+void DeactivateGarage(const char* name) {
+    const auto garageId = CGarages::GetGarageNumberByName(name);
+    if (garageId >= 0) {
+        CGarages::DeActivateGarage(garageId);
+    }
+}
+
 /// CLOSE_GARAGE(0361)
 void CloseGarage(const char* name) {
     const auto garageId = CGarages::GetGarageNumberByName(name);
@@ -805,8 +829,9 @@ void TaskDead(CRunningScript& S, eScriptCommands opcode, CPed* ped) {
     );
 }
 
-/// TASK_PLAY_ANIM_NON_INTERRUPTABLE(0812)
-void TaskPlayAnimNonInterruptable(CRunningScript& S, eScriptCommands opcode) {
+/// TASK_PLAY_ANIM(0605), TASK_PLAY_ANIM_NON_INTERRUPTABLE(0812), TASK_PLAY_ANIM_WITH_FLAGS(088A), TASK_PLAY_ANIM_SECONDARY(0A1A)
+/// The amount and meaning of the parameters depends on the opcode, so `PlayAnimScriptCommand` handles them all
+void TaskPlayAnim(CRunningScript& S, eScriptCommands opcode) {
     S.PlayAnimScriptCommand(opcode);
 }
 
@@ -1124,6 +1149,26 @@ void SetBlipEntryExit(tBlipHandle blip, float x, float y, float radius) {
     }
 }
 
+/// DISABLE_ALL_ENTRY_EXITS(08E7)
+void DisableAllEntryExits(bool disable) {
+    CEntryExitManager::ms_bDisabled = disable;
+}
+
+/// SET_NAMED_ENTRY_EXIT_FLAG(098E)
+void SetNamedEntryExitFlag(const char* name, int32 flag, bool state) {
+    auto* pool = CEntryExitManager::GetPool();
+    for (auto i = 0; i < (int32)pool->GetSize(); i++) {
+        const auto entryExit = CEntryExitManager::GetInSlot(i);
+        if (entryExit && !strncmp(entryExit->m_szName, name, sizeof(entryExit->m_szName))) {
+            if (state) {
+                entryExit->m_nFlags |= static_cast<uint16>(flag);
+            } else {
+                entryExit->m_nFlags &= ~static_cast<uint16>(flag);
+            }
+        }
+    }
+}
+
 /// SET_CLOSEST_ENTRY_EXIT_FLAG(09B4)
 void SetClosestEntryExitFlag(float x, float y, float radius, int32 flag, bool state) {
     const auto idx = CEntryExitManager::FindNearestEntryExit(CVector2D{x, y}, radius, -1);
@@ -1280,6 +1325,412 @@ void RandomPassengerSay(CVehicle* vehicle, int32 phrase) {
     }
 }
 
+//
+// Blips (misc)
+//
+
+/// CHANGE_BLIP_COLOUR(0165)
+void ChangeBlipColour(tBlipHandle blip, int32 colour) {
+    CRadar::ChangeBlipColour(blip, static_cast<eBlipColour>(colour));
+}
+
+/// CHANGE_BLIP_SCALE(0168)
+void ChangeBlipScale(tBlipHandle blip, int32 scale) {
+    CRadar::ChangeBlipScale(blip, scale);
+}
+
+/// SET_BLIP_AS_FRIENDLY(07E0)
+void SetBlipAsFriendly(tBlipHandle blip, bool friendly) {
+    CRadar::SetBlipFriendly(blip, friendly);
+}
+
+//
+// Camera, audio & explosions (misc)
+//
+
+/// GET_FADING_STATUS(016B)
+bool GetFadingStatus() {
+    return TheCamera.GetFading();
+}
+
+/// SET_WANTED_MULTIPLIER(03C7)
+void SetWantedMultiplier(float multiplier) {
+    FindPlayerWanted()->m_Multiplier = multiplier;
+}
+
+/// SET_RADIO_CHANNEL(041E)
+void SetRadioChannel(int32 channel) {
+    if (channel == -1) {
+        return;
+    }
+    if (channel == 11) { // Channel 11 doesn't exist in the radio station list, it's remapped to 12
+        channel = 12;
+    }
+    AudioEngine.RetuneRadio(static_cast<eRadioID>(channel + 1)); // Script channels are 0-based, the engine's are 1-based
+}
+
+/// ADD_ONE_OFF_SOUND(018C)
+void AddOneOffSound(CVector posn, int32 soundId) {
+    AudioEngine.ReportMissionAudioEvent(static_cast<uint16>(soundId), posn);
+}
+
+/// SET_MISSION_AUDIO_POSITION(03D7)
+void SetMissionAudioPosition(int32 slot, CVector posn) {
+    AudioEngine.SetMissionAudioPosition(static_cast<uint8>(slot - 1), posn);
+}
+
+/// ADD_EXPLOSION(020C)
+void AddExplosion(CVector posn, int32 type) {
+    CExplosion::AddExplosion(nullptr, nullptr, static_cast<eExplosionType>(type), posn, 0, true, -1.0f, false);
+}
+
+//
+// World state
+//
+
+/// SET_LA_RIOTS(06C8)
+void SetLaRiots(bool enabled) {
+    gbLARiots = enabled;
+}
+
+/// DISPLAY_HUD(0826)
+void DisplayHud(bool show) {
+    CTheScripts::bDisplayHud = show;
+}
+
+/// SET_MINIGAME_IN_PROGRESS(09BD)
+void SetMinigameInProgress(CRunningScript& S, bool inProgress) {
+    S.m_IsTextBlockOverride                      = inProgress;
+    CTheScripts::bMiniGameInProgress             = inProgress;
+    CTheScripts::bDisplayNonMiniGameHelpMessages = !inProgress;
+}
+
+/// SET_TIME_SCALE(015D)
+void SetTimeScale(float scale) {
+    CTimer::SetTimeScale(scale);
+}
+
+//
+// Math
+//
+
+/// GET_HEADING_FROM_VECTOR_2D(0604)
+float GetHeadingFromVector2D(float x, float y) {
+    float heading = RadiansToDegrees(CGeneral::GetATanOfXY(x, y)) - 90.0f;
+    while (heading < 0.0f) {
+        heading += 360.0f;
+    }
+    return heading;
+}
+
+//
+// Cutscenes
+//
+
+/// LOAD_CUTSCENE(02E4)
+void LoadCutscene(const char* name) {
+    CCutsceneMgr::LoadCutsceneData(name);
+}
+
+/// START_CUTSCENE(02E7)
+void StartCutscene() {
+    CCutsceneMgr::StartCutscene();
+}
+
+/// HAS_CUTSCENE_FINISHED(02E9)
+bool HasCutsceneFinished() {
+    return CCutsceneMgr::HasCutsceneFinished();
+}
+
+/// CLEAR_CUTSCENE(02EA)
+void ClearCutscene() {
+    CCutsceneMgr::DeleteCutsceneData();
+}
+
+/// HAS_CUTSCENE_LOADED(06B9)
+bool HasCutsceneLoaded() {
+    return CCutsceneMgr::ms_cutsceneLoadStatus == CCutsceneMgr::LoadStatus::LOADED;
+}
+
+/// SKIP_CUTSCENE_END(0701)
+void SkipCutsceneEnd(CRunningScript& S) {
+    S.m_SceneSkipIP = 0;
+}
+
+/// SKIP_CUTSCENE_START_INTERNAL(0707)
+void SkipCutsceneStartInternal(CRunningScript& S, int32 ip) {
+    S.m_SceneSkipIP = ip;
+}
+
+/// IS_SKIP_CUTSCENE_BUTTON_PRESSED(08D0)
+bool IsSkipCutsceneButtonPressed() {
+    return CCutsceneMgr::IsCutsceneSkipButtonBeingPressed();
+}
+
+//
+// Script (local) variable bits
+//
+
+/// IS_LOCAL_VAR_BIT_SET_CONST(08B7)
+void IsLocalVarBitSet(CRunningScript& S) {
+    const auto var = reinterpret_cast<uint32*>(S.GetPointerToScriptVariable(VAR_LOCAL));
+
+    S.CollectParameters(1);
+    const auto bit = ScriptParams[0].iParam & 0x1F;
+
+    S.UpdateCompareFlag((*var >> bit) & 1);
+}
+
+/// SET_LOCAL_VAR_BIT_CONST(08BD)
+void SetLocalVarBit(CRunningScript& S) {
+    const auto var = reinterpret_cast<uint32*>(S.GetPointerToScriptVariable(VAR_LOCAL));
+
+    S.CollectParameters(1);
+    const auto bit = ScriptParams[0].iParam & 0x1F;
+
+    *var |= 1u << bit;
+}
+
+/// CLEAR_LOCAL_VAR_BIT_CONST(08C3)
+void ClearLocalVarBit(CRunningScript& S) {
+    const auto var = reinterpret_cast<uint32*>(S.GetPointerToScriptVariable(VAR_LOCAL));
+
+    S.CollectParameters(1);
+    const auto bit = ScriptParams[0].iParam & 0x1F;
+
+    *var &= ~(1u << bit);
+}
+
+//
+// Mission, stats & death arrest
+//
+
+/// HAS_DEATHARREST_BEEN_EXECUTED(0112)
+bool HasDeatharrestBeenExecuted(CRunningScript& S) {
+    return S.m_DoneDeathArrest;
+}
+
+/// MISSION_HAS_FINISHED(00D8)
+void MissionHasFinished(CRunningScript& S) {
+    if (S.m_UsesMissionCleanup) {
+        CTheScripts::MissionCleanUp.Process();
+    }
+}
+
+/// REGISTER_MISSION_PASSED(0318)
+void RegisterMissionPassed(const char* name) {
+    char label[8]{};
+    strncpy(label, name, sizeof(label));
+    (void)TheText.Get(label); // Original calls this just for the side effects
+
+    std::memcpy(CStats::LastMissionPassedName, label, sizeof(label));
+
+    CStats::IncrementStat(STAT_MISSIONS_PASSED, 1.0f);
+    CStats::IncrementStat(STAT_TOTAL_LEGITIMATE_KILLS, CStats::GetStatValue(STAT_KILLS_SINCE_LAST_CHECKPOINT));
+    CStats::SetStatValue(STAT_KILLS_SINCE_LAST_CHECKPOINT, 0.0f);
+
+    CTheScripts::LastMissionPassedTime = CTimer::GetTimeInMS();
+}
+
+//
+// Vehicle recording & vehicles (misc)
+//
+
+/// STOP_PLAYBACK_RECORDED_CAR(05EC)
+void StopPlaybackRecordedCar(CVehicle* vehicle) {
+    if (vehicle) {
+        CVehicleRecording::StopPlaybackRecordedCar(vehicle);
+    }
+}
+
+/// SET_PLAYBACK_SPEED(06FD)
+void SetPlaybackSpeed(CVehicle* vehicle, float speed) {
+    if (vehicle) {
+        CVehicleRecording::SetPlaybackSpeed(vehicle, speed);
+    }
+}
+
+/// SET_CAN_BURST_CAR_TYRES(053F)
+void SetCanBurstCarTyres(CVehicle& vehicle, bool state) {
+    vehicle.vehicleFlags.bTyresDontBurst = !state;
+}
+
+/// SET_CAR_FORWARD_SPEED(04BA)
+void SetCarForwardSpeed(CVehicle& vehicle, float speed) {
+    // The script's speed is in units per second, while `m_vecMoveSpeed` is per-frame (60Hz)
+    vehicle.m_vecMoveSpeed = vehicle.GetForwardVector() * (speed / 60.0f);
+
+    // TODO(re): retail also writes `0.22f` to `CVehicle+0x84C` (some vehicle-specific field) when handling flag `0x2000000` is set and `CVehicle+0x590` is zero - the member hasn't been identified yet
+}
+
+/// PLACE_OBJECT_RELATIVE_TO_CAR(035C)
+void PlaceObjectRelativeToCar(CObject* object, CVehicle* vehicle, CVector offset) {
+    if (!object || !vehicle) {
+        return;
+    }
+    CPhysical::PlacePhysicalRelativeToOtherPhysical(vehicle, object, offset);
+}
+
+//
+// Script things (checkpoints, effect systems & fires)
+//
+
+/// CREATE_CHECKPOINT(06D5)
+int32 CreateCheckpoint(CRunningScript& S, int32 type, CVector at, CVector pointTo, float radius) {
+    const auto handle = static_cast<int32>(CTheScripts::AddScriptCheckpoint(at, pointTo, radius, static_cast<eCheckpointType>(type)));
+    if (S.m_UsesMissionCleanup) {
+        CTheScripts::MissionCleanUp.AddEntityToList(handle, MISSION_CLEANUP_ENTITY_TYPE_CHECKPOINT);
+    }
+    return handle;
+}
+
+/// DELETE_CHECKPOINT(06D6)
+void DeleteCheckpoint(CRunningScript& S, int32 checkpoint) {
+    if (CTheScripts::GetActualScriptThingIndex(checkpoint, SCRIPT_THING_CHECKPOINT) < 0) {
+        return;
+    }
+
+    CTheScripts::RemoveScriptCheckpoint(checkpoint);
+    if (S.m_UsesMissionCleanup) {
+        CTheScripts::MissionCleanUp.RemoveEntityFromList(checkpoint, MISSION_CLEANUP_ENTITY_TYPE_CHECKPOINT);
+    }
+}
+
+/// KILL_FX_SYSTEM(0650)
+void KillFxSystem(CRunningScript& S, int32 scriptEffect) {
+    const auto idx = CTheScripts::GetActualScriptThingIndex(scriptEffect, SCRIPT_THING_EFFECT_SYSTEM);
+    if (idx < 0) {
+        return;
+    }
+
+    auto& fx = CTheScripts::ScriptEffectSystemArray[idx];
+    if (!fx.m_pFxSystem) {
+        return;
+    }
+
+    fx.m_pFxSystem->Kill();
+    CTheScripts::RemoveScriptEffectSystem(scriptEffect);
+
+    if (S.m_UsesMissionCleanup) {
+        CTheScripts::MissionCleanUp.RemoveEntityFromList(scriptEffect, MISSION_CLEANUP_ENTITY_TYPE_PARTICLE);
+    }
+}
+
+/// STOP_FX_SYSTEM(064E)
+void StopFxSystem(int32 scriptEffect) {
+    const auto idx = CTheScripts::GetActualScriptThingIndex(scriptEffect, SCRIPT_THING_EFFECT_SYSTEM);
+    if (idx < 0) {
+        return;
+    }
+
+    if (auto* fx = CTheScripts::ScriptEffectSystemArray[idx].m_pFxSystem) {
+        fx->Stop();
+    }
+}
+
+/// REMOVE_SCRIPT_FIRE(02D1)
+void RemoveScriptFire(int32 fireThing) {
+    const auto idx = CTheScripts::GetActualScriptThingIndex(fireThing, SCRIPT_THING_FIRE);
+    if (idx >= 0 && idx < MAX_NUM_FIRES) {
+        gFireManager.RemoveScriptFire(static_cast<uint16>(idx));
+    }
+}
+
+//
+// Script route (Used by `EXTEND_ROUTE` & `TASK_FOLLOW_POINT_ROUTE`)
+//
+
+//! Retail keeps this route in the global at `0xC18D50`
+static CPointRoute s_ScriptRoute;
+
+/// EXTEND_ROUTE(05D7)
+void ExtendRoute(CVector point) {
+    if (!s_ScriptRoute.IsFull()) {
+        s_ScriptRoute.Add(point);
+    }
+}
+
+/// FLUSH_ROUTE(05D6)
+void FlushRoute() {
+    s_ScriptRoute.Clear();
+}
+
+//
+// Tasks (misc)
+//
+
+/// TASK_PAUSE(05B9)
+void TaskPause(CRunningScript& S, int32 pedHandle, int32 time, eScriptCommands opcode) {
+    S.GivePedScriptedTask(pedHandle, new CTaskSimplePause(time), opcode);
+}
+
+/// TASK_STAY_IN_SAME_PLACE(0638)
+void TaskStayInSamePlace(int32 pedHandle, bool state) {
+    if (pedHandle == -1) {
+        // No ped given: The task is appended to the script's active task sequence
+        CTaskSequences::AddTaskToActiveSequence(new CTaskSimpleSetStayInSamePlace(state));
+        return;
+    }
+    if (auto* ped = GetPedPool()->GetAtRef(pedHandle)) {
+        ped->SetStayInSamePlace(state);
+    }
+}
+
+/// TASK_TOGGLE_DUCK(04EB)
+void TaskToggleDuck(CRunningScript& S, int32 pedHandle, int32 state, eScriptCommands opcode) {
+    S.GivePedScriptedTask(pedHandle, new CTaskSimpleDuckToggle(static_cast<CTaskSimpleDuckToggle::eMode>(state)), opcode);
+}
+
+/// TASK_ACHIEVE_HEADING(05D4)
+void TaskAchieveHeading(CRunningScript& S, int32 pedHandle, float headingDegrees, eScriptCommands opcode) {
+    S.GivePedScriptedTask(pedHandle, new CTaskSimpleAchieveHeading(DegreesToRadians(headingDegrees)), opcode);
+}
+
+/// TASK_FOLLOW_PATH_NODES_TO_COORD(05F5)
+void TaskFollowPathNodesToCoord(CRunningScript& S, int32 pedHandle, CVector target, int32 moveState, int32 time, eScriptCommands opcode) {
+    S.GivePedScriptedTask(
+        pedHandle,
+        new CTaskComplexFollowNodeRoute(
+            static_cast<eMoveState>(moveState),
+            target,
+            0.5f,   // targetPtTolerance
+            3.0f,   // slowDownDist
+            2.0f,   // followNodeThresholdHeightChange
+            true,   // keepNodesHeadingAwayFromTarget
+            time == -2 ? -1 : (time == -1 ? 50000 : time),
+            true    // useBlending
+        ),
+        opcode
+    );
+}
+
+/// TASK_FOLLOW_POINT_ROUTE(05D8)
+void TaskFollowPointRoute(CRunningScript& S, int32 pedHandle, int32 moveState, int32 mode, eScriptCommands opcode) {
+    S.GivePedScriptedTask(
+        pedHandle,
+        new CTaskComplexFollowPointRoute(
+            static_cast<eMoveState>(moveState),
+            s_ScriptRoute,
+            static_cast<CTaskComplexFollowPointRoute::Mode>(mode),
+            0.5f,   // targetRadius
+            5.0f,   // slowDownDist
+            false,  // overshootTarget
+            true,   // useBlending
+            true    // standStillAfterMove
+        ),
+        opcode
+    );
+}
+
+/// TASK_GO_TO_COORD_ANY_MEANS(0603)
+void TaskGoToCoordAnyMeans(CRunningScript& S, int32 pedHandle, CVector target, int32 moveState, CVehicle* vehicle, eScriptCommands opcode) {
+    S.GivePedScriptedTask(
+        pedHandle,
+        new CTaskComplexGoToPointAnyMeans(moveState, target, vehicle, 0.5f, -1),
+        opcode
+    );
+}
+
 }
 
 void notsa::script::commands::game::RegisterHandlers() {
@@ -1376,6 +1827,7 @@ void notsa::script::commands::game::RegisterHandlers() {
     // Gangs & garages
     REGISTER_COMMAND_HANDLER(COMMAND_SET_GANG_WEAPONS, SetGangWeapons);
     REGISTER_COMMAND_HANDLER(COMMAND_ACTIVATE_GARAGE, ActivateGarage);
+    REGISTER_COMMAND_HANDLER(COMMAND_DEACTIVATE_GARAGE, DeactivateGarage);
     REGISTER_COMMAND_HANDLER(COMMAND_CLOSE_GARAGE, CloseGarage);
     REGISTER_COMMAND_HANDLER(COMMAND_CHANGE_GARAGE_TYPE, ChangeGarageType);
     REGISTER_COMMAND_HANDLER(COMMAND_IS_GARAGE_OPEN, IsGarageOpen);
@@ -1408,7 +1860,7 @@ void notsa::script::commands::game::RegisterHandlers() {
     REGISTER_COMMAND_HANDLER(COMMAND_TASK_GO_STRAIGHT_TO_COORD, TaskGoStraightToCoord);
     REGISTER_COMMAND_HANDLER(COMMAND_TASK_USE_MOBILE_PHONE, TaskUseMobilePhone);
     REGISTER_COMMAND_HANDLER(COMMAND_TASK_DEAD, TaskDead);
-    REGISTER_COMMAND_HANDLER(COMMAND_TASK_PLAY_ANIM_NON_INTERRUPTABLE, TaskPlayAnimNonInterruptable);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_PLAY_ANIM_NON_INTERRUPTABLE, TaskPlayAnim);
 
     // Groups & decision makers
     REGISTER_COMMAND_HANDLER(COMMAND_REMOVE_GROUP, RemoveGroup);
@@ -1462,6 +1914,8 @@ void notsa::script::commands::game::RegisterHandlers() {
     // Entry exits
     REGISTER_COMMAND_HANDLER(COMMAND_SWITCH_ENTRY_EXIT, SwitchEntryExit);
     REGISTER_COMMAND_HANDLER(COMMAND_SET_CLOSEST_ENTRY_EXIT_FLAG, SetClosestEntryExitFlag);
+    REGISTER_COMMAND_HANDLER(COMMAND_DISABLE_ALL_ENTRY_EXITS, DisableAllEntryExits);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_NAMED_ENTRY_EXIT_FLAG, SetNamedEntryExitFlag);
 
     // Penalties & restart points
     REGISTER_COMMAND_HANDLER(COMMAND_SWITCH_DEATH_PENALTIES, SwitchDeathPenalties);
@@ -1484,6 +1938,74 @@ void notsa::script::commands::game::RegisterHandlers() {
     // Vehicles (misc)
     REGISTER_COMMAND_HANDLER(COMMAND_HAS_TRAIN_DERAILED, HasTrainDerailed);
     REGISTER_COMMAND_HANDLER(COMMAND_RANDOM_PASSENGER_SAY, RandomPassengerSay);
+
+    // Blips (misc)
+    REGISTER_COMMAND_HANDLER(COMMAND_CHANGE_BLIP_COLOUR, ChangeBlipColour);
+    REGISTER_COMMAND_HANDLER(COMMAND_CHANGE_BLIP_SCALE, ChangeBlipScale);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_BLIP_AS_FRIENDLY, SetBlipAsFriendly);
+
+    // Camera, audio & explosions (misc)
+    REGISTER_COMMAND_HANDLER(COMMAND_GET_FADING_STATUS, GetFadingStatus);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_WANTED_MULTIPLIER, SetWantedMultiplier);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_RADIO_CHANNEL, SetRadioChannel);
+    REGISTER_COMMAND_HANDLER(COMMAND_ADD_ONE_OFF_SOUND, AddOneOffSound);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_MISSION_AUDIO_POSITION, SetMissionAudioPosition);
+    REGISTER_COMMAND_HANDLER(COMMAND_ADD_EXPLOSION, AddExplosion);
+
+    // World state
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_LA_RIOTS, SetLaRiots);
+    REGISTER_COMMAND_HANDLER(COMMAND_DISPLAY_HUD, DisplayHud);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_MINIGAME_IN_PROGRESS, SetMinigameInProgress);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_TIME_SCALE, SetTimeScale);
+    REGISTER_COMMAND_HANDLER(COMMAND_GET_HEADING_FROM_VECTOR_2D, GetHeadingFromVector2D);
+
+    // Cutscenes
+    REGISTER_COMMAND_HANDLER(COMMAND_LOAD_CUTSCENE, LoadCutscene);
+    REGISTER_COMMAND_HANDLER(COMMAND_START_CUTSCENE, StartCutscene);
+    REGISTER_COMMAND_HANDLER(COMMAND_HAS_CUTSCENE_FINISHED, HasCutsceneFinished);
+    REGISTER_COMMAND_HANDLER(COMMAND_CLEAR_CUTSCENE, ClearCutscene);
+    REGISTER_COMMAND_HANDLER(COMMAND_HAS_CUTSCENE_LOADED, HasCutsceneLoaded);
+    REGISTER_COMMAND_HANDLER(COMMAND_SKIP_CUTSCENE_END, SkipCutsceneEnd);
+    REGISTER_COMMAND_HANDLER(COMMAND_SKIP_CUTSCENE_START_INTERNAL, SkipCutsceneStartInternal);
+    REGISTER_COMMAND_HANDLER(COMMAND_IS_SKIP_CUTSCENE_BUTTON_PRESSED, IsSkipCutsceneButtonPressed);
+
+    // Local variable bits
+    REGISTER_COMMAND_HANDLER(COMMAND_IS_LOCAL_VAR_BIT_SET_CONST, IsLocalVarBitSet);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_LOCAL_VAR_BIT_CONST, SetLocalVarBit);
+    REGISTER_COMMAND_HANDLER(COMMAND_CLEAR_LOCAL_VAR_BIT_CONST, ClearLocalVarBit);
+
+    // Mission, stats & death arrest
+    REGISTER_COMMAND_HANDLER(COMMAND_HAS_DEATHARREST_BEEN_EXECUTED, HasDeatharrestBeenExecuted);
+    REGISTER_COMMAND_HANDLER(COMMAND_MISSION_HAS_FINISHED, MissionHasFinished);
+    REGISTER_COMMAND_HANDLER(COMMAND_REGISTER_MISSION_PASSED, RegisterMissionPassed);
+
+    // Vehicle recording & vehicles (misc)
+    REGISTER_COMMAND_HANDLER(COMMAND_STOP_PLAYBACK_RECORDED_CAR, StopPlaybackRecordedCar);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_PLAYBACK_SPEED, SetPlaybackSpeed);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_CAN_BURST_CAR_TYRES, SetCanBurstCarTyres);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_CAR_FORWARD_SPEED, SetCarForwardSpeed);
+    REGISTER_COMMAND_HANDLER(COMMAND_PLACE_OBJECT_RELATIVE_TO_CAR, PlaceObjectRelativeToCar);
+
+    // Script things (checkpoints, effect systems & fires)
+    REGISTER_COMMAND_HANDLER(COMMAND_CREATE_CHECKPOINT, CreateCheckpoint);
+    REGISTER_COMMAND_HANDLER(COMMAND_DELETE_CHECKPOINT, DeleteCheckpoint);
+    REGISTER_COMMAND_HANDLER(COMMAND_KILL_FX_SYSTEM, KillFxSystem);
+    REGISTER_COMMAND_HANDLER(COMMAND_STOP_FX_SYSTEM, StopFxSystem);
+    REGISTER_COMMAND_HANDLER(COMMAND_REMOVE_SCRIPT_FIRE, RemoveScriptFire);
+
+    // Script route
+    REGISTER_COMMAND_HANDLER(COMMAND_EXTEND_ROUTE, ExtendRoute);
+    REGISTER_COMMAND_HANDLER(COMMAND_FLUSH_ROUTE, FlushRoute);
+
+    // Tasks (misc)
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_PLAY_ANIM, TaskPlayAnim);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_PAUSE, TaskPause);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_STAY_IN_SAME_PLACE, TaskStayInSamePlace);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_TOGGLE_DUCK, TaskToggleDuck);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_ACHIEVE_HEADING, TaskAchieveHeading);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_FOLLOW_PATH_NODES_TO_COORD, TaskFollowPathNodesToCoord);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_FOLLOW_POINT_ROUTE, TaskFollowPointRoute);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_GO_TO_COORD_ANY_MEANS, TaskGoToCoordAnyMeans);
 
     // -----------------------------[ NOP ]-----------------------------
     REGISTER_COMMAND_NOP(COMMAND_SAVE_INT_TO_DEBUG_FILE);

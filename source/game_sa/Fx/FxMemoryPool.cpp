@@ -25,7 +25,9 @@ void FxMemoryPool_c::Init() {
 
 // 0x4A9C80
 void FxMemoryPool_c::Exit() {
-    CMemoryMgr::Free(this);
+    // The executable frees the buffer (`mov eax, [ecx]; ... call CMemoryMgr::Free`), not the pool
+    // object itself - the object lives inside `g_fxMan`, so freeing it corrupted the heap.
+    CMemoryMgr::Free(std::exchange(m_pData, nullptr));
 }
 
 // 0x4A9C90
@@ -45,6 +47,13 @@ void* FxMemoryPool_c::GetMem(int32 size, int32 align) {
 
 // 0x4A9CD0
 void FxMemoryPool_c::Optimise() {
-    m_pData = static_cast<uint8*>(CMemoryMgr::Realloc(m_pData, m_nPosition));
-    m_nSize = m_nPosition;
+    // The executable shrinks the pool in place (`m_pData = CMemoryMgr::Realloc(m_pData, m_nPosition, 0)`,
+    // `m_nSize = m_nPosition`), and its heap keeps the block where it is. Native `realloc` may
+    // relocate instead, and every `FxSystemBP_c`/`FxPrimBP_c`/`FxEmitterBP_c` is stored inside
+    // this buffer and referenced from `FxManager_c::m_FxSystemBPs` (and from each other), so a
+    // relocation leaves those lists pointing at the freed block. That surfaced as
+    // `FxManager_c::FindFxSystemBP` matching nothing (the old block gets reused for the .fxp text)
+    // and, worse, as heap corruption inside `CMemoryMgr::Malloc` during streaming.
+    // The used size is recorded nowhere else; `m_nSize` stays the allocated capacity so `GetMem`
+    // can be bounds-checked against it later.
 }

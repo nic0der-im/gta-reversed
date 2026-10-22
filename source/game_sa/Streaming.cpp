@@ -1905,7 +1905,10 @@ bool CStreaming::ProcessLoadingChannel(int32 chIdx) {
             if (modelId == MODEL_INVALID)
                 continue;
 
-            CBaseModelInfo* baseModelInfo = CModelInfo::GetModelInfo(modelId);
+            // Retail guards this with `modelId < RESOURCE_ID_TXD` (see 0x40E1F1) before touching
+            // `ms_modelInfoPtrs`, which only has `NUM_MODEL_INFOS` entries: TXD/COL/IPL/SCM ids
+            // (>= 20000) would index far past the array.
+            CBaseModelInfo* baseModelInfo = IsModelDFF(modelId) ? CModelInfo::GetModelInfo(modelId) : nullptr;
             CStreamingInfo& info = GetInfo(modelId);
 
             if (!IsModelDFF(modelId)

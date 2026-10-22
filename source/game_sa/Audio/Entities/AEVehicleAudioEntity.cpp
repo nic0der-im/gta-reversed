@@ -3778,6 +3778,10 @@ void CAEVehicleAudioEntity::ProcessDummySeaPlane(tVehicleParams& vp) {
 
 // 0x4FF900
 void CAEVehicleAudioEntity::ProcessGenericJet(bool bEngineOn, tVehicleParams& params, float fEngineSpeed, float fAccelRatio, float fBrakeRatio, float fStalledVolume, float fStalledFrequency) {
+    // TODO(re): The per-model (519/520/577/592) constants at 0x8CBE68..0x8CBEB8 are known, but the
+    //   four per-model volume targets live at 0xB6B9F4/0xB6B9F8/0xB6B9FC, which are initialised
+    //   `.data` in a full game image (trimmed out of the analysis binary, never written by code)
+    //   and have no repo symbol. `FUN_0059BBC0(&0xB6F99C)` (listener update) is likewise unresolved.
     plugin::CallMethod<0x4FF900, CAEVehicleAudioEntity*, uint8, tVehicleParams&, float, float, float, float, float>(this, bEngineOn, params, fEngineSpeed, fAccelRatio, fBrakeRatio, fStalledVolume, fStalledFrequency);
 }
 
@@ -3831,6 +3835,9 @@ void CAEVehicleAudioEntity::ProcessPlayerJet(tVehicleParams& vp) {
 #pragma region Hovercraft (Vortex)
 // 0x500F50
 void CAEVehicleAudioEntity::ProcessDummyHovercraft(tVehicleParams& params) {
+    // TODO(re): Needs `CBoat`/`CVehicle` members at +0x988 (speed factor) and +0x9C4 (load), which
+    //   lie past this repo's `CBoat` (0x7E8) and are not declared; also the pitch-curve globals
+    //   0xB6BA90/0xB6BA94 (initialised data, no repo symbol).
     plugin::CallMethod<0x500F50, CAEVehicleAudioEntity*, tVehicleParams&>(this, params);
 }
 
@@ -4337,11 +4344,19 @@ float CAEVehicleAudioEntity::GetBaseVolumeForBicycleTyre(float ratio) const noex
 
 // 0x4FFDC0
 void CAEVehicleAudioEntity::ProcessDummyBicycle(tVehicleParams& params) {
+    // TODO(re): Reads `CBike` fields at +0x804 (uint8 engine volume scale), +0x648 (float, engine
+    //   frequency modulation), +0x818/+0x820 (float skid inputs) and +0x834 (bool tyre sound), plus
+    //   the globals 0xB6BAC8 (prev tyre flag) and the curve constants 0x8CBEBC/0x8CBEC0/0x8CBD5C/
+    //   0x8CBD60/0x8CBD64/0xB6BA6C/0xB6BA70 - none of which exist in this repo's `CBike` (size
+    //   0x814, so 0x818/0x820/0x834 are past its end) or as named symbols.
     plugin::CallMethod<0x4FFDC0, CAEVehicleAudioEntity*, tVehicleParams&>(this, params);
 }
 
 // 0x500040
 void CAEVehicleAudioEntity::ProcessPlayerBicycle(tVehicleParams& params) {
+    // TODO(re): Same prerequisite as `ProcessDummyBicycle` (CBike members at +0x648/+0x804/+0x818/
+    //   +0x820/+0x834 are undeclared) plus the skid-timer globals 0xB6BACC (float), 0xB6BAD0
+    //   (previous frame's +0x820) and the prev-tyre-flag byte 0xB6BAC9.
     plugin::CallMethod<0x500040, CAEVehicleAudioEntity*, tVehicleParams&>(this, params);
 }
 #pragma endregion

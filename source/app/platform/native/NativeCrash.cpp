@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <iterator>
+#include <sys/ucontext.h>
 #include <unistd.h>
 
 #include <execinfo.h>
@@ -26,10 +27,30 @@ void WriteToStderr(const char* str) {
     }
 }
 
-void OnFatalSignal(int sig) {
+//! The interrupted `pc`, which the backtrace can't be trusted to report (there's no DWARF).
+void* GetSignalPC(void* context) {
+#if defined(__APPLE__) && defined(__aarch64__)
+    return context ? reinterpret_cast<void*>(static_cast<ucontext_t*>(context)->uc_mcontext->__ss.__pc) : nullptr;
+#elif defined(__APPLE__) && defined(__x86_64__)
+    return context ? reinterpret_cast<void*>(static_cast<ucontext_t*>(context)->uc_mcontext->__ss.__rip) : nullptr;
+#else
+    (void)context;
+    return nullptr;
+#endif
+}
+
+void OnFatalSignal(int sig, siginfo_t* info, void* context) {
     // Only async-signal-safe calls here: no allocation and no logging.
-    char msg[64];
-    if (std::snprintf(msg, sizeof(msg), "Native: fatal signal %d\n", sig) > 0) {
+    char msg[128];
+    if (std::snprintf(
+            msg,
+            sizeof(msg),
+            "Native: fatal signal %d at %p (pc %p)\n",
+            sig,
+            sig == SIGSEGV || sig == SIGBUS || sig == SIGILL || sig == SIGFPE ? info->si_addr : nullptr,
+            GetSignalPC(context)
+        ) > 0
+    ) {
         WriteToStderr(msg);
     }
 
@@ -48,11 +69,11 @@ namespace notsa::native {
 
 void InstallCrashHandler() {
     struct sigaction action = {};
-    action.sa_handler = &OnFatalSignal;
+    action.sa_sigaction = &OnFatalSignal;
+    action.sa_flags     = SA_RESTART | SA_SIGINFO;
     sigemptyset(&action.sa_mask);
-    action.sa_flags = SA_RESTART;
 
-    for (const auto sig : { SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT }) {
+    for (const auto sig : { SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT, SIGTRAP }) {
         sigaction(sig, &action, nullptr);
     }
 }
