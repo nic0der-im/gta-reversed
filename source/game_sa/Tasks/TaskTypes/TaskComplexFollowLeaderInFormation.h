@@ -36,6 +36,8 @@ public:
     // NOTSA
     CPed* GetLeader() const { return m_Leader; }
 
+    CTask* CreateSubTask(eTaskType taskType, CPed* ped); // 0x6962A0
+
 private:
     friend void InjectHooksMain();
     static void InjectHooks();

@@ -10,6 +10,7 @@
 #include "AttractorScanner.h"
 
 class CPed;
+class CEntity;
 
 class CPedAcquaintanceScanner {
 public:
@@ -31,6 +32,18 @@ public:
         m_bScanAllowedInVehicle    = false;
         m_bScanAllowedScriptedTask = false;
     }
+
+    void ScanForAcquaintanceEvents(CPed& ped, CEntity** entities, int32 count);
+
+private:
+    //! Check whenever the given ped may scan for acquaintances right now
+    bool CanScanAcquaintanceEvents(CPed& ped) const;
+
+    //! Filter the given entities and process the resulting candidates
+    void FindAcquaintanceEventTarget(CPed& ped, int32 filter, CEntity** entities, int32 count, CPed** outPed, int32* outAcquaintanceId);
+
+    //! Compute whenever the candidate is of the given acquaintance type, report it (And add the event), and return the new current type
+    int32 ProcessAcquaintanceCandidate(CPed& ped, int32 filter, int32 currentAcquaintanceId, CPed& candidate, CPed** outPed, int32* outAcquaintanceId);
 };
 
 class CVehiclePotentialCollisionScanner {
@@ -42,16 +55,22 @@ public:
 class CObjectPotentialCollisionScanner {
 public:
     CTaskTimer m_timer;
+
+    void ScanForObjectPotentialCollisionEvents(CPed& ped);
 };
 
 class CSexyPedScanner {
 public:
     CTaskTimer m_timer;
+
+    void ScanForSexyPedEvents(CPed& ped, CEntity** entities, int32 count);
 };
 
 class CNearbyFireScanner {
 public:
     CTaskTimer m_timer;
+
+    void ScanForNearbyFireEvents(CPed& ped);
 };
 
 VALIDATE_SIZE(CPedAcquaintanceScanner, 0x10);
@@ -79,6 +98,9 @@ public:
     void Clear();
     void ScanForEvents(CPed& ped);
     void ScanForEventsNow(const CPed& ped, bool bDontScan);
+
+    //! Scan for peds walking into eachother
+    static void ScanForPedPotentialWalkIntoPedEvents(CPed& ped, CEntity* closestPed);
 
     auto& GetAcquaintanceScanner() {
         return m_pedAcquaintanceScanner;

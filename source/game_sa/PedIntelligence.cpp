@@ -179,7 +179,8 @@ void CPedIntelligence::SetSeeingRange(float range) {
 // Unused
 // 0x600C00
 bool CPedIntelligence::IsInHearingRange(const CVector& posn) {
-    return plugin::CallMethodAndReturn<bool, 0x600C00, CPedIntelligence*, const CVector&>(this, posn);
+    CVector distance = posn - m_pPed->GetPosition();
+    return m_fHearingRange * m_fHearingRange > distance.SquaredMagnitude();
 }
 
 // 0x600C60
@@ -751,7 +752,12 @@ void CPedIntelligence::RecordEventForScript(int32 eventId, int32 eventPriority) 
 // typo: Entities
 // 0x602080
 bool CPedIntelligence::HasInterestingEntites() {
-    return plugin::CallMethodAndReturn<bool, 0x602080, CPedIntelligence*>(this);
+    for (CEntity* interestingEntity : m_apInterestingEntities) {
+        if (interestingEntity) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // 0x6020A0
@@ -824,7 +830,12 @@ void CPedIntelligence::LookAtInterestingEntities() {
 // unused
 // 0x602320
 void CPedIntelligence::RemoveAllInterestingEntities() {
-    plugin::CallMethod<0x602320, CPedIntelligence*>(this);
+    for (CEntity*& interestingEntity : m_apInterestingEntities) {
+        if (interestingEntity) {
+            CEntity::CleanUpOldReference(interestingEntity);
+        }
+        interestingEntity = nullptr;
+    }
 }
 
 // 0x602350

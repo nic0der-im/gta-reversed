@@ -15,7 +15,9 @@ public:
     int32        field_28;
     int8         field_2C;
     int8         field_2D;
-    int32        field_30;
+    CVector      m_objectPos;     //!< Object's position when the route was computed
+    CVector      m_objectForward; //!< Object's forward axis when the route was computed
+    CVector      m_objectRight;   //!< Object's right axis when the route was computed
 
 public:
     static constexpr auto Type = TASK_COMPLEX_WALK_ROUND_OBJECT;
@@ -36,6 +38,12 @@ private:
     static void InjectHooks();
 
     CTaskComplexWalkRoundObject* Constructor(int32 moveState, const CVector& targetPoint, CEntity* object);
+
+    // 0x6551D0
+    float ComputeRoute(CPed* ped);
+
+    // 0x655290
+    CTask* CreateSubTask(eTaskType taskType, CPed* ped);
 };
 
-VALIDATE_SIZE(CTaskComplexWalkRoundObject, 0x34);
+VALIDATE_SIZE(CTaskComplexWalkRoundObject, 0x54);

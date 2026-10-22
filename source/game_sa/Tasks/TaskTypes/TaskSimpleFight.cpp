@@ -2,6 +2,11 @@
 
 #include "TaskSimpleFight.h"
 
+#include "Game.h"
+#include "Crime.h"
+#include "Fx.h"
+#include "RwHelper.h"
+
 namespace {
 //! Converts the frame counts used by `melee.dat` to seconds
 constexpr float MELEE_FRAMES_TO_SECONDS = 1.f / 30.f;
@@ -402,4 +407,73 @@ CTaskSimpleFight* CTaskSimpleFight::Constructor(CEntity* entity, int32 nCommand,
 CTaskSimpleFight* CTaskSimpleFight::Destructor() {
     this->CTaskSimpleFight::~CTaskSimpleFight();
     return this;
+}
+
+// 0x61D5F0
+void CTaskSimpleFight::FightSetUpCol(float radius) {
+    auto& col = col1[0];
+    if (!col.m_pColData) {
+        // NOTE: The vanilla code points the model's data at a *static*, shared single-sphere
+        // `CCollisionData` (0xC17854, its sphere array at 0xC17884) and never initializes that
+        // sphere, so in practice only the model's bound box is meaningful.
+        col.AllocateData(1, 0, 0, 0, 0, false);
+        col.m_pColData->m_pSpheres[0] = CColSphere{};
+    }
+
+    col.m_boundBox.m_vecMin    = CVector{ -radius, -radius, -radius };
+    col.m_boundBox.m_vecMax    = CVector{  radius,  radius,  radius };
+    col.m_boundSphere.m_vecCenter = CVector{};
+    col.m_boundSphere.m_fRadius   = radius;
+}
+
+// 0x61D0B0
+void CTaskSimpleFight::FightHitCar(CPed* ped, CVehicle* vehicle, CVector& posn1, CVector& posn2, int16 damageComponent, int8 surfaceType) {
+    // TODO(re: 0x61C740 `GetStrikeDamage` is not reversed (and the declaration in the header says it
+    // returns `void`, while the exe returns the damage through ST0), so only the base per-move damage
+    // read out of `melee.dat` is used here.
+    const auto strikeDamage = (float)m_aComboData[
+        std::max<int32>(m_nComboSet - (int32)MELEE_COMBO_UNARMED_1, 0)
+    ].m_nDamage[m_nCurrentMove];
+
+    const auto weaponType = ped->GetActiveWeapon().m_Type;
+    const auto handling   = vehicle->m_pHandlingData;
+
+    if (weaponType == WEAPON_CHAINSAW) {
+        // A chainsaw also throws sparks off the attacker's right hand
+        const auto hierarchy = GetAnimHierarchyFromSkinClump(ped->GetRpClump());
+        const auto& handMat  = RpHAnimHierarchyGetMatrixArray(hierarchy)[RpHAnimIDGetIndex(hierarchy, BONE_R_HAND)];
+        g_fx.AddSparks(
+            posn1,
+            { handMat.up.x, handMat.up.y, handMat.up.z },
+            5.f, 32, {}, SPARK_PARTICLE_SPARK, 0.3f, 1.f
+        );
+        vehicle->VehicleDamage(
+            handling->m_fMass * strikeDamage * 0.00075f,
+            (eVehicleCollisionComponent)damageComponent, ped, &posn1, nullptr, WEAPON_UNARMED
+        );
+    } else {
+        vehicle->VehicleDamage(
+            handling->m_fMass * strikeDamage * 0.01f,
+            (eVehicleCollisionComponent)damageComponent, ped, &posn1, nullptr, WEAPON_UNARMED
+        );
+    }
+
+    CCrime::ReportCrime(CRIME_HIT_CAR, vehicle, ped);
+
+    // TODO(re: Every occupant (the driver, then `m_nMaxPassengers` passengers) is meant to receive a
+    // `CEventVehicleDamage(vehicle, ped, WEAPON_BASEBALLBAT)` on their event group here, but the repo's
+    // `CEventVehicleDamage` is abstract (it doesn't override the pure virtual of
+    // `CEventEditableResponse`), so it cannot be constructed yet. That belongs to
+    // `source/game_sa/Events/EventVehicleDamage.cpp`, which this task doesn't own.
+
+    if (vehicle->m_fHealth < strikeDamage) {
+        vehicle->m_nLastWeaponDamageType = (uint8)weaponType;
+        vehicle->m_pLastDamageEntity     = ped;
+        CEntity::SafeRegisterRef(vehicle->m_pLastDamageEntity);
+    }
+
+    // TODO(re: The vanilla body also fires two audio events - `0x9B` on `ped->m_weaponAudio` when the
+    // active weapon is a chainsaw, and a per-(combo, move) event looked up around 0xC16F0C for
+    // `CAEPedAudioEntity::AddAudioEvent`. Neither the `0x9B` enum member nor that lookup table's
+    // layout is established; audio is out of the scope this task targets, so both are omitted.)
 }

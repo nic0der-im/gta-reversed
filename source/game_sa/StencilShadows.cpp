@@ -66,7 +66,12 @@ void AddOrRemoveEdge(RxVertexIndex* const edges, uint16& numEdges, RxVertexIndex
  * @return The active shadow object of `entity`, or null if there's none.
  */
 CStencilShadowObject* FindShadowObject(CEntity* const entity) {
-    return plugin::CallAndReturn<CStencilShadowObject*, 0x710BA0, CEntity*>(entity);
+    for (auto* obj = CStencilShadows::pFirstActiveStencilShadowObject; obj; obj = obj->m_pNext) {
+        if (obj->m_pOwner == entity) {
+            return obj;
+        }
+    }
+    return nullptr;
 }
 
 /*!
@@ -77,7 +82,36 @@ CStencilShadowObject* FindShadowObject(CEntity* const entity) {
  * @return The created shadow object, or null if `entity` can't have a shadow (No collision data, or no shadow triangles)
  */
 CStencilShadowObject* CreateShadowObject(CStencilShadowObject* const object, CEntity* const entity, const int type) {
-    return plugin::CallMethodAndReturn<CStencilShadowObject*, 0x711280, CStencilShadowObject*, CEntity*, int>(object, entity, type);
+    if (type <= static_cast<int>(eStencilShadowObjType::NONE) || type > static_cast<int>(eStencilShadowObjType::VEHICLE)) {
+        return nullptr;
+    }
+
+    const auto* const colData = entity->GetColModel()->m_pColData;
+    if (!colData || !colData->bHasShadowInfo) {
+        return nullptr;
+    }
+
+    const auto numTriangles = static_cast<int32>(colData->m_nNumShadowTriangles);
+    if (numTriangles <= 0) {
+        return nullptr;
+    }
+
+    object->m_NumShadowFaces        = static_cast<int16>(numTriangles);
+    object->m_FaceID                = numTriangles * 15; // Capacity in vertices (15 per shadow triangle)
+    object->m_pOwner                = entity;
+    object->m_Type                  = static_cast<eStencilShadowObjType>(type);
+    object->m_SizeOfShadowFacesData = 0;
+    object->m_ShadowFacesData       = static_cast<CVector*>(CMemoryMgr::Malloc(numTriangles * 0xB4, 0));
+
+    entity->RegisterReference(reinterpret_cast<CEntity**>(&object->m_pOwner));
+
+    CStencilShadows::UpdateHierarchy(
+        CStencilShadows::pFirstAvailableStencilShadowObject,
+        CStencilShadows::pFirstActiveStencilShadowObject,
+        object
+    );
+
+    return object;
 }
 
 /*!

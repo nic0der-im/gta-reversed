@@ -887,7 +887,23 @@ void CPhysical::ApplyFrictionMoveForce(CVector moveForce)
 // 0x543100
 void CPhysical::ApplyFrictionTurnForce(CVector posn, CVector velocity)
 {
-    plugin::CallMethod<0x543100, CPhysical*, CVector, CVector>(this, posn, velocity);
+    if (physicalFlags.bDisableTurnForce)
+        return;
+
+    float fMass = m_fMass;
+    CVector vecCentreOfMassMultiplied{};
+    if (physicalFlags.bInfiniteMass)
+        fMass += m_vecCentreOfMass.z * m_fMass * m_vecCentreOfMass.z * 0.5f;
+    else
+        vecCentreOfMassMultiplied = GetMatrix().TransformVector(m_vecCentreOfMass);
+
+    if (physicalFlags.bDisableMoveForce) {
+        posn.z = 0.0f;
+        velocity.z = 0.0f;
+    }
+
+    const CVector distance = velocity - vecCentreOfMassMultiplied;
+    m_vecFrictionTurnSpeed += CrossProduct(distance, posn) / fMass;
 }
 
 // 0x543220
@@ -1227,9 +1243,32 @@ bool CPhysical::ApplySpringDampening(float fDampingForce, float fSpringForceDamp
 }
 
 // Unused
+// 0x544100
+// Note: `arg1` is never read by the original.
 bool CPhysical::ApplySpringDampeningOld(float arg0, float arg1, CVector& arg2, CVector& arg3, CVector& arg4)
 {
-    return plugin::CallMethodAndReturn<bool, 0x544100, CPhysical*, float, float, CVector&, CVector&, CVector&>(this, arg0, arg1, arg2, arg3, arg4);
+    const CVector vecCollisionPointSpeed = GetSpeed(arg3);
+    const float fCollisionPointSpeedDotProduct = DotProduct(vecCollisionPointSpeed, arg2);
+    const float fCollisionPosDotProduct = DotProduct(arg4, arg2);
+
+    float fTimeStep = CTimer::GetTimeStep();
+    if (fTimeStep >= 3.0f)
+        fTimeStep = 3.0f;
+
+    float fDampingForce = fTimeStep * m_fMass * (fCollisionPointSpeedDotProduct + fCollisionPosDotProduct) * 0.5f * arg0 * -0.53f;
+    if (physicalFlags.bMakeMassTwiceAsBig)
+        fDampingForce *= 2.0f;
+
+    float fMaxDampingForce = m_fTurnMass / (2.0f * ((arg3.SquaredMagnitude() + 1.0f) * m_fMass));
+    if (fMaxDampingForce > 1.0f)
+        fMaxDampingForce = 1.0f;
+
+    const float fDampingForceRel = fabs(fDampingForce / (fCollisionPointSpeedDotProduct * m_fMass));
+    if (fMaxDampingForce < fDampingForceRel)
+        fDampingForce *= fMaxDampingForce / fDampingForceRel;
+
+    ApplyForce(fDampingForce * arg2, arg3, true);
+    return true;
 }
 
 // 0x544280
@@ -2190,7 +2229,25 @@ void CPhysical::PlacePhysicalRelativeToOtherPhysical(CPhysical* relativeToPhysic
 // 0x546ED0
 float CPhysical::ApplyScriptCollision(CVector arg0, float arg1, float arg2, CVector* arg3)
 {
-    return plugin::CallMethodAndReturn<float, 0x546ED0, CPhysical*, CVector, float, float, CVector*>(this, arg0, arg1, arg2, arg3);
+    // The original passes a stack `CColPoint` whose surface types/depth are never written,
+    // so they're zeroed here for determinism (`SURFACE_DEFAULT`).
+    CColPoint colPoint{};
+
+    colPoint.m_vecPoint = arg3
+        ? *arg3
+        : GetPosition() - arg0 * GetColModel()->m_boundSphere.m_fRadius;
+    colPoint.m_vecNormal = arg0;
+
+    const float savedElasticity = m_fElasticity;
+    m_fElasticity = arg1;
+
+    float damageIntensity = 0.0f;
+    if (ApplyCollision(this, colPoint, damageIntensity) && arg2 > 0.0f) {
+        ApplyFriction(arg2, colPoint);
+    }
+
+    m_fElasticity = savedElasticity;
+    return damageIntensity;
 }
 
 // 0x546FF0

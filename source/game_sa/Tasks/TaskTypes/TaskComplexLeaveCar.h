@@ -48,5 +48,17 @@ private:
     static void InjectHooks();
 
     CTaskComplexLeaveCar* Constructor(CVehicle* targetVehicle, int32 nTargetDoor, int32 nDelayTime, bool bSensibleLeaveCar, bool bForceGetOut);
+
+    // 0x63BA00
+    void ComputeAndSetGettingOutFlags(CPed* ped);
+
+    // 0x63BAB0
+    void ComputeTargetDoorToExitIfNotSet(CPed* ped);
+
+    // 0x63BAE0
+    void CreateUtilityLineUpPedWithCar();
+
+    // NOTSA - Inlined by the original code everywhere
+    void ClearGettingInOutFlags();
 };
 VALIDATE_SIZE(CTaskComplexLeaveCar, 0x34);

@@ -70,8 +70,7 @@ static bool IsSunnyWeatherType(int32 weatherType) {
 }
 
 // 0x632140
-//! Is it warm and sunny enough for people to lie on the beach?
-static bool IsSunbathingWeather() {
+bool IsSunbathingWeather() {
     if (CClock::ms_nGameClockHours < 10 || CClock::ms_nGameClockHours > 17) {
         return false;
     }

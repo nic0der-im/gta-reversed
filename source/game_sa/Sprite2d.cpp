@@ -406,18 +406,74 @@ void CSprite2d::DrawCircleAtNearClip(const CVector2D& posn, float size, const CR
 // this makes some trick with sprite z position (z = NearScreenZ + 0.000001).
 void CSprite2d::SetVerticesForSniper(const CRect& posn, const CRGBA& color1, const CRGBA& color2, const CRGBA& color3, const CRGBA& color4)
 {
-    plugin::Call<0x727FD0, const CRect&, const CRGBA&, const CRGBA&, const CRGBA&, const CRGBA&>(posn, color1, color2, color3, color4);
+    const float fZ = NearScreenZ + 0.000001f;
+
+    RwIm2DVertexSetScreenX(&maVertices[0], posn.left);
+    RwIm2DVertexSetScreenY(&maVertices[0], posn.bottom);
+    RwIm2DVertexSetScreenZ(&maVertices[0], fZ);
+    RwIm2DVertexSetRecipCameraZ(&maVertices[0], RecipNearClip);
+    RwIm2DVertexSetU(&maVertices[0], 0.0f, RecipNearClip);
+    RwIm2DVertexSetV(&maVertices[0], 0.0f, RecipNearClip);
+    RwIm2DVertexSetIntRGBA(&maVertices[0], color3.r, color3.g, color3.b, color3.a);
+
+    RwIm2DVertexSetScreenX(&maVertices[1], posn.right);
+    RwIm2DVertexSetScreenY(&maVertices[1], posn.bottom);
+    RwIm2DVertexSetScreenZ(&maVertices[1], fZ);
+    RwIm2DVertexSetRecipCameraZ(&maVertices[1], RecipNearClip);
+    RwIm2DVertexSetU(&maVertices[1], 1.0f, RecipNearClip);
+    RwIm2DVertexSetV(&maVertices[1], 0.0f, RecipNearClip);
+    RwIm2DVertexSetIntRGBA(&maVertices[1], color4.r, color4.g, color4.b, color4.a);
+
+    RwIm2DVertexSetScreenX(&maVertices[2], posn.right);
+    RwIm2DVertexSetScreenY(&maVertices[2], posn.top);
+    RwIm2DVertexSetScreenZ(&maVertices[2], fZ);
+    RwIm2DVertexSetRecipCameraZ(&maVertices[2], RecipNearClip);
+    RwIm2DVertexSetU(&maVertices[2], 1.0f, RecipNearClip);
+    RwIm2DVertexSetV(&maVertices[2], 1.0f, RecipNearClip);
+    RwIm2DVertexSetIntRGBA(&maVertices[2], color2.r, color2.g, color2.b, color2.a);
+
+    RwIm2DVertexSetScreenX(&maVertices[3], posn.left);
+    RwIm2DVertexSetScreenY(&maVertices[3], posn.top);
+    RwIm2DVertexSetScreenZ(&maVertices[3], fZ);
+    RwIm2DVertexSetRecipCameraZ(&maVertices[3], RecipNearClip);
+    RwIm2DVertexSetU(&maVertices[3], 0.0f, RecipNearClip);
+    RwIm2DVertexSetV(&maVertices[3], 1.0f, RecipNearClip);
+    RwIm2DVertexSetIntRGBA(&maVertices[3], color1.r, color1.g, color1.b, color1.a);
 }
 
 void CSprite2d::OffsetTexCoordForBilinearFiltering(float width, float height)
 {
-    plugin::Call<0x728150, float, float>(width, height);
+    const float fU = 1.0f / (width + width);
+    const float fV = 1.0f / (height + height);
+
+    for (int32 i = 0; i < 4; ++i) {
+        maVertices[i].u += fU;
+        maVertices[i].v += fV;
+    }
 }
 
 // add vertices to buffer
 void CSprite2d::AddToBuffer(const CRect& posn, const CRGBA& color, float u1, float v1, float u2, float v2, float u3, float v3, float u4, float v4)
 {
-    plugin::Call<0x728200, const CRect&, const CRGBA&, float, float, float, float, float, float, float, float>(posn, color, u1, v1, u2, v2, u3, v3, u4, v4);
+    const int32 startVertex = nextBufferVertex;
+    SetVertices(&aRadiosityVertexBuffer[startVertex], posn, color, color, color, color, u1, v1, u2, v2, u3, v3, u4, v4);
+
+    const RxVertexIndex base = static_cast<RxVertexIndex>(startVertex);
+    RxVertexIndex* indices = &aTempBufferIndices[nextBufferIndex];
+    indices[0] = base;
+    indices[1] = base + 1;
+    indices[2] = base + 2;
+    indices[3] = base + 3;
+    indices[4] = base;
+    indices[5] = base + 2;
+
+    nextBufferVertex += 4;
+    nextBufferIndex += 6;
+
+    if (nextBufferVertex < 0x5FD && nextBufferIndex < 0xFFB) {
+        return;
+    }
+    RenderVertexBuffer();
 }
 
 // non-textured polygon

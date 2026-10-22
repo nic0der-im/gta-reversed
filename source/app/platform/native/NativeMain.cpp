@@ -23,6 +23,7 @@
 #include "FileMgr.h"
 #include "MenuManager.h"
 #include "Game.h"
+#include "Scripts/RunningScript.h"
 #include "extensions/utility.hpp"
 #include "extensions/Configs/ConfigLoader.h"
 #include "extensions/Configs/FastLoader.hpp"
@@ -310,6 +311,10 @@ int32 NativeMain(int argc, char** argv) {
 
     notsa::native::ExeGlobals::ReportOverlaps();
     notsa::native::ApplyExeData(); // Replays the executable's CRT static initializers
+
+    // Script command handlers are normally registered from `InjectHooksMain`, which is not part of
+    // the native build. Without this every opcode would fall through to the (absent) retail table.
+    CRunningScript::InjectCustomCommandHooks();
 
     // 3b. Configurations (`gta-reversed.ini` is optional) and the dev harness switches.
     notsa::LoadConfigurations();

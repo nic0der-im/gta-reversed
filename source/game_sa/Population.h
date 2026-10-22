@@ -226,3 +226,7 @@ public:
 private:
     static void UpdatePedCounts();
 };
+
+//! @brief Is it warm and sunny enough for people to lie on the beach?
+//! @addr 0x632140
+bool IsSunbathingWeather();

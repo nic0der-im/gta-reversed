@@ -119,6 +119,7 @@
 #include "Events/EventHighAngerAtPlayer.h"
 #include "Events/EventInWater.h"
 #include "Events/EventInteriorUseInfo.h"
+#include "Events/EventLeaderExitedCarAsDriver.h"
 #include "Events/EventLowAngerAtPlayer.h"
 #include "Events/EventHealthLow.h"
 #include "Events/EventPotentialWalkIntoObject.h"
@@ -266,7 +267,7 @@ void CEventHandler::InjectHooks() {
     RH_ScopedInstall(ComputeHighAngerAtPlayerResponse, 0x4BAC10);
     RH_ScopedInstall(ComputeInWaterResponse, 0x4BAF80);
     RH_ScopedInstall(ComputeInteriorUseInfoResponse, 0x4BAFE0);
-    RH_ScopedInstall(ComputeKnockOffBikeResponse, 0x4B9FF0, { .Reversed = false });
+    RH_ScopedInstall(ComputeKnockOffBikeResponse, 0x4B9FF0);
     RH_ScopedInstall(ComputeLowAngerAtPlayerResponse, 0x4BAAD0);
     RH_ScopedInstall(ComputeLowHealthResponse, 0x4BA990);
     RH_ScopedInstall(ComputeObjectCollisionPassiveResponse, 0x4BBB90);
@@ -1471,7 +1472,192 @@ void CEventHandler::ComputeInteriorUseInfoResponse(CEventInteriorUseInfo* e, CTa
 
 // 0x4B9FF0
 void CEventHandler::ComputeKnockOffBikeResponse(CEvent* e, CTask* tactive, CTask* tsimplest) {
-    plugin::CallMethod<0x4B9FF0, CEventHandler*, CEvent*, CTask*, CTask*>(this, e, tactive, tsimplest);
+    // Only set when the knock-off event has to be synthesized (i.e. `e` isn't one already)
+    CEventKnockOffBike  knockOffEvent{};
+    CEventKnockOffBike* ev = nullptr;
+
+    const auto ComputeImpactVelocity = [this](uint8 dir) {
+        switch (dir) {
+        case 0:  return -m_Ped->GetForward();
+        case 1:  return  m_Ped->GetRight();
+        case 2:  return  m_Ped->GetForward();
+        default: return -m_Ped->GetRight();
+        }
+    };
+
+    switch (e->GetEventType()) {
+    case EVENT_KNOCK_OFF_BIKE: {
+        // Apply the ramming damage (If any)
+        const auto knockOff = static_cast<CEventKnockOffBike*>(e);
+        CEventDamage damage{ knockOff->m_vehicle, CTimer::GetTimeInMS(), WEAPON_FALL, PED_PIECE_TORSO, 2, true, false };
+        if (damage.AffectsPed(m_Ped)) {
+            CPedDamageResponseCalculator calculator{ knockOff->m_vehicle, knockOff->field_28, WEAPON_FALL, PED_PIECE_TORSO, true };
+            CPedDamageResponse          response{};
+            calculator.ComputeDamageResponse(m_Ped, response, true);
+        }
+        ev = knockOff;
+        break;
+    }
+    case EVENT_DAMAGE: {
+        const auto&   damage    = *static_cast<CEventDamage*>(e);
+        const auto    veh       = m_Ped->m_pVehicle;
+        const CVector moveSpeed = veh->m_vecMoveSpeed * 0.75f;
+        const CVector impact    = ComputeImpactVelocity(damage.m_ucDirection);
+
+        knockOffEvent = CEventKnockOffBike{
+            veh,
+            moveSpeed,
+            impact,
+            50.f,
+            0.f,
+            static_cast<uint8>(damage.m_weaponType),
+            damage.m_ucDirection,
+            0,
+            nullptr,
+            false,
+            false
+        };
+        ev = &knockOffEvent;
+        break;
+    }
+    case EVENT_VEHICLE_DIED:
+    case EVENT_VEHICLE_ON_FIRE: {
+        const auto    veh       = m_Ped->m_pVehicle;
+        const CVector moveSpeed = veh->m_vecMoveSpeed * 0.75f;
+        const auto    dir       = static_cast<uint8>(CGeneral::GetRandomNumberInRange(0.f, 4.f)); // Random direction (0..3)
+        const CVector impact    = ComputeImpactVelocity(dir);
+
+        knockOffEvent = CEventKnockOffBike{
+            veh,
+            moveSpeed,
+            impact,
+            50.f,
+            0.f,
+            KNOCK_OFF_TYPE_EXPLOSION,
+            dir,
+            0,
+            nullptr,
+            false,
+            false
+        };
+        ev = &knockOffEvent;
+        break;
+    }
+    default: // The original dereferences `ev` (Still null) below, but no caller passes any other event type
+        NOTSA_UNREACHABLE();
+    }
+
+    const auto veh  = ev->m_vehicle;
+    const auto time = ev->m_time;
+    if (!veh) {
+        return;
+    }
+
+    // Only makes sense if the ped is (one of) the vehicle's occupants
+    if (m_Ped != veh->m_pDriver
+        && m_Ped != veh->m_apPassengers[0]
+        && m_Ped != veh->m_apPassengers[1]
+        && m_Ped != veh->m_apPassengers[2]
+    ) {
+        return;
+    }
+
+    g_InterestingEvents.Add(CInterestingEvents::INTERESTING_EVENT_16, m_Ped);
+
+    if (!ev->SetPedSafePosition(m_Ped)) {
+        if (m_Ped->bInVehicle) {
+            m_Ped->m_bUsesCollision = false;
+        }
+        return;
+    }
+
+    ev->SetPedOutCar(m_Ped);
+    auto anim = ev->CalcForcesAndAnims(m_Ped);
+
+    if (ev->m_knockOffType == KNOCK_OFF_TYPE_FALL) {
+        m_Ped->bIsStanding = false;
+        m_Ped->bWasStanding = false;
+        m_Ped->bIsInTheAir  = true;
+        // NOTE: These are the bits the original sets (Despite what the flags are named)
+        m_Ped->physicalFlags.bSubmergedInWater = true;
+        m_Ped->physicalFlags.bTouchingWater    = true;
+
+        if (m_Ped->m_fHealth <= 0.f) {
+            m_EventResponseTask = new CTaskComplexDie{
+                static_cast<eWeaponType>(ev->m_knockOffType),
+                ANIM_GROUP_DEFAULT,
+                static_cast<AnimationId>(anim),
+                4.f
+            };
+        } else {
+            m_EventResponseTask = new CTaskComplexInAirAndLand{ false, false };
+        }
+    } else if (m_Ped->m_fHealth > 0.f) {
+        if (ev->m_knockOffType != KNOCK_OFF_TYPE_NONE) {
+            m_EventResponseTask = new CTaskComplexFallAndGetUp{
+                static_cast<AnimationId>(anim),
+                ANIM_GROUP_DEFAULT,
+                static_cast<int32>(time)
+            };
+
+            if (const auto group = CPedGroups::GetPedsGroup(m_Ped)) {
+                const auto& membership = group->GetMembership();
+                if (membership.IsLeader(m_Ped)) {
+                    // The leader exited the car as the driver, let the group know about it
+                    CEventGroupEvent groupEvent{ m_Ped, new CEventLeaderExitedCarAsDriver{} };
+                    group->GetIntelligence().AddEvent(&groupEvent);
+                } else if (!ev->m_isVictimDriver) {
+                    // If the leader is in the vehicle, and we haven't already recorded a knock-off event for them,
+                    // make this ped get into the vehicle too
+                    if (const auto leader = membership.GetLeader()) {
+                        if (leader->bInVehicle && !leader->GetEventGroup().GetEventOfType(EVENT_KNOCK_OFF_BIKE)) {
+                            const auto seq = new CTaskComplexSequence{};
+                            seq->AddTask(m_EventResponseTask);
+                            seq->AddTask(new CTaskComplexEnterCarAsPassenger{ veh, 0, true });
+                            m_EventResponseTask = seq;
+                        }
+                    }
+                }
+            }
+
+            m_Ped->bIsStanding = false;
+        }
+    } else {
+        // Dead
+        if (anim == ANIM_ID_NO_ANIMATION_SET) {
+            switch (ev->m_knockOffDirection) {
+            case 0:  anim = ANIM_ID_BIKE_FALLR; break;
+            case 1:
+            case 2:  anim = ANIM_ID_KO_SPIN_R;  break;
+            case 3:  anim = ANIM_ID_KO_SPIN_L;  break;
+            }
+        }
+        m_EventResponseTask = new CTaskComplexDie{
+            static_cast<eWeaponType>(ev->m_knockOffType),
+            ANIM_GROUP_DEFAULT,
+            static_cast<AnimationId>(anim),
+            4.f
+        };
+        m_Ped->bIsStanding = false;
+
+        // No dragged out of car event is pushed, so the bike is put back on its side stand
+        if (veh->m_nVehicleType == VEHICLE_TYPE_BIKE) {
+            veh->AsBike()->bikeFlags.bOnSideStand = false;
+        }
+        return;
+    }
+
+    // Push the "dragged out of car" event (If any)
+    if (ev->m_ped) {
+        CEventDraggedOutCar draggedOutCar{ veh, ev->m_ped, ev->m_isVictimDriver };
+        m_Ped->GetEventGroup().Add(&draggedOutCar, true);
+
+        if (veh->m_nVehicleType == VEHICLE_TYPE_BIKE) {
+            veh->AsBike()->bikeFlags.bOnSideStand = true;
+        }
+    } else if (veh->m_nVehicleType == VEHICLE_TYPE_BIKE) {
+        veh->AsBike()->bikeFlags.bOnSideStand = false;
+    }
 }
 
 // 0x4BAAD0
@@ -1566,7 +1752,7 @@ void CEventHandler::ComputePassObjectResponse(CEventPassObject* e, CTask* tactiv
 // 0x4BC470
 // Sets the entity seeking task's max distance to the entity to seek, and forces its scan timer out of time.
 static void SetSeekEntityMaxDistance(CTaskComplexSeekEntity<>& tSeekEntity, float maxDist) {
-    plugin::CallMethod<0x4BC470, CTaskComplexSeekEntity<>*, float>(&tSeekEntity, maxDist);
+    tSeekEntity.SetMaxEntityDistance(maxDist);
 }
 
 // 0x4BDB80

@@ -34,23 +34,28 @@ CEventVehicleDamage::~CEventVehicleDamage()
 
 CEventVehicleDamage* CEventVehicleDamage::Constructor(CVehicle* vehicle, CEntity* attacker, eWeaponType weaponType)
 {
-#ifdef NOTSA_NATIVE
-    // Abstract type - the wrapper is only used by the Windows hook installation.
-    UNUSED(vehicle, attacker, weaponType);
-#else
     this->CEventVehicleDamage::CEventVehicleDamage(vehicle, attacker, weaponType);
-#endif
     return this;
+}
+
+// 0x82263A retail purecall (shared; not hooked). Subclasses replace this.
+CEventEditableResponse* CEventVehicleDamage::CloneEditable() const noexcept
+{
+    return new CEventVehicleDamage(m_vehicle, m_attacker, m_weaponType);
 }
 
 // 0x4B1A00
 bool CEventVehicleDamage::AffectsPed(CPed* ped)
 {
-    if (ped->IsAlive() && m_attacker) {
-        if (!ped->IsInVehicleThatHasADriver())
-            return m_vehicle && ped->m_pVehicle == m_vehicle;
+    if (!ped->IsAlive() || !m_attacker) {
+        return false;
     }
-    return false;
+    // Passengers of a vehicle that already has a driver ignore the event.
+    // The driver, and anyone whose vehicle pointer is the damaged car, still receive it.
+    if (ped->IsInVehicle() && ped->m_pVehicle->IsPassenger(ped) && ped->m_pVehicle->m_pDriver) {
+        return false;
+    }
+    return m_vehicle && ped->m_pVehicle == m_vehicle;
 }
 
 // 0x4B1A90

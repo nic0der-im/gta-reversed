@@ -397,6 +397,21 @@ public:
         m_minEntityDist2D = v;
     }
 
+    //! Set the max distance to the entity to seek, and force the scan timer out of time
+    //! (So that the next `ControlSubTask` scans for the entity immediately)
+    //! @addr 0x4BC470
+    void SetMaxEntityDistance(float maxDist) {
+        if (m_maxEntityDist2D == maxDist) {
+            return;
+        }
+        m_maxEntityDist2D = maxDist;
+
+        // The original doesn't use `CTaskTimer::SetAsOutOfTime()` (The interval is set to 0, not to -1)
+        m_scanTimer.m_nStartTime = CTimer::GetTimeInMS();
+        m_scanTimer.m_nInterval  = 0;
+        m_scanTimer.m_bStarted   = true;
+    }
+
     auto GetEntityToSeek() const {
         return m_entityToSeek;
     }

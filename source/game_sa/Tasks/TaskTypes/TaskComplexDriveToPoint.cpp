@@ -37,8 +37,6 @@ void CTaskComplexDriveToPoint::SetUpCar() {
 
 // 0x645420
 CTask* CTaskComplexDriveToPoint::Drive(CPed* ped) {
-    return plugin::CallMethodAndReturn<CTask*, 0x645420, CTaskComplexDriveToPoint*, CPed*>(this, ped); // untested
-
     auto dist = DistanceBetweenPoints(m_Veh->GetPosition(), m_Point);
     if (dist < m_Radius) {
         m_Veh->m_autoPilot.SetCarMission(MISSION_NONE);
@@ -73,8 +71,6 @@ CTask* CTaskComplexDriveToPoint::Drive(CPed* ped) {
 
 // 0x6452C0
 bool CTaskComplexDriveToPoint::IsTargetBlocked(CPed* ped) const {
-    return plugin::CallMethodAndReturn<bool, 0x6452C0, const CTaskComplexDriveToPoint*, CPed*>(this, ped); // untested
-
     if (DistanceBetweenPointsSquared(ped->GetPosition(), m_Point) > sq(6.0f)) {
         return false;
     }
@@ -85,13 +81,13 @@ bool CTaskComplexDriveToPoint::IsTargetBlocked(CPed* ped) const {
 
 // 0x6432A0
 bool CTaskComplexDriveToPoint::IsTargetBlocked(CPed* ped, CEntity** entities, int32 numEntities) const {
-    return plugin::CallMethodAndReturn<bool, 0x6432A0, const CTaskComplexDriveToPoint*, CPed*, CEntity**, int32>(this, ped, entities, numEntities); // untested
-
     if (!ped->m_pVehicle)
         return false;
 
     const auto& vehPos = ped->m_pVehicle->GetPosition();
-    auto dist = vehPos - m_Point;
+    const auto  vehToTarget = vehPos - m_Point;
+
+    const auto& vehicleRadius = ped->m_pVehicle->GetModelInfo()->GetColModel()->GetBoundRadius();
 
     for (auto i = 0; i < numEntities; ++i) {
         CEntity* entity = entities[i];
@@ -99,13 +95,12 @@ bool CTaskComplexDriveToPoint::IsTargetBlocked(CPed* ped, CEntity** entities, in
             continue;
         }
 
-        const auto& vehicleRadius = ped->m_pVehicle->GetModelInfo()->GetColModel()->GetBoundRadius();
-        if (DistanceBetweenPointsSquared(vehPos, entity->GetPosition()) > sq(vehicleRadius)) {
+        const auto& entityRadius = entity->GetModelInfo()->GetColModel()->GetBoundRadius();
+        if (sq(entityRadius) <= DistanceBetweenPointsSquared(entity->GetPosition(), m_Point)) {
             continue;
         }
 
-        const auto& entityRadius = entity->GetModelInfo()->GetColModel()->GetBoundRadius();
-        if ((entityRadius + vehicleRadius) * (entityRadius + vehicleRadius) * 1.5f > dist.SquaredMagnitude()) {
+        if (sq(entityRadius + vehicleRadius) * 1.5f > vehToTarget.SquaredMagnitude()) {
             return true;
         }
     }

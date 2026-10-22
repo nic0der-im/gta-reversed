@@ -51,6 +51,7 @@ public:
     CTask*    CreateNextSubTask(CPed* ped) override;
     CTask*    CreateFirstSubTask(CPed* ped) override;
     CTask*    ControlSubTask(CPed* ped) override;
+    CTask*    CreateSubTask(eTaskType taskType, CPed* ped); // 0x638290
 
 private:
     // 0x631F80

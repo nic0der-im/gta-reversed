@@ -240,7 +240,33 @@ uint32 CCustomBuildingDNPipeline::UsesThisPipeline(RpAtomic* atomic) {
 
 // 0x5D7120
 RpMaterial* CCustomBuildingDNPipeline::CustomPipeMaterialSetup(RpMaterial* material, void* data) {
-    return plugin::CallAndReturn<RpMaterial*, 0x5D7120, RpMaterial*, void*>(material, data);
+    (void)(data); // Never read by the original
+
+    material->surfaceProps.specular = 0.0f;
+
+#ifndef NOTSA_NATIVE
+    // MatFX is a D3D9-era plugin; natively `RpMatFXMaterialGetEffects` is a fakerw stub that
+    // returns a neutral value, so dereferencing its env-map data here reads garbage.
+    if (RpMatFXMaterialGetEffects(material) == rpMATFXEFFECTENVMAP) {
+        if (auto* const envData = SetFxEnvTexture(&CCustomCarEnvMapPipeline::EnvMapPlGetData(material))) {
+            if (auto* const texture = (MATFXD3D9ENVMAPGETDATA(material, 0))->texture) {
+                RwTextureSetAddressing(texture, rwTEXTUREADDRESSWRAP);
+                RwTextureSetFilterMode(texture, rwFILTERLINEAR);
+                envData->Texture = texture;
+            }
+        }
+    }
+#endif
+
+    const auto* const env = CCustomCarEnvMapPipeline::EnvMapPlGetData(material);
+    CCustomCarEnvMapPipeline::SetMaterialFlags(
+        material,
+        env && env->Shininess != 0.0f && env->Texture
+            ? CCustomCarEnvMapPipeline::MF_HAS_SHINE_CAM
+            : CCustomCarEnvMapPipeline::MF_NONE
+    );
+
+    return material;
 }
 
 // 0x5D6480

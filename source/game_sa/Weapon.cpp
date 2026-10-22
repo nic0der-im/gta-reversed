@@ -55,8 +55,8 @@ void CWeapon::InjectHooks() {
     RH_ScopedInstall(LaserScopeDot, 0x73A8D0);
     RH_ScopedInstall(FireM16_1stPerson, 0x741C00);
     RH_ScopedInstall(Fire, 0x742300);
-    RH_ScopedGlobalInstall(DoTankDoomAiming, 0x73D1E0, { .Reversed = false });
-    RH_ScopedGlobalInstall(DoDriveByAutoAiming, 0x73D720, { .Reversed = false });
+    RH_ScopedGlobalInstall(DoTankDoomAiming, 0x73D1E0);
+    RH_ScopedGlobalInstall(DoDriveByAutoAiming, 0x73D720);
     RH_ScopedGlobalInstall(FindNearestTargetEntityWithScreenCoors, 0x73E240, { .Reversed = false });
     RH_ScopedGlobalInstall(EvaluateTargetForHeatSeekingMissile, 0x73E560);
     RH_ScopedGlobalInstall(CheckForShootingVehicleOccupant, 0x73F480, { .Reversed = false });
@@ -1012,12 +1012,117 @@ void CWeapon::DoDoomAiming(CEntity* owner, CVector* start, CVector* end) {
 
 // 0x73D1E0
 void CWeapon::DoTankDoomAiming(CEntity* vehicle, CEntity* owner, CVector* startPoint, CVector* endPoint) {
-    plugin::Call<0x73D1E0, CEntity*, CEntity*, CVector*, CVector*>(vehicle, owner, startPoint, endPoint);
+    const auto dir   = *endPoint - *startPoint;
+    const auto range = dir.Magnitude();
+
+    int16 inRangeCount{};
+    std::array<CEntity*, 16> objInRange{};
+    CWorld::FindObjectsInRange(*startPoint, range, true, &inRangeCount, (int16)objInRange.size(), objInRange.data(), false, true, false, false, false);
+
+    const auto slope = range != 0.f ? dir.z / range : 0.f;
+
+    float closestDist = 10'000.f;
+    int32 closestIndex{};
+    for (int32 i = 0; i < inRangeCount; i++) {
+        auto* const entity = objInRange[i];
+        if (entity == vehicle || entity == owner) {
+            continue;
+        }
+
+        switch (entity->GetStatus()) {
+        case STATUS_TRAIN_MOVING:
+        case STATUS_TRAIN_NOT_MOVING:
+            continue;
+        }
+
+        // Don't aim at burnt-out vehicles
+        if (entity->GetIsTypeVehicle() && entity->AsPhysical()->physicalFlags.bRenderScorched) {
+            continue;
+        }
+
+        const auto vehPos     = vehicle->GetPosition();
+        const auto targetPos  = entity->GetPosition();
+        const auto horizontal = (targetPos - vehPos).Magnitude2D();
+        const auto vertOffset = std::abs(vehPos.z - (slope * horizontal + targetPos.z));
+
+        if (vertOffset * 3.f >= horizontal) {
+            continue;
+        }
+
+        const auto radius = entity->GetColModel()->GetBoundRadius();
+        if (CCollision::DistToLine(*startPoint, *endPoint, targetPos) >= radius * 3.f) {
+            continue;
+        }
+
+        if (const auto dist = std::hypot(horizontal, vertOffset); dist < closestDist) {
+            closestDist  = dist;
+            closestIndex = i;
+        }
+    }
+
+    if (closestDist < 9000.f) {
+        const auto targetPos = objInRange[closestIndex]->GetPosition();
+        endPoint->z = startPoint->z + ((*endPoint - *startPoint).Magnitude2D() / (targetPos - *startPoint).Magnitude2D()) * ((targetPos.z + 0.3f) - startPoint->z);
+    }
 }
 
 // 0x73D720
 void CWeapon::DoDriveByAutoAiming(CEntity* owner, CVehicle* vehicle, CVector* startPoint, CVector* endPoint, bool canAimVehicles) {
-    plugin::Call<0x73D720, CEntity*, CVehicle*, CVector*, CVector*, bool>(owner, vehicle, startPoint, endPoint, canAimVehicles);
+    if (!owner) {
+        return;
+    }
+
+    const auto range = (*endPoint - *startPoint).Magnitude();
+
+    int16 count1{};
+    int16 count2{};
+    std::array<CEntity*, 32> objInRange{};
+    CWorld::FindObjectsInRange(*startPoint, range, true, &count1, (int16)objInRange.size(), objInRange.data(), false, false, true, false, false);
+    if (canAimVehicles) {
+        CWorld::FindObjectsInRange(*startPoint, range, true, &count2, (int16)16, objInRange.data() + count1, false, true, false, false, false);
+    }
+    const auto totalCount = count1 + count2;
+
+    float closestDist = 10'000.f;
+    int32 closestIndex{};
+    for (int32 i = 0; i < totalCount; i++) {
+        auto* const entity = objInRange[i];
+        if (entity == owner) {
+            continue;
+        }
+
+        if (entity->GetIsTypePed()) {
+            auto* const ped = entity->AsPed();
+            if (ped->m_nPedState == PEDSTATE_DIE || ped->m_nPedState == PEDSTATE_DEAD || ped->m_pAttachedTo == vehicle) {
+                continue;
+            }
+        }
+
+        const auto targetPos = entity->GetPosition();
+        auto       cost      = CCollision::DistToLine(*startPoint, *endPoint, targetPos);
+
+        if (vehicle->m_nVehicleSubType == VEHICLE_TYPE_PLANE || vehicle->m_nVehicleSubType == VEHICLE_TYPE_HELI) {
+            cost /= std::max((targetPos - vehicle->GetPosition()).Magnitude(), 5.f);
+        } else {
+            cost += (targetPos - owner->GetPosition()).Magnitude() * 0.15f;
+        }
+
+        if ((*endPoint - *startPoint).Dot(targetPos - *startPoint) > 0.f && cost < closestDist) {
+            closestDist  = cost;
+            closestIndex = i;
+        }
+    }
+
+    const auto aimAngle = vehicle->GetPlaneGunsAutoAimAngle();
+    const auto maxCost  = aimAngle <= 0.5f
+        ? 2.5f
+        : std::tan(aimAngle * (PI / 180.f));
+
+    if (closestDist < maxCost) {
+        const auto targetPos = objInRange[closestIndex]->GetPosition();
+        const auto t         = (*startPoint - *endPoint).Magnitude() / (*startPoint - targetPos).Magnitude();
+        *endPoint = *startPoint + (targetPos - *startPoint) * t;
+    }
 }
 
 // 0x73DB40
