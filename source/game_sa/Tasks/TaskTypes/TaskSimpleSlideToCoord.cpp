@@ -2,6 +2,7 @@
 
 #include "TaskSimpleSlideToCoord.h"
 #include "TaskSimpleStandStill.h"
+#include "General.h"
 #include <reversiblebugfixes/Bugs.hpp>
 
 void CTaskSimpleSlideToCoord::InjectHooks() {
@@ -56,17 +57,15 @@ bool CTaskSimpleSlideToCoord::MakeAbortable(CPed* ped, eAbortPriority priority, 
 
 // 0x66C4E0
 bool CTaskSimpleSlideToCoord::ProcessPed(CPed* ped) {
-    return plugin::CallMethodAndReturn<bool, 0x66C4E0, CTaskSimpleSlideToCoord*, CPed*>(this, ped); // untested/review
-
     const bool hasSuccessfullyProcessedRunAnim = m_bRunningAnim ? CTaskSimpleRunNamedAnim::ProcessPed(ped) : true; // Yeah could be simplified, but this is easier to understand.
 
-    if (m_Time == (uint32)-1) {
+    if (m_EndTime == -1) {
         if (m_bRunningAnim) {
             if (hasSuccessfullyProcessedRunAnim) {
-                m_Time = CTimer::GetTimeInMS() + 500;
+                m_EndTime = CTimer::GetTimeInMS() + 500;
             }
         } else {
-            m_Time = CTimer::GetTimeInMS() + 2000;
+            m_EndTime = CTimer::GetTimeInMS() + 2000;
         }
     }
 
@@ -82,24 +81,25 @@ bool CTaskSimpleSlideToCoord::ProcessPed(CPed* ped) {
         ped->m_fAimingRotation = m_fAimingRotation;
     }
 
-    const auto pedToSlidePosDir = (m_SlideToPos - ped->GetPosition()) * m_Speed; // Originally they calculated this twice, but thats a waste of performance, so.. :D
+    const auto pedToSlidePosDir    = m_SlideToPos - ped->GetPosition();
     const auto pedToSlidePosDistSq2D = pedToSlidePosDir.SquaredMagnitude2D();
-    if (pedToSlidePosDir.SquaredMagnitude2D() < sq(0.05f)) {
+    if (pedToSlidePosDistSq2D < sq(0.05f)) {
         ped->m_vecAnimMovingShiftLocal = CVector2D{};
     } else {
         const auto& pedMat = ped->GetMatrix();
+        const auto  shift  = pedToSlidePosDir * m_Speed;
         ped->m_vecAnimMovingShiftLocal = {
-            DotProduct(pedToSlidePosDir, pedMat.GetForward()), // Originally Y was calculated first, but I swapped it!
-            DotProduct(pedToSlidePosDir, pedMat.GetRight())
+            DotProduct(shift, pedMat.GetForward()),
+            DotProduct(shift, pedMat.GetRight()) // Originally Y was calculated first, but I swapped it!
         };
     }
 
-    if (m_Time < CTimer::GetTimeInMS()) {
+    if (static_cast<uint32>(m_EndTime) < CTimer::GetTimeInMS()) {
         return true;
     }
 
     if (hasSuccessfullyProcessedRunAnim && pedToSlidePosDistSq2D < sq(0.05f)) {
-        if (std::abs(ped->m_fCurrentRotation - ped->m_fAimingRotation) < 0.1f) {
+        if (std::abs(CGeneral::LimitRadianAngle(ped->m_fAimingRotation - ped->m_fCurrentRotation)) < 0.1f) {
             return true;
         }
     }

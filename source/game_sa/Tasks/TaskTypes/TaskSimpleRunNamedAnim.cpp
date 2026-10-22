@@ -11,7 +11,7 @@ void CTaskSimpleRunNamedAnim::InjectHooks() {
     RH_ScopedInstall(Destructor, 0x61BF10);
 
     //RH_ScopedInstall(FinishRunAnimMovePedCB, 0x61AAA0, { .Reversed = false });
-    RH_ScopedInstall(StartAnim, 0x61BB10, { .Reversed = false });
+    RH_ScopedInstall(StartAnim, 0x61BB10);
     RH_ScopedVMTInstall(Clone, 0x61B770);
     RH_ScopedVMTInstall(GetTaskType, 0x61AA90);
     RH_ScopedVMTInstall(ProcessPed, 0x61BF20);
@@ -120,9 +120,42 @@ bool CTaskSimpleRunNamedAnim::ProcessPed(CPed* ped) {
     return m_bIsFinished;
 }
 
+// 0x61AAA0
+// TODO(re): Should be the static member `CTaskSimpleRunNamedAnim::FinishRunAnimMovePedCB`, but the header doesn't declare it.
+static void FinishRunAnimMovePedCB(CAnimBlendAssociation* assoc, void* data) {
+    auto* const task = static_cast<CTaskSimpleRunNamedAnim*>(data);
+
+    assoc->GetNode(0)->GetCurrentTranslation(task->m_vecOffsetAtEnd, 0.f);
+    task->m_bOffsetAvailable = true;
+    assoc->m_Flags |= ANIMATION_IGNORE_ROOT_TRANSLATION;
+
+    if ((assoc->m_Flags & ANIMATION_IS_FINISH_AUTO_REMOVE) || assoc->m_nCallbackType == ANIM_BLEND_CALLBACK_DELETE) {
+        task->m_bIsFinished = true;
+        task->m_pAnim       = nullptr;
+    } else {
+        assoc->SetDeleteCallback(CTaskSimpleAnim::FinishRunAnimCB, task);
+    }
+}
+
 // 0x61BB10
 void CTaskSimpleRunNamedAnim::StartAnim(CPed* ped) {
-    plugin::CallMethod<0x61BB10, CTaskSimpleRunNamedAnim*, CPed*>(this, ped);
+    m_Timer.Start(m_Time);
+
+    if (!(m_animFlags & ANIMATION_IS_FINISH_AUTO_REMOVE)) {
+        m_animFlags |= ANIMATION_IS_BLEND_AUTO_REMOVE;
+    }
+
+    m_pAnim = CAnimManager::BlendAnimation(ped->GetRpClump(), m_pAnimHierarchy, m_animFlags, m_fBlendDelta);
+
+    if (m_bOffsetAtEnd) {
+        m_pAnim->SetFinishCallback(FinishRunAnimMovePedCB, this);
+    } else if (!(m_animFlags & ANIMATION_IS_FINISH_AUTO_REMOVE) && !m_bRunInSequence) {
+        m_pAnim->SetDeleteCallback(FinishRunAnimCB, this);
+    } else {
+        m_pAnim->SetFinishCallback(FinishRunAnimCB, this);
+    }
+
+    m_nAnimId = m_pAnim->m_AnimId;
 }
 
 // 0x61AB00

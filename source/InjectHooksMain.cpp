@@ -261,6 +261,7 @@
 #include "TaskComplexStealCar.h"
 #include "TaskComplexFollowPedFootsteps.h"
 #include "Interior/TaskInteriorSitAtDesk.h"
+#include "Interior/TaskInteriorSitInChair.h"
 #include "TaskComplexFollowLeaderAnyMeans.h"
 #include "TaskSimpleFightingControl.h"
 #include "TaskSimpleFinishBrain.h"
@@ -979,7 +980,7 @@ void InjectHooksMain() {
             CTaskInteriorLieInBed::InjectHooks();
             CTaskInteriorShopKeeper::InjectHooks();
             CTaskInteriorSitAtDesk::InjectHooks();
-        // CTaskInteriorSitInChair::InjectHooks();
+            CTaskInteriorSitInChair::InjectHooks();
             CTaskInteriorUseInfo::InjectHooks();
         };
 
@@ -1227,7 +1228,7 @@ void InjectHooksMain() {
         CTaskComplexFallAndGetUp::InjectHooks();
         CTaskComplexFollowNodeRoute::InjectHooks();
         CTaskComplexFollowLeaderInFormation::InjectHooks();
-        // CTaskSimpleTriggerLookAt::InjectHooks();
+        CTaskSimpleTriggerLookAt::InjectHooks();
         CTaskSimpleHitHead::InjectHooks();
         CTaskUtilityLineUpPedWithCar::InjectHooks();
         CTaskSimpleLand::InjectHooks();

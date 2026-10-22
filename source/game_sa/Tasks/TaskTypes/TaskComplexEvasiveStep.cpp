@@ -18,8 +18,6 @@ CTaskComplexEvasiveStep::~CTaskComplexEvasiveStep() {
 
 // 0x6533E0
 CTask* CTaskComplexEvasiveStep::CreateSubTask(eTaskType taskType) {
-    return plugin::CallMethodAndReturn<CTask*, 0x6533E0, CTaskComplexEvasiveStep*, eTaskType>(this, taskType);
-
     switch (taskType) {
     case TASK_SIMPLE_EVASIVE_STEP:
         return new CTaskSimpleEvasiveStep(m_Entity);

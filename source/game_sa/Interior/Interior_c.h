@@ -16,6 +16,30 @@ class CObject;
 class Furniture_c;
 class InteriorGroup_c;
 
+/*!
+* @brief One of an interior's 16 "goto points" (Retail: 0x410, stride 0x10, count is `Interior_c::m_numGotoPoints`)
+*/
+struct InteriorGotoPoint {
+    int8    m_tileX;  // 0x00
+    int8    m_tileY;  // 0x01
+    int8    m_pad[2]; // 0x02
+    CVector m_pos;    // 0x04
+};
+VALIDATE_SIZE(InteriorGotoPoint, 0x10);
+
+/*!
+* @brief One of an interior's 4 exit-door path nodes (Retail: 0x510, stride 0x20)
+*/
+struct InteriorDoorPathNode {
+    int16   m_pad0;       // 0x00 - Unused by the reversed functions
+    int8    m_gotoPointA; // 0x02 - Index into the interior's goto points, or -1
+    int8    m_gotoPointB; // 0x03 - Index into the interior's goto points, or -1
+    CVector m_posIn;      // 0x04 - Position of the node inside the door
+    int32   m_pad1;       // 0x10 - Unused by the reversed functions
+    CVector m_posOut;     // 0x14 - Position of the node just outside the door (This one gets linked to the exterior paths)
+};
+VALIDATE_SIZE(InteriorDoorPathNode, 0x20);
+
 class Interior_c : public ListItem_c<Interior_c> {
 public:
     int32             m_interiorId;         // 0x8
@@ -26,27 +50,16 @@ public:
     int32             field_58;             // 0x58
     TList_c<int>     m_list;                // 0x5C - TODO: Figure out type
     char              field_68[900];        // 0x68
-    int16             field_3EC;            // 0x3EC
-    int16             field_3EE;            // 0x3EE
-    CNodeAddress      m_nodeAddress;        // 0x3F0
-    int16             field_3F4;            // 0x3F4
-    int16             field_3F6;            // 0x3F6
-    int32             field_3F8;            // 0x3F8
-    int32             field_3FC;            // 0x3FC
-    CVector           m_position;           // 0x400
-    int8              field_40C;            // 0x40C
-    int8              m_interiorInfosCount; // 0x40D
-    int32             field_412;            // 0x412
-    int32             field_416;            // 0x416
-    int32             field_41A;            // 0x41A
-    int32             field_41E;            // 0x41E
-    int32             field_422;            // 0x422
-    int32             field_426;            // 0x426
-    int32             field_42A;            // 0x42A
-    int32             field_42E;            // 0x42E
-    int32             field_432;            // 0x432
-    char              gap436[346];          // 0x436
-    InteriorInfo_t    m_interiorInfos[16];  // 0x590
+    CNodeAddress      m_exteriorNodeAddress; // 0x3EC - The (exterior) node the interior's door was linked to
+    CNodeAddress      m_nodeAddress;         // 0x3F0 - Node of the interior (Inside its door)
+    CVector           m_exteriorNodePos;     // 0x3F4 - Position of `m_exteriorNodeAddress`
+    CVector           m_position;            // 0x400
+    int8              m_numGotoPoints;       // 0x40C
+    int8              m_interiorInfosCount;  // 0x40D
+    int16             _pad40E;               // 0x40E
+    InteriorGotoPoint m_gotoPoints[16];      // 0x410
+    InteriorDoorPathNode m_doorPathNodes[4]; // 0x510
+    InteriorInfo_t    m_interiorInfos[16];   // 0x590
     int8              m_furnitureGroupId;   // 0x790
     int8              m_furnitureId;        // 0x791
     int8              field_792;            // 0x792
@@ -70,7 +83,7 @@ public:
     void Lounge_AddChairInfo(int32 a2, int32 a3, CEntity* entityIgnoredCollision);
     void Lounge_AddSofaInfo(int32 sitType, int32 offsetX, CEntity* entityIgnoredCollision);
     void FurnishLounge();
-    bool Office_PlaceEdgeFillers(int32 arg0, int32 a2, int32 a3, int32 a6, int32);
+    int32 Office_PlaceEdgeFillers(int32 arg0, int32 a2, int32 a3, int32 a6, int32);
     int32 Office_PlaceDesk(int32 a3, int32 arg4, int32 offsetY, int32 a5, uint8 a6, int32 b);
     int32 Office_PlaceEdgeDesks(int32 a2, int32 a3, int32 a4, int32 a5, int32 a6);
     void Office_FurnishEdges();
@@ -106,7 +119,7 @@ public:
     void FindBoundingBox(int32, int32, int32*, int32*, int32*, int32*, int32*);
     void CalcExitPts();
     bool IsVisible();
-    void PlaceFurniture(Furniture_c* a1, int32 a2, int32 a3, float a4, int32 a5, int32 a6, int32* a7, int32* a8, uint8 a9);
+    CEntity* PlaceFurniture(Furniture_c* a1, int32 a2, int32 a3, float a4, int32 a5, int32 a6, int32* a7, int32* a8, uint8 a9);
     void PlaceFurnitureOnWall(int32 furnitureGroupId, int32 furnitureSubgroupId, int32 furnitureId, float a5, int32 a6, int32 a7, int32 a8, int32 a9, int32* a10, int32* a11,
                               int32* a12, int32* a13, int32* a14, int32* a15);
     void PlaceFurnitureInCorner(int32 furnitureGroupId, int32 furnitureSubgroupId, int32 id, float a4, int32 a5, int32 a6, int32 a2, int32* a9, int32* a10, int32* a11, int32* a12,
@@ -116,4 +129,11 @@ public:
 
     auto GetNodeAddress() const { return m_nodeAddress; }
 };
+VALIDATE_OFFSET(Interior_c, m_exteriorNodeAddress, 0x3EC);
+VALIDATE_OFFSET(Interior_c, m_nodeAddress, 0x3F0);
+VALIDATE_OFFSET(Interior_c, m_exteriorNodePos, 0x3F4);
+VALIDATE_OFFSET(Interior_c, m_numGotoPoints, 0x40C);
+VALIDATE_OFFSET(Interior_c, m_gotoPoints, 0x410);
+VALIDATE_OFFSET(Interior_c, m_doorPathNodes, 0x510);
+VALIDATE_OFFSET(Interior_c, m_interiorInfos, 0x590);
 VALIDATE_SIZE(Interior_c, 0x794);

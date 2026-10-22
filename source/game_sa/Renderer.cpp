@@ -19,6 +19,12 @@
 auto& gnRendererModelRequestFlags = StaticRef<uint32>(0xB745C4);
 auto& gpOutEntitiesForGetObjectsInFrustum = StaticRef<CEntity**>(0xB76854);
 
+// Extra sectors that `CWorldScan::SetExtraRectangleToScan` adds to the next scan (cleared by `CWorldScan::ScanWorld`).
+// NOTE: As in the original, both arrays hold at most 4 entries and are never bounds-checked.
+auto& g_nScanRects = StaticRef<int32>(0xC815B8);                 // Number of entries in use
+auto& g_scanRectsY = StaticRef<std::array<int32, 4>>(0xC81598);  // Sector Y of each entry
+auto& g_scanRectsX = StaticRef<std::array<int32, 4>>(0xC815A8);  // Sector X of each entry
+
 void CRenderer::InjectHooks()
 {
     RH_ScopedClass(CRenderer);
@@ -60,14 +66,163 @@ void CRenderer::InjectHooks()
 
 }
 
+// 0x72CAE0
 void CWorldScan::ScanWorld(CVector2D *points, int32 pointsCount, tScanFunction scanFunction)
 {
-    plugin::Call<0x72CAE0,CVector2D*, int32, tScanFunction>(points,pointsCount, scanFunction);
+    // Remove duplicate points (in place, preserving the order of the remaining ones)
+    for (auto i = 1; i < pointsCount; i++) {
+        for (auto j = i; j < pointsCount; j++) {
+            if (points[i - 1].x != points[j].x || points[i - 1].y != points[j].y) {
+                continue;
+            }
+
+            for (auto k = j + 1; k < pointsCount; k++) {
+                points[k - 1] = points[k];
+            }
+            pointsCount--;
+            j--;
+        }
+    }
+
+    // The outline is built starting at the lowest point (`y` grows southwards)
+    int32 lowestPoint  = 0;
+    float lowestPointY = points[0].y;
+    for (auto i = 1; i < pointsCount; i++) {
+        if (points[i].y < lowestPointY) {
+            lowestPointY = points[i].y;
+            lowestPoint  = i;
+        }
+    }
+
+    // Order the points by always walking to the point with the smallest angle ahead of the current
+    // direction of travel (gift wrapping) - this yields the counter-clockwise outline of the polygon.
+    CVector2D hull[5];
+    bool      hullPointUsed[5]{};
+    int32     hullPointCount = 0;
+
+    int32 currentPoint = lowestPoint;
+    float currentAngle = 0.0f;
+
+    hull[hullPointCount++]      = points[currentPoint];
+    hullPointUsed[currentPoint] = true;
+
+    while (true) {
+        int32 nextPoint     = 0;
+        float smallestAngle = 99999.9f;
+        for (auto i = 0; i < pointsCount; i++) {
+            if (i == currentPoint) {
+                continue;
+            }
+
+            auto angle = CGeneral::GetATanOfXY(
+                points[i].x - points[currentPoint].x,
+                points[i].y - points[currentPoint].y
+            ) - currentAngle;
+            while (angle < 0.0f)    angle += TWO_PI;
+            while (angle >= TWO_PI) angle -= TWO_PI;
+
+            if (angle < smallestAngle) {
+                smallestAngle = angle;
+                nextPoint     = i;
+            }
+        }
+
+        if (hullPointUsed[nextPoint]) { // Back at the starting point - the outline is closed
+            break;
+        }
+
+        currentAngle           += smallestAngle;
+        hull[hullPointCount++]  = points[nextPoint];
+        hullPointUsed[nextPoint] = true;
+        currentPoint            = nextPoint;
+    }
+
+    if (hullPointCount < 3) { // Not a surface
+        return;
+    }
+
+    // Vertical extent of the outline
+    float lowestHullPointY  = hull[0].y;
+    float highestHullPointY = hull[0].y;
+    for (auto i = 1; i < hullPointCount; i++) {
+        if (hull[i].y < lowestHullPointY) {
+            lowestHullPointY = hull[i].y;
+        }
+        if (hull[i].y > highestHullPointY) {
+            highestHullPointY = hull[i].y;
+        }
+    }
+
+    // Scan every sector row covered by the outline
+    for (auto row = (int32)std::floor(lowestHullPointY); row <= (int32)std::floor(highestHullPointY); row++) {
+        // Horizontal extent of the outline on this row.
+        // TODO(re): The original walks the two edges adjacent to the last passed outline vertex and advances
+        // them by a pre-computed `dx/dy` slope per row instead of intersecting every edge again. The scanned
+        // sectors are the same (up to the rounding of the outline's vertices to whole rows).
+        float leftX  = FLT_MAX;
+        float rightX = -FLT_MAX;
+        for (auto i = 0; i < hullPointCount; i++) {
+            const CVector2D& curr = hull[i];
+            const CVector2D& next = hull[i + 1 == hullPointCount ? 0 : i + 1];
+
+            if ((row < curr.y && row < next.y) || (row > curr.y && row > next.y)) {
+                continue;
+            }
+
+            const auto x = curr.y == next.y
+                ? std::min(curr.x, next.x)
+                : curr.x + (next.x - curr.x) * (row - curr.y) / (next.y - curr.y);
+            leftX  = std::min(leftX, x);
+            rightX = std::max(rightX, x);
+        }
+
+        if (leftX > rightX) {
+            continue;
+        }
+
+        for (auto sectorX = (int32)std::floor(leftX); sectorX <= (int32)std::floor(rightX); sectorX++) {
+            scanFunction(sectorX, row);
+
+            // The sector might've also been requested using `SetExtraRectangleToScan` - consume the entry
+            for (auto i = 0; i < g_nScanRects; i++) {
+                if (g_scanRectsX[i] != sectorX || g_scanRectsY[i] != row) {
+                    continue;
+                }
+
+                for (auto j = i; j < g_nScanRects - 1; j++) {
+                    g_scanRectsX[j] = g_scanRectsX[j + 1];
+                    g_scanRectsY[j] = g_scanRectsY[j + 1];
+                }
+                g_nScanRects--;
+                break;
+            }
+        }
+    }
+
+    // Sectors that were requested but aren't covered by the outline are still scanned
+    for (auto i = 0; i < g_nScanRects; i++) {
+        scanFunction(g_scanRectsX[i], g_scanRectsY[i]);
+    }
+    g_nScanRects = 0;
 }
 
+// 0x72D5E0
 void CWorldScan::SetExtraRectangleToScan(float minX, float maxX, float minY, float maxY)
 {
-    plugin::Call<0x72D5E0, float, float, float, float>(minX, maxX, minY, maxY);
+    const auto minSectorX = (int32)std::floor(minX);
+    const auto maxSectorX = (int32)std::floor(maxX);
+    if (minSectorX >= maxSectorX) {
+        return;
+    }
+
+    // NOTE: No bounds check, same as the original (the list only holds 4 entries)
+    for (auto sectorX = minSectorX; sectorX < maxSectorX; sectorX++) {
+        for (auto sectorY = (int32)std::floor(minY); sectorY < (int32)std::floor(maxY); sectorY++) {
+            g_scanRectsX[g_nScanRects] = sectorX;
+            g_scanRectsY[g_nScanRects] = sectorY;
+            g_nScanRects++;
+        }
+    }
 }
 
 void CRenderer::Init() {

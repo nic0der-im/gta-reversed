@@ -81,6 +81,21 @@ private:
     bool                     m_IsActive{};                   // 0x4751
     bool                     m_ArePedsEnabled{};             // 0x4752
     int32                    m_TimeLastPickupsGenerated{};   // 0x4754
+
+public:
+    /*!
+    * @brief Whether the ped occupying interior slot `idx` may stay alive
+    * @note Retail accesses this array directly from `InteriorGroup_c` (0x472C).
+    */
+    bool& GetInteriorPedAliveState(size_t idx) { return m_InteriorPedsAliveState[idx]; }
+
+    /*!
+    * @addr 0x4752
+    * @brief Whether interior peds may be created at all
+    */
+    bool ArePedsEnabled() const { return m_ArePedsEnabled; }
+
+    void SetPedsEnabled(bool enabled) { m_ArePedsEnabled = enabled; }
 };
 VALIDATE_SIZE(InteriorManager_c, 0x4758);
 

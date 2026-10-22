@@ -91,7 +91,22 @@ CTask* CTaskComplexHitPedWithCar::CreateSubTask(eTaskType taskType) {
 
 // 0x657AF0
 CTask* CTaskComplexHitPedWithCar::CreateNextSubTask(CPed* ped) {
-    return plugin::CallMethodAndReturn<CTask*, 0x657AF0, CTaskComplexHitPedWithCar*, CPed*>(this, ped);
+    switch (m_pSubTask->GetTaskType()) {
+    case TASK_NONE:
+    case TASK_COMPLEX_FALL_AND_GET_UP:
+    case TASK_COMPLEX_EVASIVE_STEP:
+    case TASK_SIMPLE_KILL_PED_WITH_CAR:
+        return CreateSubTask(TASK_FINISHED);
+    case TASK_SIMPLE_HURT_PED_WITH_CAR:
+        // TODO(re): Original does:
+        //   if (!static_cast<CTaskSimpleHurtPedWithCar*>(m_pSubTask)->m_bWillKillPed) {
+        //       return CreateSubTask(TASK_COMPLEX_FALL_AND_GET_UP);
+        //   }
+        // `CTaskSimpleHurtPedWithCar::m_bWillKillPed` is private, and adding an accessor needs a header change.
+        return nullptr;
+    default:
+        return nullptr;
+    }
 }
 
 // 0x656300

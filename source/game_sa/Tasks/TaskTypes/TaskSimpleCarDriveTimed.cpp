@@ -12,6 +12,13 @@ CTaskSimpleCarDriveTimed::CTaskSimpleCarDriveTimed(CVehicle* vehicle, int32 nTim
     m_nTime = nTime;
 }
 
+// 0x46F610
 bool CTaskSimpleCarDriveTimed::ProcessPed(CPed* ped) {
-    return plugin::CallMethodAndReturn<bool, 0x46F610, CTaskSimpleCarDriveTimed*, CPed*>(this, ped);
+    m_nTimer.StartIfNotAlready(m_nTime);
+
+    if (m_nTimer.IsOutOfTime()) {
+        return true;
+    }
+
+    return CTaskSimpleCarDrive::ProcessPed(ped);
 }

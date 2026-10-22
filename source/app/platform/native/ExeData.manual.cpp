@@ -17,8 +17,10 @@
 #include "Audio/Entities/AEWeatherAudioEntity.h"
 #include "Audio/Entities/AETwinLoopSoundEntity.h"
 #include "Audio/Hardware/AEAudioHardware.h"
+#include "Audio/Loaders/AEStreamTransformer.h"
 #include "Audio/Managers/AESoundManager.h"
 #include "AudioEngine.h"
+#include "BreakManager_c.h"
 #include "Buoyancy.h"
 #include "Camera.h"
 #include "Collision/ColModel.h"
@@ -63,14 +65,18 @@
 #include "PlayerInfo.h"
 #include "Ragdoll/BoneNodeManager.h"
 #include "Ragdoll/IKChainManager.h"
+#include "RealTimeShadowManager.h"
 #include "Replay.h"
 #include "RGBA.h"
+#include "Scripts/Scripted2dEffects.h"
+#include "Scripts/TheScripts.h"
 #include "Shopping.h"
 #include "Tasks/Allocators/PedGroup/PedGroupDefaultTaskAllocators.h"
 #include "Tasks/PedScriptedTaskRecord.h"
 #include "Tasks/TaskSequences.h"
 #include "Tasks/TaskTypes/TaskComplexFollowLeaderInFormation.h"
 #include "Text/Text.h"
+#include "TimeCycle.h"
 #include "VehicleAnimGroupData.h"
 #include "WaterCannon.h"
 #include "WaterCannons.h"
@@ -92,6 +98,10 @@ extern CColModel&              ms_FindEdgeColModel; // TaskSimpleClimb.cpp, 0xC1
 extern CDirectory&             playerImg;           // ClothesBuilder.cpp, 0xBC12C0
 extern CAETwinLoopSoundEntity& m_sRainSoundL;       // AEWeatherAudioEntity.cpp, 0xB6BB18
 extern CAETwinLoopSoundEntity& m_sRainSoundR;       // AEWeatherAudioEntity.cpp, 0xB6BBC0
+
+//! `Cam.cpp` declares `DWHeliChaseState` at file scope, so the exe's constructor row (0x84D770)
+//! reaches the object through this replay function instead of naming the type.
+void ApplyDWHeliChaseStateDefaults();
 
 namespace notsa::native {
 namespace {
@@ -281,6 +291,10 @@ constexpr CtorRow kCtorRows[] = {
     // `CReplay::PlayerInfo`: a single `CPlayerInfo` (constructor 0x571920).
     {0xA430B0, [] { Construct(CReplay::PlayerInfo); }},                         // 0x84A540
 
+    // `CTheScripts::ScriptsForBrains`: the constructor (0x46B260) only calls
+    // `CScriptsForBrains::Init` (0x46A8C0), which resets every `tScriptForBrains` slot.
+    {0xA90CF0, [] { CTheScripts::ScriptsForBrains.Init(); }},                   // 0x84A740
+
     // `CShopping::gStoredClothesState` (`CPedClothesDesc`).
     {0xA9A810, [] { Construct(gStoredClothesState); }},                         // 0x84B2A0
     // `g_fx` (`Fx_c() = default`) and `g_fxMan` (`FxManager_c`).
@@ -308,6 +322,9 @@ constexpr CtorRow kCtorRows[] = {
     // static initialization.
     {0xB5F8B8, [] { Construct(AEAudioHardware); }},                             // 0x84C270
     {0xB608D0, [] { Construct(AESmoothFadeThread); }},                          // 0x84C290
+    // `AEStreamTransformer`: the constructor (0x4F1750) is `CAEStreamTransformer::Initialise`,
+    // which copies the 16-byte XOR table.
+    {0xB612D8, [] { AEStreamTransformer.Initialise(); }},                       // 0x84C500
     {0xB62CB0, [] { Construct(AESoundManager); }},                              // 0x84CD20
     {0xB6BB18, [] { Construct(m_sRainSoundL); }},                               // 0x84D4D0
     {0xB6BBC0, [] { Construct(m_sRainSoundR); }},                               // 0x84D4F0
@@ -319,10 +336,16 @@ constexpr CtorRow kCtorRows[] = {
 
     {0xB6F028, [] { Construct(TheCamera); }},                                   // 0x84D700
     {0xB6FDA0, [] { Construct(gIdleCam); }},                                    // 0x84D720
+    // `DWHeliChaseState` (`Cam.cpp`, one 0x9C-byte object): the constructor (0x5173F0) calls
+    // `DWHeliChaseState::SetDefaults` (0x50E180) and nothing else.
+    {0xB6FEC0, [] { ApplyDWHeliChaseStateDefaults(); }},                        // 0x84D770
     {0xB71F80, [] { Construct(gFireManager); }},                                // 0x84DE70
     {0xB72978, [] { Construct(g_LoadMonitor); }},                               // 0x84E010
     {0xB74240, [] { Construct(gDummyMatrix); }},                                // 0x84E2E0
     {0xB74288, [] { Construct(gMatrixList); }},                                 // 0x84E300
+    // `CTimeCycle::m_BelowHorizonGrey`: `mov ecx, 0xB7CB10; call 0x7170C0` with the arguments
+    // 0x46, 0x46, 0x46 (red, green, blue) and 0xFF (alpha).
+    {0xB7CB10, [] { CTimeCycle::m_BelowHorizonGrey = RwRGBA{0x46, 0x46, 0x46, 0xFF}; }}, // 0x84E7B0
     // `CWorld::Players`, 2 x 0x190.
     {0xB7CD98, [] { ConstructEach(CWorld::Players); }},                         // 0x84E980
     {0xBA6748, [] { Construct(FrontEndMenuManager); }},                         // 0x84EE40
@@ -333,6 +356,9 @@ constexpr CtorRow kCtorRows[] = {
     {0xBAD3F8, [] { ConstructEach(g_subGroupStore); }},                         // 0x84F320 128 x 0x1C
     {0xBAE1F8, [] { ConstructEach(g_furniturePool); }},                         // 0x84F350 256 x 0x14
     {0xBAF670, [] { Construct(g_interiorMan); }},                               // 0x84F740
+    // `g_breakMan`: the constructor (0x59E620) only constructs the 64 `BreakObject_c`s
+    // (element constructor 0x59D170, reversed in `BreakObject_c.cpp`).
+    {0xBB4240, [] { ConstructEach(g_breakMan.m_aObjects); }},                   // 0x84FA80
 
     {0xBB7CB0, [] { Construct(g_procObjMan); }},                                // 0x84FDC0
     {0xBC1290, [] { Construct(gOctTreeBase); }},                                // 0x84FE20
@@ -379,6 +405,21 @@ constexpr CtorRow kCtorRows[] = {
     // `CVehicleAnimGroupData::m_vehicleAnimGroups`, 30 x 0x94.
     {0xC1CDC0, [] { ConstructEach(CVehicleAnimGroupData::m_vehicleAnimGroups); }}, // 0x853E20
     {0xC1DF30, [] { Construct(g_waterCreatureMan); }},                          // 0x853F10
+
+    // `CScripted2dEffects::ms_userLists`, 64 x 0x24. The element constructor (0x6FA6D0) stores
+    // -1 in both user-type arrays and clears the flag, which is what the member initializers do.
+    {0xC3A200, [] { ConstructEach(CScripted2dEffects::ms_userLists); }},        // 0x8545B0
+    // `CScripted2dEffects::ms_effectPairs`, 64 x 0x94. The element constructor (0x6FA790)
+    // constructs the four pairs (0x6FA770) and clears `NumPairs` (0x6F9EB0); both ctors only
+    // store -1 / `NONE`, so the member initializers reproduce them. NOTE: 0x6FA770 does not
+    // store `Effects[1].PartnerTask`, which stays zero in the executable, while the member
+    // initializer makes it -1.
+    {0xC3BB00, [] { ConstructEach(CScripted2dEffects::ms_effectPairs); }},      // 0x8545E0
+
+    // `g_realTimeShadowMan`: the constructor (0x706770) only clears the object, which the
+    // zero-filled `StaticRef` storage already is. The row constructs it anyway so the row is
+    // claimed and the object is well-formed (its `CShadowCamera`s only clear their pointers).
+    {0xC40350, [] { Construct(g_realTimeShadowMan); }},                         // 0x854980
 
     // `CEscalators::aEscalators`, 32 x 0x150.
     {0xC6E9A8, [] { ConstructEach(aEscalators); }},                             // 0x854D50
@@ -491,6 +532,13 @@ bool ApplyManualExeDataEntry(const ExeDataEntry& e) {
             offsets.Scale = 1.f;
             return true;
         }
+
+        // 0x852870: `CTaskComplexFollowPatrolRoute::ms_patrolRoute` (0x00C18DB8). The constructor
+        // 0x66D440 builds a `CPatrolRoute`: a node count plus an eight-element node array
+        // (0x28 bytes each, constructor 0x46AE30) and several node flags. Neither `CPatrolRoute`
+        // nor `CTaskComplexFollowPatrolRoute` exists in this codebase yet, so there is no native
+        // type to replay the row into.
+        // TODO(re): apply once `CPatrolRoute` is reversed.
         break;
 
     case ExeDataKind::VectorCtor:

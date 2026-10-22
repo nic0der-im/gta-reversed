@@ -1,6 +1,9 @@
 #include "StdInc.h"
 
 #include "TaskComplexPartnerShove.h"
+#include "TaskComplexSequence.h"
+#include "TaskComplexTurnToFaceEntityOrCoord.h"
+#include "TaskSimpleRunAnim.h"
 
 void CTaskComplexPartnerShove::InjectHooks()
 {
@@ -22,7 +25,16 @@ CTaskComplexPartnerShove* CTaskComplexPartnerShove::Constructor(const char* comm
     return this;
 }
 
+// 0x683120
 CTaskComplexSequence* CTaskComplexPartnerShove::GetPartnerSequence()
 {
-    return plugin::CallMethodAndReturn<CTaskComplexSequence*, 0x683120, CTask*>(this);
+    auto* const sequence = new CTaskComplexSequence{};
+    sequence->AddTask(new CTaskComplexTurnToFaceEntityOrCoord{ m_partner, 0.5f, 0.001f });
+    sequence->AddTask(new CTaskSimpleRunAnim{
+        ANIM_GROUP_DEFAULT,
+        m_leadSpeaker ? ANIM_ID_SHOVE_PARTIAL : ANIM_ID_HANDSUP,
+        4.0f,
+        false
+    });
+    return sequence;
 }

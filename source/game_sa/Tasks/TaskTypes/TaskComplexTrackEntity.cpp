@@ -12,8 +12,8 @@ void CTaskComplexTrackEntity::InjectHooks() {
     RH_ScopedInstall(Destructor, 0x65F460);
 
     RH_ScopedInstall(SetOffsetPos, 0x65F760, {.State = HS::RedirectToGTA, .Locked = true});
-    RH_ScopedInstall(CalcTargetPos, 0x65F780, {.State = HS::RedirectToGTA, .Locked = true});
-    RH_ScopedInstall(CalcMoveRatio, 0x65F930, {.State = HS::RedirectToGTA, .Locked = true});
+    RH_ScopedInstall(CalcTargetPos, 0x65F780);
+    RH_ScopedInstall(CalcMoveRatio, 0x65F930);
 
     RH_ScopedVMTInstall(Clone, 0x65F4E0);
     RH_ScopedVMTInstall(GetTaskType, 0x65F450);
@@ -55,12 +55,64 @@ void CTaskComplexTrackEntity::SetOffsetPos(CVector posn) {
 
 // 0x65F780
 void CTaskComplexTrackEntity::CalcTargetPos(CPed* ped) {
-    plugin::CallMethod<0x65F780, CTaskComplexTrackEntity*, CPed*>(this, ped);
+    m_goToPos = m_toTrack->GetPosition();
+
+    if (f) {
+        // The offset is relative to the entity's matrix (X along `right`, Y along `up`)
+        if (!m_toTrack->m_matrix) {
+            m_toTrack->AllocateMatrix();
+            m_toTrack->m_placement.UpdateMatrix(m_toTrack->m_matrix);
+        }
+
+        const CMatrix& mat = *m_toTrack->m_matrix;
+        m_goToPos += mat.GetRight() * m_offsetPosn.x;
+        m_goToPos += mat.GetUp()    * m_offsetPosn.y;
+    } else {
+        m_goToPos.x += m_offsetPosn.x;
+        m_goToPos.y += m_offsetPosn.y;
+    }
+
+    // Lead the target by its velocity so we account for the frame's movement
+    if (m_toTrack->GetType() == ENTITY_TYPE_VEHICLE || m_toTrack->GetType() == ENTITY_TYPE_PED) {
+        m_goToPos += m_toTrack->AsPhysical()->m_vecMoveSpeed * CTimer::GetTimeStep();
+    }
+
+    const auto pedPos = ped->GetPosition();
+    m_distToTargetSq = sq(m_goToPos.x - pedPos.x) + sq(m_goToPos.y - pedPos.y);
 }
 
 // 0x65F930
-void CTaskComplexTrackEntity::CalcMoveRatio(CPed* ped) {
-    plugin::CallMethod<0x65F930, CTaskComplexTrackEntity*, CPed*>(this, ped);
+void CTaskComplexTrackEntity::CalcMoveRatio(CPed*) { // NOTE: `ped` is unused
+    // The distance->move-ratio curve is built from these fixed thresholds
+    // TODO(re): the original caches the squared thresholds/reciprocals in statics at 0xC18CF4..0xC18D08
+    constexpr struct {
+        float min = 0.2f; // Below this distance the ratio is zero
+        float mid = 1.0f; // Ratio is 0.5 here
+        float max = 5.0f; // Above this distance the ratio is one
+    } kThresholds;
+
+    const float dist = std::sqrt(m_distToTargetSq);
+
+    if (m_distToTargetSq <= sq(kThresholds.min)) {
+        float40 = 0.0f;
+    } else if (m_distToTargetSq >= sq(kThresholds.max)) {
+        float40 = 1.0f;
+    } else if (m_distToTargetSq > sq(kThresholds.mid)) {
+        float40 = (dist - kThresholds.min) / (kThresholds.mid - kThresholds.min) * 0.5f;
+    } else {
+        float40 = (dist - kThresholds.mid) / (kThresholds.max - kThresholds.mid) * 0.5f + 0.5f;
+    }
+
+    float40 = std::sqrt(float40) * 3.0f;
+    if (!a && float40 >= 2.0f) {
+        float40 = 2.0f;
+    }
+
+    if (float40 - m_fMoveRatio < 0.2f) {
+        m_fMoveRatio = float40;
+    } else {
+        m_fMoveRatio += 0.2f;
+    }
 }
 
 // 0x65F4C0

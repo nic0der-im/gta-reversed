@@ -18,6 +18,17 @@ class CPed;
 class CVehicle;
 
 extern bool& gbFirstPersonRunThisFrame;
+
+/*!
+* @brief Idle-camera state flags (retail `0xC0B184`).
+*
+* Bit 0 is set while the idle camera is active, that is, after the player has been idle long enough
+* (`0x522CDD` sets it). `CCam::Process` clears it when the player isn't idle anymore or the camera
+* isn't `MODE_FOLLOWPED`, and other systems (`CInterestingEvents`, `CHeli`) only fire their idle
+* events while it's set. No other bit is ever observed in the executable.
+*/
+extern uint8& gIdleCamFlags;
+
 void WellBufferMe(float target, float& valueToChange, float& speedSoFar, float topSpeed, float speedStep, bool isAnAngle);
 
 class CCam {

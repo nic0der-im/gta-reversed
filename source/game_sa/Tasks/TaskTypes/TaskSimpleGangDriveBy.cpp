@@ -1,6 +1,121 @@
 #include "StdInc.h"
 
 #include "TaskSimpleGangDriveBy.h"
+#include "EventDamage.h"
+#include "General.h"
+#include "PlayerInfo.h"
+#include "PlayerPed.h"
+#include "Timer.h"
+#include "WeaponInfo.h"
+
+/*!
+ * @addr 0x621BE0
+ * @brief Called when an animation of this task is deleted, so the task stops pointing at it.
+ */
+static void AnimDeleteCallback(CAnimBlendAssociation* anim, void* data) {
+    auto* const task = static_cast<CTaskSimpleGangDriveBy*>(data);
+    if (task->m_pAnimAssoc == anim) {
+        task->m_pAnimAssoc = nullptr;
+    }
+}
+
+/*!
+ * @addr 0x627B20
+ * @brief Makes sure the required animation block is streamed in and then plays/keeps the
+ *        animation the current command asks for.
+ *
+ * @return If the ped is (now) playing the required animation properly
+ *
+ * @note Not a member of the class in the repo (retail has several such file-local helpers).
+ */
+static bool ProcessAnimCommand(CTaskSimpleGangDriveBy& task, CPed* ped) {
+    // Stream in the block of the required animation group
+    auto* animBlock = CAnimManager::GetAssocGroups()[task.m_nRequiredAnimGroup].m_AnimBlock;
+    if (!animBlock) {
+        animBlock = CAnimManager::GetAnimationBlock(CAnimManager::GetAnimBlockName(task.m_nRequiredAnimGroup));
+    }
+    if (!animBlock) { // Retail would dereference the null pointer here
+        return false;
+    }
+    // Retail derives it from the block pointer; the equivalent public API looks it up by name
+    const auto blockIdx = CAnimManager::GetAnimationBlockIndex(CAnimManager::GetAnimBlockName(task.m_nRequiredAnimGroup));
+    if (!animBlock->IsLoaded) {
+        CStreaming::RequestModel(IFPToModelId(blockIdx), STREAMING_KEEP_IN_MEMORY);
+        return false;
+    }
+    if (!task.m_bAnimsReferenced) {
+        CAnimManager::AddAnimBlockRef(blockIdx);
+        task.m_bAnimsReferenced = true;
+    }
+
+    if (task.m_nRequiredAnimID == ANIM_ID_NO_ANIMATION_SET && !task.m_pAnimAssoc) {
+        return false;
+    }
+
+    if (!task.m_pAnimAssoc) {
+        // No animation yet - only start one once the target is in weapon range (and not between bursts)
+        if (task.m_nAttackTimer > 0 || !task.m_bInWeaponRange) {
+            return false;
+        }
+    } else if (task.m_pAnimAssoc->m_AnimId == (AnimationId)task.m_nRequiredAnimID) {
+        // Already playing the right animation
+        goto CheckAnimState;
+    } else if (   task.m_nNextCommand != 1
+               && task.m_nNextCommand != 2
+               && task.m_nNextCommand != 3
+    ) {
+        goto CheckAnimState;
+    } else if (task.m_nLastCommand >= 4) {
+        goto CheckAnimState;
+    }
+
+    {
+        const bool hadAnim = task.m_pAnimAssoc != nullptr;
+        if (hadAnim) {
+            task.m_pAnimAssoc->SetDeleteCallback(CDefaultAnimCallback::DefaultAnimCB, nullptr);
+            task.m_pAnimAssoc->m_Flags &= ~ANIMATION_IS_PLAYING;
+        }
+
+        task.m_pAnimAssoc = CAnimManager::BlendAnimation(
+            ped->GetRpClump(),
+            task.m_nRequiredAnimGroup,
+            (AnimationId)task.m_nRequiredAnimID,
+            4.0f
+        );
+        task.m_pAnimAssoc->SetDeleteCallback(AnimDeleteCallback, &task);
+
+        if (task.m_nNextCommand == 3 && task.m_nBurstShots <= 1 && task.m_pWeaponInfo) {
+            task.m_nBurstShots = (int8)CGeneral::GetRandomNumberInRange(2, (int32)task.m_pWeaponInfo->m_nAmmoClip);
+        }
+
+        if (hadAnim) {
+            // TODO(re): Retail syncs the new animation's time with the global float at `0x8D2E7C`
+            //           (`SetCurrentTime(...)`), but that global's owner/name is not established.
+            task.m_pAnimAssoc->m_Flags &= ~ANIMATION_IS_PLAYING;
+            task.m_nLastCommand = 1;
+            task.m_nNextCommand = 0;
+            if (!ped->IsPlayer()) {
+                task.m_nAttackTimer = 100;
+            }
+        } else {
+            task.m_nLastCommand = task.m_nNextCommand;
+            task.m_nNextCommand = 0;
+        }
+    }
+
+CheckAnimState:
+    const auto* const anim = task.m_pAnimAssoc;
+    if (!anim) {
+        return false;
+    }
+    if (anim->m_BlendAmount <= 0.9f) {
+        return false;
+    }
+    if (anim->m_BlendDelta < 0.0f) {
+        return false;
+    }
+    return true;
+}
 
 CTaskSimpleGangDriveBy::CTaskSimpleGangDriveBy(CEntity* target, const CVector* targetPos, float abortRange, int8 frequencyPercentage, eDrivebyStyle drivebyStyle, bool seatRHS) {
     m_bSeatRHS             = seatRHS;
@@ -42,18 +157,102 @@ CTaskSimpleGangDriveBy::~CTaskSimpleGangDriveBy()
     CEntity::SafeCleanUpRef(m_pTargetEntity);
 }
 
+// 0x6236D0
 CTask* CTaskSimpleGangDriveBy::Clone() const {
-    return plugin::CallMethodAndReturn<CTask*, 0x6236D0, const CTask*>(this);
+    auto* const clone = new CTaskSimpleGangDriveBy(
+        m_pTargetEntity,
+        &m_vecCoords,
+        m_fAbortRange,
+        m_nFrequencyPercentage,
+        m_nDrivebyStyle,
+        m_bSeatRHS
+    );
+    clone->m_bFromScriptCommand = m_bFromScriptCommand;
+    return clone;
 }
 
+// 0x62D290
 bool CTaskSimpleGangDriveBy::MakeAbortable(CPed* ped, eAbortPriority priority, const CEvent* event)
 {
-    return plugin::CallMethodAndReturn<bool, 0x62D290, CTask*, CPed*, int32, const CEvent*>(this, ped, priority, event);
+    if (priority != ABORT_PRIORITY_URGENT && priority != ABORT_PRIORITY_IMMEDIATE) {
+        m_nNextCommand = 6;
+        return false;
+    }
+
+    // Only a fatal damage event can interrupt a drive-by
+    if (event && event->GetEventType() == EVENT_DAMAGE) {
+        const auto* const damageEvent = static_cast<const CEventDamage*>(event);
+        if (!damageEvent->m_damageResponse.m_bHealthZero || !damageEvent->m_bAddToEventGroup) {
+            return false;
+        }
+    }
+
+    m_nNextCommand = 7;
+    if (ProcessAnimCommand(*this, ped)) {
+        m_nLastCommand = m_nNextCommand;
+
+        if (priority == ABORT_PRIORITY_IMMEDIATE) {
+            m_pAnimAssoc->m_BlendDelta = -1000.0f;
+        } else {
+            m_pAnimAssoc->m_Flags |= ANIMATION_IS_PLAYING;
+        }
+    }
+
+    if (auto* const playerData = ped->GetPlayerData()) {
+        playerData->m_bFreeAiming = true;
+    }
+
+    if (ped->IsPlayer()) {
+        static_cast<CPlayerPed*>(ped)->GetPlayerInfoForThisPlayerPed()->m_bCanDoDriveBy = true;
+    }
+
+    // Fade the animation out (unless it's already playing) and detach from it
+    if (m_pAnimAssoc && !m_pAnimAssoc->IsPlaying()) {
+        if (   m_pAnimAssoc->m_BlendDelta > 0.0f
+            || (m_pAnimAssoc->m_BlendAmount > 0.0f && m_pAnimAssoc->m_BlendDelta == 0.0f)
+        ) {
+            m_pAnimAssoc->m_BlendDelta = -8.0f;
+        }
+    }
+
+    if (m_pAnimAssoc) {
+        m_pAnimAssoc->SetDeleteCallback(CDefaultAnimCallback::DefaultAnimCB, nullptr);
+        m_pAnimAssoc = nullptr;
+    }
+
+    m_bIsFinished = true;
+    return true;
 }
 
+// 0x62D3B0
 bool CTaskSimpleGangDriveBy::ProcessPed(CPed* ped)
 {
-    return plugin::CallMethodAndReturn<bool, 0x62D3B0, CTask*, CPed*>(this, ped);
+    // TODO(re): The retail body is ~0x600 bytes long and drives a command table, calling the
+    //           not-yet-reversed helpers 0x621960 (player aiming) and 0x627600 (AI aiming).
+    //           Only the entry checks are implemented for now.
+    const auto weaponType = ped->GetActiveWeapon().m_Type;
+    const auto weaponInfo = CWeaponInfo::GetWeaponInfo(weaponType, ped->GetWeaponSkill());
+    if (weaponInfo && weaponInfo->m_nWeaponFire != WEAPON_FIRE_INSTANT_HIT) {
+        return true;
+    }
+    if (ped->m_pVehicle && !ped->m_pVehicle->CanPedLeanOut(ped)) {
+        return true;
+    }
+    if (m_bIsFinished) {
+        return true;
+    }
+    if (!m_nLOSCheckTime) {
+        m_nLOSCheckTime = CTimer::GetTimeInMS() + CGeneral::GetRandomNumberInRange(0, 1000);
+    }
+    if (!m_pWeaponInfo) {
+        m_pWeaponInfo = weaponInfo;
+    }
+
+    // TODO(re): 0x62D458 onwards: abort checks (`m_pPedFlags` bit 8, health), vehicle window
+    //           flags, weapon model, the `ProcessAnimCommand`/`FireGun` state machine and the
+    //           final `SetPedPosition` fix-up.
+
+    return m_bIsFinished;
 }
 
 // 0x627CC0

@@ -1,6 +1,10 @@
 #include "StdInc.h"
 
 #include "TaskComplexPartnerDeal.h"
+#include "TaskComplexGangLeader.h"
+#include "TaskComplexSequence.h"
+#include "TaskComplexTurnToFaceEntityOrCoord.h"
+#include "TaskSimpleRunAnim.h"
 
 void CTaskComplexPartnerDeal::InjectHooks()
 {
@@ -24,15 +28,25 @@ CTaskComplexPartnerDeal* CTaskComplexPartnerDeal::Constructor(const char* comman
 
 CTask* CTaskComplexPartnerDeal::CreateFirstSubTask(CPed* ped)
 {
-    return plugin::CallMethodAndReturn<CTask*, 0x6823B0, CTask*, CPed*>(this, ped);
+    // 0x6823B0 is a 5-byte tail-jump (`jmp 0x681F20`) to the shared base implementation
+    return CTaskComplexPartner::CreateFirstSubTask(ped);
 }
 
 void CTaskComplexPartnerDeal::StreamRequiredAnims()
 {
-    return plugin::CallMethod<0x6823C0, CTask*>(this);
+    CAnimManager::StreamAnimBlock(m_animBlockName, CTaskComplexGangLeader::ShouldLoadGangAnims(), m_requiredAnimsStreamedIn);
 }
 
 CTaskComplexSequence* CTaskComplexPartnerDeal::GetPartnerSequence()
 {
-    return plugin::CallMethodAndReturn<CTaskComplexSequence*, 0x682440, CTask*>(this);
+    // Face the partner, then play the deal animation (the leader is the dealer, so he plays the selling anim)
+    auto* const sequence = new CTaskComplexSequence{};
+    sequence->AddTask(new CTaskComplexTurnToFaceEntityOrCoord{ m_partner, 0.5f, 0.02f });
+    sequence->AddTask(new CTaskSimpleRunAnim{
+        ANIM_GROUP_GANGS,
+        m_leadSpeaker ? ANIM_ID_DEALER_DEAL : ANIM_ID_DRUGS_BUY,
+        4.0f,
+        false
+    });
+    return sequence;
 }

@@ -15,7 +15,7 @@ void CScriptsForBrains::InjectHooks() {
     RH_ScopedInstall(StartNewStreamedScriptBrain, 0x46B270);
     RH_ScopedInstall(StartAttractorScriptBrainWithThisName, 0x46B390);
     RH_ScopedInstall(StartOrRequestNewStreamedScriptBrain, 0x46CD80);
-    //RH_ScopedInstall(StartOrRequestNewStreamedScriptBrainWithThisName, 0x46CED0, {.Reversed = false});
+    RH_ScopedInstall(StartOrRequestNewStreamedScriptBrainWithThisName, 0x46CED0);
     RH_ScopedInstall(IsObjectWithinBrainActivationRange, 0x46B3D0);
     RH_ScopedInstall(CheckIfNewEntityNeedsScript, 0x46FF20);
     RH_ScopedInstall(MarkAttractorScriptBrainWithThisNameAsNoLongerNeeded, 0x46AAE0);
@@ -221,6 +221,15 @@ void CScriptsForBrains::StartOrRequestNewStreamedScriptBrain(uint8 index, CEntit
     ped->bWaitingForScriptBrainToLoad = true;
     ped->m_StreamedScriptBrainToLoad   = index;
     CTheScripts::AddToWaitingForScriptBrainArray(entity, index);
+}
+
+// 0x46CED0
+void CScriptsForBrains::StartOrRequestNewStreamedScriptBrainWithThisName(const char* name, CEntity* entity, int8 attachType) {
+    const auto index = GetIndexOfScriptBrainWithThisName(name, attachType);
+    if (index < 0) {
+        return;
+    }
+    StartOrRequestNewStreamedScriptBrain((uint8)index, entity, attachType, true);
 }
 
 bool CScriptsForBrains::HasAttractorScriptBrainWithThisNameLoaded(const char* name) {

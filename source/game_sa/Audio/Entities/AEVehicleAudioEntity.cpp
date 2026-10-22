@@ -47,6 +47,33 @@ void StopAndForgetSound(CAESound*& sound) {
     }
 }
 
+namespace {
+//! Globals used by the per-vehicle-type processing functions below.
+//! All of them are plain data in the retail executable (`.bss`, some of them written by its CRT
+//! static initializers - see `ExeData.generated.cpp`), and none of them have a symbol in this repo.
+
+// Per-model engine volume targets for the jets (0xB6B9F4, 0xB6B9F8, 0xB6B9FC - never written, so 0.0f)
+auto& s_JetEngineVolTargetShamal = StaticRef<float>(0xB6B9F4);
+auto& s_JetEngineVolTargetHydra  = StaticRef<float>(0xB6B9F8);
+auto& s_JetEngineVolTargetAndrom = StaticRef<float>(0xB6B9FC);
+
+// Bicycle engine/tyre frequency factors (0xB6BA6C = 0.1f, 0xB6BA70 = 0.7f)
+auto& s_BicycleEngineFreqFactor = StaticRef<float>(0xB6BA6C);
+auto& s_BicycleTyreFreqFactor   = StaticRef<float>(0xB6BA70);
+
+// Last frame's "bicycle tyre sound is playing" flags - dummy (0xB6BAC8) and player (0xB6BAC9)
+auto& s_PrevFrameDummyBicycleTyreSound  = StaticRef<bool>(0xB6BAC8);
+auto& s_PrevFramePlayerBicycleTyreSound = StaticRef<bool>(0xB6BAC9);
+
+// Player bicycle skid timer (0xB6BACC), and the lateral skid value it was last updated with (0xB6BAD0)
+auto& s_PlayerBicycleSkidTimer     = StaticRef<float>(0xB6BACC);
+auto& s_PlayerBicyclePrevSkidValue = StaticRef<float>(0xB6BAD0);
+
+// Hovercraft pitch curve factors (0xB6BA90 = 6.0f, 0xB6BA94 = 0.35f)
+auto& s_HovercraftLoadFreqFactor = StaticRef<float>(0xB6BA90);
+auto& s_HovercraftLoadFreqOffset = StaticRef<float>(0xB6BA94);
+}
+
 std::optional<uint32> GetNumOfContactWheels(CAEVehicleAudioEntity::tVehicleParams& vp) {
     switch (vp.BaseVehicleType) {
     case VEHICLE_TYPE_AUTOMOBILE: return vp.Vehicle->AsAutomobile()->GetNumContactWheels();

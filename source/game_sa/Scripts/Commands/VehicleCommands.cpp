@@ -45,6 +45,10 @@
 #include "ModelIndices.h"
 #include "UpsideDownCarCheck.h"
 #include "Bike.h"
+#include "DamageManager.h"
+#include "ModelInfo.h"
+#include "Entity/Ped/Ped.h"
+#include "Entity/Ped/PlayerPed.h"
 using namespace notsa::script;
 
 /*!
@@ -1500,10 +1504,163 @@ void TaskDrivePointRouteAdvanced(CRunningScript& S, eScriptCommands command, int
     );
 }
 
+//
+// Vehicle state & damage
+//
+
+/// EXPLODE_CAR(020B)
+void ExplodeCar(CVehicle* vehicle) {
+    if (vehicle) {
+        vehicle->BlowUpCar(nullptr, false);
+    }
+}
+
+/// SWITCH_CAR_SIREN(0397)
+void SwitchCarSiren(CVehicle* vehicle, bool state) {
+    if (vehicle) {
+        vehicle->vehicleFlags.bSirenOrAlarm = state;
+    }
+}
+
+/// SET_PETROL_TANK_WEAKPOINT(09C4)
+void SetPetrolTankWeakpoint(CVehicle* vehicle, bool state) {
+    if (vehicle) {
+        vehicle->vehicleFlags.bPetrolTankIsWeakPoint = state;
+    }
+}
+
+/// FREEZE_CAR_POSITION_AND_DONT_LOAD_COLLISION(0574)
+void FreezeCarPositionAndDontLoadCollision(CRunningScript& S, CVehicle* vehicle, bool state) {
+    if (!vehicle) {
+        return;
+    }
+    vehicle->physicalFlags.bDisableCollisionForce = state;
+    vehicle->physicalFlags.bDontApplySpeed        = state;
+    if (state) {
+        // Re-add it to the world so its collision isn't loaded (0x40000 = `m_bIsStaticWaitingForCollision`)
+        if (S.m_UsesMissionCleanup) {
+            CWorld::Remove(vehicle);
+            vehicle->m_bIsStaticWaitingForCollision = true;
+            CWorld::Add(vehicle);
+        }
+    } else {
+        vehicle->m_nFakePhysics = 0;
+    }
+}
+
+/// DAMAGE_CAR_DOOR(073C)
+void DamageCarDoor(CVehicle* vehicle, int32 door) {
+    if (!vehicle) {
+        return;
+    }
+    // `0x871640` (150.0f) is the retail's door damage multiplier
+    static_cast<CAutomobile*>(vehicle)->GetDamageManager().ApplyDamage(
+        static_cast<CAutomobile*>(vehicle),
+        static_cast<tComponent>(door + COMPONENT_BONNET),
+        150.0f,
+        1.0f
+    );
+}
+
+/// HAS_CAR_BEEN_DAMAGED_BY_CHAR(051C)
+bool HasCarBeenDamagedByChar(CVehicle* vehicle, CPed* ped) {
+    if (!vehicle || !vehicle->m_pDamageEntity) {
+        return false;
+    }
+    if (!ped) { // Any ped will do
+        return vehicle->m_pDamageEntity->GetType() == ENTITY_TYPE_PED;
+    }
+    if (vehicle->m_pDamageEntity == ped) {
+        return true;
+    }
+    // Damaged by the vehicle the ped is in?
+    return ped->bInVehicle && ped->m_pVehicle && vehicle->m_pDamageEntity == ped->m_pVehicle;
+}
+
+//
+// Heli, planes & trains
+//
+
+/// SET_HELI_BLADES_FULL_SPEED(0825)
+void SetHeliBladesFullSpeed(CVehicle* vehicle) {
+    if (!vehicle) {
+        return;
+    }
+    switch (vehicle->m_nVehicleSubType) {
+    case VEHICLE_TYPE_HELI:
+        static_cast<CAutomobile*>(vehicle)->m_fHeliRotorSpeed = 0.22f;
+        break;
+    case VEHICLE_TYPE_PLANE:
+        static_cast<CPlane*>(vehicle)->m_fPropSpeed = 0.18f;
+        break;
+    }
+}
+
+/// HELI_GOTO_COORDS(04A2)
+void HeliGotoCoords(CVehicle* vehicle, float x, float y, float z, float minAltitude, float maxAltitude) {
+    if (vehicle) {
+        static_cast<CAutomobile*>(vehicle)->TellHeliToGoToCoors(x, y, z, minAltitude, maxAltitude);
+    }
+}
+
+/// SET_TRAIN_CRUISE_SPEED(06DD)
+void SetTrainCruiseSpeed(CVehicle* vehicle, float speed) {
+    if (vehicle) {
+        CTrain::SetTrainCruiseSpeed(static_cast<CTrain*>(vehicle), speed);
+    }
+}
+
+//
+// Vehicle recording
+//
+
+/// PAUSE_PLAYBACK_RECORDED_CAR(05ED)
+void PausePlaybackRecordedCar(CVehicle* vehicle) {
+    if (vehicle) {
+        CVehicleRecording::PausePlaybackRecordedCar(vehicle);
+    }
+}
+
+/// UNPAUSE_PLAYBACK_RECORDED_CAR(05EE)
+void UnpausePlaybackRecordedCar(CVehicle* vehicle) {
+    if (vehicle) {
+        CVehicleRecording::UnpausePlaybackRecordedCar(vehicle);
+    }
+}
+
+//
+// Models
+//
+
+/// GET_RANDOM_CAR_MODEL_IN_MEMORY(09B2)
+MultiRet<int32, int32> GetRandomCarModelInMemory(bool normalOnly) {
+    const auto model = CPopulation::m_AppropriateLoadedCars.PickRandomCar(false, normalOnly);
+    if (model == MODEL_INVALID) {
+        return {-1, -1};
+    }
+    return {
+        (int32)model,
+        (int32)CModelInfo::GetModelInfo(model)->AsVehicleModelInfoPtr()->m_nVehicleClass
+    };
+}
+
 }
 
 void notsa::script::commands::vehicle::RegisterHandlers() {
     REGISTER_COMMAND_HANDLER_BEGIN("Vehicle");
+
+    REGISTER_COMMAND_HANDLER(COMMAND_EXPLODE_CAR, ExplodeCar);
+    REGISTER_COMMAND_HANDLER(COMMAND_SWITCH_CAR_SIREN, SwitchCarSiren);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_PETROL_TANK_WEAKPOINT, SetPetrolTankWeakpoint);
+    REGISTER_COMMAND_HANDLER(COMMAND_FREEZE_CAR_POSITION_AND_DONT_LOAD_COLLISION, FreezeCarPositionAndDontLoadCollision);
+    REGISTER_COMMAND_HANDLER(COMMAND_DAMAGE_CAR_DOOR, DamageCarDoor);
+    REGISTER_COMMAND_HANDLER(COMMAND_HAS_CAR_BEEN_DAMAGED_BY_CHAR, HasCarBeenDamagedByChar);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_HELI_BLADES_FULL_SPEED, SetHeliBladesFullSpeed);
+    REGISTER_COMMAND_HANDLER(COMMAND_HELI_GOTO_COORDS, HeliGotoCoords);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_TRAIN_CRUISE_SPEED, SetTrainCruiseSpeed);
+    REGISTER_COMMAND_HANDLER(COMMAND_PAUSE_PLAYBACK_RECORDED_CAR, PausePlaybackRecordedCar);
+    REGISTER_COMMAND_HANDLER(COMMAND_UNPAUSE_PLAYBACK_RECORDED_CAR, UnpausePlaybackRecordedCar);
+    REGISTER_COMMAND_HANDLER(COMMAND_GET_RANDOM_CAR_MODEL_IN_MEMORY, GetRandomCarModelInMemory);
 
     REGISTER_COMMAND_HANDLER(COMMAND_CLEAR_HELI_ORIENTATION, ClearHeliOrientation);
     REGISTER_COMMAND_HANDLER(COMMAND_REMOVE_RC_BUGGY, RemoveRCBuggy);

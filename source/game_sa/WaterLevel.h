@@ -353,6 +353,7 @@ public:
     static bool TestQuadToGetWaterLevel(CWaterQuad* quad, float x, float y, float z, float* outLevel, float* outBigWaves, float* outSmallWaves);
     static bool TestTriangleToGetWaterLevel(CWaterTriangle* tri, float x, float y, float z, float* outLevel, float* outBigWaves, float* outSmallWaves);
     static bool GetGroundLevel(const CVector& pos, float* outGroundZ, ColData* outColData, float maxHeight);
+    static bool TestLineAgainstWater(CVector start, CVector end, CVector* out);
     static void RenderSeaBedSegment(int32 blockX, int32 blockY, float x1, float x2, float y1, float y2);
     static void RenderDetailedSeaBedSegment(int32 blockX, int32 blockY, float x1, float x2, float y1, float y2);
     static void RenderAndEmptyRenderBuffer();

@@ -1475,8 +1475,85 @@ bool CPad::DebugMenuJustPressed() {
 }
 
 // 0x541490
+//! Last keyboard key that went down this frame, encoded as an `RsKeyCodes` (`rsNULL` if none).
+//! Retail leaves the out-pointer in `EAX`, so the declared `int` return carries no value.
 int GetCurrentKeyPressed(RsKeyCodes& keys) {
-    return plugin::CallAndReturn<int, 0x541490, RsKeyCodes&>(keys);
+    const auto& newKeyState = CPad::NewKeyState;
+    const auto& oldKeyState = CPad::OldKeyState;
+
+    keys = rsNULL;
+
+    // Ordinary keys: the key code is the index into the key state.
+    for (uint32 key = 0; key < 255; key++) {
+        if (newKeyState.standardKeys[key] && !oldKeyState.standardKeys[key]) {
+            keys = static_cast<RsKeyCodes>(key);
+        }
+    }
+
+    // F1 - F12.
+    for (uint32 i = 0; i < 12; i++) {
+        if (newKeyState.FKeys[i] && !oldKeyState.FKeys[i]) {
+            keys = static_cast<RsKeyCodes>(rsF1 + i);
+        }
+    }
+
+    // The executable walks 18 consecutive key-state words starting at `FKeys[0]`, so this block
+    // runs past `FKeys` into the first six entries of `standardKeys`.
+    for (uint32 i = 0; i < 6; i++) {
+        if (newKeyState.standardKeys[i] && !oldKeyState.standardKeys[i]) {
+            keys = static_cast<RsKeyCodes>(rsINS + i);
+        }
+    }
+
+    // Special keys, in the executable's evaluation order (the last pressed key wins - note that
+    // `shift` is tested before `rshift`). The codes are Rockstar's own, so e.g. `num1` maps to
+    // `rsPADEND` rather than to a "1" code.
+    if (newKeyState.esc      && !oldKeyState.esc)      keys = rsESC;
+    if (newKeyState.insert   && !oldKeyState.insert)   keys = rsINS;
+    if (newKeyState.del      && !oldKeyState.del)      keys = rsDEL;
+    if (newKeyState.home     && !oldKeyState.home)     keys = rsHOME;
+    if (newKeyState.end      && !oldKeyState.end)      keys = rsEND;
+    if (newKeyState.pgup     && !oldKeyState.pgup)     keys = rsPGUP;
+    if (newKeyState.pgdn     && !oldKeyState.pgdn)     keys = rsPGDN;
+    if (newKeyState.up       && !oldKeyState.up)       keys = rsUP;
+    if (newKeyState.down     && !oldKeyState.down)     keys = rsDOWN;
+    if (newKeyState.left     && !oldKeyState.left)     keys = rsLEFT;
+    if (newKeyState.right    && !oldKeyState.right)    keys = rsRIGHT;
+    if (newKeyState.scroll   && !oldKeyState.scroll)   keys = rsSCROLL;
+    if (newKeyState.pause    && !oldKeyState.pause)    keys = rsPAUSE;
+    if (newKeyState.numlock  && !oldKeyState.numlock)  keys = rsNUMLOCK;
+    if (newKeyState.div      && !oldKeyState.div)      keys = rsDIVIDE;
+    if (newKeyState.mul      && !oldKeyState.mul)      keys = rsTIMES;
+    if (newKeyState.sub      && !oldKeyState.sub)      keys = rsMINUS;
+    if (newKeyState.add      && !oldKeyState.add)      keys = rsPLUS;
+    if (newKeyState.enter    && !oldKeyState.enter)    keys = rsPADENTER;
+    if (newKeyState.decimal  && !oldKeyState.decimal)  keys = rsPADDEL;
+    if (newKeyState.num1     && !oldKeyState.num1)     keys = rsPADEND;
+    if (newKeyState.num2     && !oldKeyState.num2)     keys = rsPADDOWN;
+    if (newKeyState.num3     && !oldKeyState.num3)     keys = rsPADPGDN;
+    if (newKeyState.num4     && !oldKeyState.num4)     keys = rsPADLEFT;
+    if (newKeyState.num5     && !oldKeyState.num5)     keys = rsPAD5;
+    if (newKeyState.num6     && !oldKeyState.num6)     keys = rsPADRIGHT;
+    if (newKeyState.num7     && !oldKeyState.num7)     keys = rsPADHOME;
+    if (newKeyState.num8     && !oldKeyState.num8)     keys = rsPADUP;
+    if (newKeyState.num9     && !oldKeyState.num9)     keys = rsPADPGUP;
+    if (newKeyState.num0     && !oldKeyState.num0)     keys = rsPADINS;
+    if (newKeyState.back     && !oldKeyState.back)     keys = rsBACKSP;
+    if (newKeyState.tab      && !oldKeyState.tab)      keys = rsTAB;
+    if (newKeyState.capslock && !oldKeyState.capslock) keys = rsCAPSLK;
+    if (newKeyState.extenter && !oldKeyState.extenter) keys = rsENTER;
+    if (newKeyState.lshift   && !oldKeyState.lshift)   keys = rsLSHIFT;
+    if (newKeyState.shift    && !oldKeyState.shift)    keys = rsSHIFT;
+    if (newKeyState.rshift   && !oldKeyState.rshift)   keys = rsRSHIFT;
+    if (newKeyState.lctrl    && !oldKeyState.lctrl)    keys = rsLCTRL;
+    if (newKeyState.rctrl    && !oldKeyState.rctrl)    keys = rsRCTRL;
+    if (newKeyState.lalt     && !oldKeyState.lalt)     keys = rsLALT;
+    if (newKeyState.ralt     && !oldKeyState.ralt)     keys = rsRALT;
+    if (newKeyState.lwin     && !oldKeyState.lwin)     keys = rsLWIN;
+    if (newKeyState.rwin     && !oldKeyState.rwin)     keys = rsRWIN;
+    if (newKeyState.apps     && !oldKeyState.apps)     keys = rsAPPS;
+
+    return 0;
 }
 
 #ifndef NOTSA_USE_SDL3

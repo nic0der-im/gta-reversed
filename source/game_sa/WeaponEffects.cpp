@@ -99,6 +99,94 @@ void CWeaponEffects::ClearCrossHairsImmediately() {
     }
 }
 
+//! Per-player crosshair trail state (See `DisplayCrossHairs`)
+struct CrossHairTrail {
+    uint32 m_nLastUpdateTime;    //!< `CTimer::m_snTimeInMilliseconds` at the time of the last update
+    float  m_aPrevTargetY[4];    //!< The 4 previous `ms_aCrossHairTargetY` entries
+};
+VALIDATE_SIZE(CrossHairTrail, 0x14);
+
+// TODO(re): The OG names of these three arrays (And of `CrossHairTrail`) aren't known.
+static auto& ms_aCrossHairTrail   = StaticRef<std::array<CrossHairTrail, MAX_PLAYERS>>(0xB9B8F8);
+static auto& ms_aCrossHairTargetY = StaticRef<std::array<std::array<float, 5>, MAX_PLAYERS>>(0xB9B920);
+static auto& ms_aCrossHairTargetX = StaticRef<std::array<std::array<float, 5>, MAX_PLAYERS>>(0xB9B948);
+
+// 0x56EF90
+//! Draws the in-car ("drive by") crosshair as a fading spiral of sprites around the crosshair position
+//! (`CPlayerInfo::m_vecCrosshairTarget`, in screen space), keeping the last 5 frames as a trail.
+//! NOTE: In the OG this is `CPlayerInfo::DisplayCrossHairs` (Its `this` is `&CPlayerInfo::m_nCrosshairActivated`
+//!       and its only stack argument the player index); it's kept here because `CWeaponEffects::Render` is its
+//!       only caller.
+static void DisplayCrossHairs(CPlayerInfo& info, int32 playerIdx) {
+    if (!info.m_nCrosshairActivated) {
+        return;
+    }
+
+    RwRenderStateSet(rwRENDERSTATEZWRITEENABLE,      RWRSTATE(FALSE));
+    RwRenderStateSet(rwRENDERSTATEZTESTENABLE,       RWRSTATE(FALSE));
+    RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, RWRSTATE(TRUE));
+    RwRenderStateSet(rwRENDERSTATESRCBLEND,          RWRSTATE(rwBLENDSRCALPHA));
+    RwRenderStateSet(rwRENDERSTATEDESTBLEND,         RWRSTATE(rwBLENDINVDESTALPHA));
+
+    // 0x8CDF1C holds `CORONATYPE_STREAK` (8); it's never written by the exe
+    RwRenderStateSet(rwRENDERSTATETEXTURERASTER, RWRSTATE(gpCoronaTexture[CORONATYPE_STREAK]->raster));
+
+    //> Trail color (Green-ish for the 1st player, blue-ish for the 2nd one)
+    uint32 red   = playerIdx != 0 ? 0x32 : 0x00;
+    uint32 green = playerIdx != 0 ? 0x00 : 0xFF;
+    uint32 blue  = playerIdx != 0 ? 0xFF : 0x32;
+
+    auto& targetX = ms_aCrossHairTargetX[playerIdx];
+    auto& targetY = ms_aCrossHairTargetY[playerIdx];
+    auto& trail   = ms_aCrossHairTrail[playerIdx];
+
+    //> Shift the history by one frame (The trail keeps the positions of the last 5 frames)
+    for (auto k = 4; k > 0; k--) {
+        trail.m_aPrevTargetY[k - 1] = targetY[k - 1];
+        targetY[k]                  = targetY[k - 1];
+        targetX[k]                  = targetX[k - 1];
+    }
+    targetX[0]              = info.m_vecCrosshairTarget.x;
+    targetY[0]              = info.m_vecCrosshairTarget.y;
+    trail.m_nLastUpdateTime = CTimer::GetTimeInMS();
+
+    //> The sprites pulsate between 0.8 and 1.2
+    const auto scale = std::sin((float)(trail.m_nLastUpdateTime & 0x3FF) * (2.f * PI / 1024.f)) * 0.2f + 1.f;
+
+    //! NOTE: `i` isn't reset between trail entries (An OG quirk, mirrored as-is), so the sprites are only
+    //!       spread out fully on the first entry.
+    int32 i = 0;
+    for (auto trailIdx = 0u; trailIdx < 5u; trailIdx++) {
+        do {
+            const auto radius = (float)i * 10.f + 20.f;
+            for (auto j = 0; j < 4; j++) {
+                const auto angle = (float)j * (PI / 2.f) + PI / 4.f; // 45°, 135°, 225°, 315°
+
+                CSprite::RenderOneXLUSprite_Rotate_Aspect(
+                    {
+                        std::sin(angle) * radius * scale + (targetX[trailIdx] + 1.f) * SCREEN_WIDTH  * 0.5f,
+                        std::cos(angle) * radius * scale + (targetY[trailIdx] + 1.f) * SCREEN_HEIGHT * 0.5f,
+                        100.f
+                    },
+                    { 15.f, 15.f },
+                    (uint8)red, (uint8)green, (uint8)blue,
+                    255,   // intensity
+                    0.01f, // rz
+                    0.f,   // rotation
+                    255    // alpha
+                );
+            }
+        } while (++i < 3);
+
+        red   >>= 1;
+        green >>= 1;
+        blue  >>= 1;
+    }
+
+    RwRenderStateSet(rwRENDERSTATEZWRITEENABLE, RWRSTATE(TRUE));
+    RwRenderStateSet(rwRENDERSTATEZTESTENABLE,  RWRSTATE(TRUE));
+}
+
 // 0x742CF0
 void CWeaponEffects::Render() {
     ZoneScoped;
@@ -412,11 +500,6 @@ void CWeaponEffects::Render() {
     }
 
     for (auto i = 0; i < MAX_PLAYERS; i++) {
-        // 0x56EF90 - Not reversed. Expects an *interior* pointer (`&Players[i].m_nCrosshairActivated`),
-        // not `&Players[i]` - Hence the cast.
-        plugin::CallMethod<0x56EF90, CPlayerInfo*, int32>(
-            reinterpret_cast<CPlayerInfo*>(&CWorld::Players[i].m_nCrosshairActivated),
-            i
-        );
+        DisplayCrossHairs(CWorld::Players[i], i); // 0x56EF90
     }
 }

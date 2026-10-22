@@ -277,6 +277,9 @@ public:
     static inline auto& m_bLoadingAllRequestedModels = StaticRef<bool>(0x965538);
     static inline auto& m_bModelStreamNotLoaded = StaticRef<bool>(0x9654C4);
     static inline auto& ms_bReadLayerForceFully = StaticRef<bool>(0x9654C4);
+    //! Written by `CStreaming::ForceLayerToRead` (0x407A1B) and never read anywhere in the executable,
+    //! but the store still has to land in emulated storage (retail `.data` is not mapped natively).
+    static inline auto& ms_forcedLayerValue = StaticRef<int32>(0x9654C8);
     static inline auto& ms_oldSectorX = StaticRef<int32>(0x8E4B98);
     static inline auto& ms_oldSectorY = StaticRef<int32>(0x8E4B94);
 

@@ -5,6 +5,11 @@
 #include "TaskSimpleDuck.h"
 #include "TaskSimpleGunControl.h"
 #include "TaskSimpleUseGun.h"
+#include "TaskSimpleThrowControl.h"
+#include "TaskSimplePause.h"
+#include "TaskSimpleStandStill.h"
+#include "TaskSimpleSlideToCoord.h"
+#include "SeekEntity/TaskComplexSeekEntityStandard.h"
 #include <extensions/utility.hpp>
 
 void CTaskComplexKillPedOnFootArmed::InjectHooks() {
@@ -16,12 +21,12 @@ void CTaskComplexKillPedOnFootArmed::InjectHooks() {
 
     RH_ScopedInstall(LineOfSightClearForAttack, 0x621500);
     RH_ScopedInstall(IsPedInLeaderFiringLine, 0x621300);
-    RH_ScopedInstall(CreateSubTask, 0x626FC0, {.Reversed = false});
+    RH_ScopedInstall(CreateSubTask, 0x626FC0);
 
     RH_ScopedVMTInstall(Clone, 0x6234C0);
     RH_ScopedVMTInstall(GetTaskType, 0x621240);
     RH_ScopedVMTInstall(MakeAbortable, 0x6212B0);
-    RH_ScopedVMTInstall(CreateNextSubTask, 0x62C190, {.Reversed = false});
+    RH_ScopedVMTInstall(CreateNextSubTask, 0x62C190);
     RH_ScopedVMTInstall(CreateFirstSubTask, 0x62BF00);
     RH_ScopedVMTInstall(ControlSubTask, 0x62CCE0);
 }
@@ -185,7 +190,116 @@ bool CTaskComplexKillPedOnFootArmed::IsPedInLeaderFiringLine(CPed* ped) {
 
 // 0x626FC0
 CTask* CTaskComplexKillPedOnFootArmed::CreateSubTask(eTaskType taskType, CPed* ped) {
-    return plugin::CallMethodAndReturn<CTask*, 0x626FC0, CTaskComplexKillPedOnFootArmed*, int32, CPed*>(this, taskType, ped);
+    const auto& ourActiveWep = ped->GetActiveWeapon().GetWeaponInfo(ped);
+
+    CTask* task = nullptr;
+    switch (taskType) {
+    case TASK_SIMPLE_PAUSE: {
+        CTaskSimpleStandStill{}.ProcessPed(ped);
+        task = new CTaskSimplePause{100};
+        break;
+    }
+    case TASK_SIMPLE_STAND_STILL:
+        task = new CTaskSimpleStandStill{STAND_STILL_TIME, false, false, 8.f};
+        break;
+    case TASK_SIMPLE_DUCK:
+        task = new CTaskSimpleDuck{DUCK_STANDALONE, (uint16)m_lengthOfDuck, -1};
+        break;
+    case TASK_COMPLEX_SEEK_ENTITY: {
+        const auto elapsed = m_needToMoveInCloserTime
+            ? (float)(CTimer::GetTimeInMS() - m_needToMoveInCloserTime)
+            : 0.f;
+        //> 0x627147 / 0x627389
+        if (elapsed <= 3'000.f) {
+            task = new CTaskComplexSeekEntityStandard{
+                m_target,
+                50'000,
+                1'000,
+                6.f,
+                2.f,
+                2.f,
+                true,
+                true
+            };
+        } else if (elapsed <= 8'000.f) {
+            // The closer we get to the target, the tighter the seek distance becomes
+            // TODO(re): In retail the 3'000ms comparison (0x627142) only branches on unordered/equal, so this
+            //           path is effectively taken when `elapsed` stays in the (3'000; 8'000] range
+            task = new CTaskComplexSeekEntityStandard{
+                m_target,
+                50'000,
+                1'000,
+                1.f,
+                6.f - (elapsed - 3'000.f) * 0.001f,
+                2.f,
+                true,
+                true
+            };
+        } else {
+            // TODO(re): the LOS-driven branch at 0x6271A7..0x627341 (probes LOS at +-1.5m around the target and
+            //           may emit `CTaskComplexGoToPointAndStandStill`) is not established; keep seeking the target
+            task = new CTaskComplexSeekEntityStandard{
+                m_target,
+                50'000,
+                1'000,
+                1.f,
+                6.f,
+                2.f,
+                true,
+                true
+            };
+        }
+        break;
+    }
+    case TASK_SIMPLE_GUN_CTRL: {
+        if (ourActiveWep.flags.bThrow) {
+            task = new CTaskSimpleThrowControl{m_target, nullptr};
+        } else {
+            //> 0x6274FF
+            auto* const gunTask = new CTaskSimpleGunControl{
+                m_target,
+                {},
+                {},
+                LineOfSightClearForAttack(ped) ? eGunCommand::FIREBURST : eGunCommand::NONE,
+                5,
+                -1
+            };
+            gunTask->m_aimImmidiately = std::exchange(m_aimImmediate, false);
+            task = gunTask;
+
+            m_shootTimer = CTimer::GetTimeInMS() + CGeneral::GetRandomNumberInRange(4'000, 8'000);
+            if (CPedGroups::GetPedsGroup(ped)) {
+                ped->Say(CTX_GLOBAL_SURROUNDED);
+            }
+        }
+        //> 0x6275AC
+        m_lastAttackTime = CTimer::GetTimeInMS();
+        m_losBlockedTime = 0;
+        return task;
+    }
+    default:
+        return nullptr;
+    }
+
+    //> 0x6273DB - Taunts while the target is the player (Only reached when seeking (or walking to) the target)
+    if (   task
+        && m_target
+        && m_target->IsPlayer()
+        && notsa::contains({ TASK_COMPLEX_SEEK_ENTITY, TASK_COMPLEX_GO_TO_POINT_AND_STAND_STILL }, taskType)
+    ) {
+        if (ped->m_nPedType == PED_TYPE_COP) {
+            if (FindPlayerWanted(-1)->m_Flags > 1) {
+                ped->Say(CTX_GLOBAL_CHASE_FOOT);
+            } else {
+                ped->Say(CTX_GLOBAL_SOLO);
+            }
+            ped->Say(CTX_GLOBAL_CHASED, 3'500);
+        } else if (CPedGroups::GetPedsGroup(ped)) {
+            ped->Say(CTX_GLOBAL_CHASE_FOOT);
+        }
+    }
+
+    return task;
 }
 
 // 0x6212B0
@@ -210,7 +324,72 @@ bool CTaskComplexKillPedOnFootArmed::MakeAbortable(CPed* ped, eAbortPriority pri
 
 // 0x62C190
 CTask* CTaskComplexKillPedOnFootArmed::CreateNextSubTask(CPed* ped) {
-    return plugin::CallMethodAndReturn<CTask*, 0x62C190, CTaskComplexKillPedOnFootArmed*, CPed*>(this, ped);
+    if (!m_target) {
+        return nullptr;
+    }
+
+    const auto& ourActiveWep = ped->GetActiveWeapon().GetWeaponInfo(ped);
+    const auto  targetDistSq = (m_target->GetPosition() - ped->GetPosition()).SquaredMagnitude();
+
+    switch (m_pSubTask->GetTaskType()) {
+    case TASK_SIMPLE_PAUSE:
+    case TASK_SIMPLE_STAND_STILL: { //> 0x62C2DE
+        if (!ped->bStayInSamePlace && !ped->bKindaStayInSamePlace) {
+            ped->Say(CTX_GLOBAL_MOVE_IN);
+            if (!m_needToMoveInCloserTime) {
+                m_needToMoveInCloserTime = CTimer::GetTimeInMS();
+            }
+            return CreateSubTask(TASK_COMPLEX_SEEK_ENTITY, ped);
+        }
+        //> 0x62C339 - Within firing range and with a clear shot, keep shooting, otherwise just wait
+        if (   targetDistSq > sq(ourActiveWep.m_fTargetRange)
+            && LineOfSightClearForAttack(ped)
+        ) {
+            return CreateSubTask(TASK_SIMPLE_GUN_CTRL, ped);
+        }
+        return CreateSubTask(TASK_SIMPLE_PAUSE, ped);
+    }
+    case TASK_SIMPLE_DUCK: { //> 0x62C2A9
+        const auto task = CreateSubTask(
+            LineOfSightClearForAttack(ped)
+                ? TASK_SIMPLE_GUN_CTRL
+                : TASK_SIMPLE_PAUSE,
+            ped
+        );
+        ped->bIsDucking = false;
+        m_needToMoveInCloserTime = 0;
+        return task;
+    }
+    case TASK_SIMPLE_GO_TO_POINT: //> 0x62C3DF
+    case TASK_COMPLEX_GO_TO_POINT_AND_STAND_STILL: //> 0x62C4B4
+    case TASK_COMPLEX_SEEK_ENTITY: { //> 0x62C4B4
+        const auto task = CreateSubTask(
+            LineOfSightClearForAttack(ped)
+                ? TASK_SIMPLE_GUN_CTRL
+                : TASK_SIMPLE_PAUSE,
+            ped
+        );
+        m_needToMoveInCloserTime = 0;
+        return task;
+    }
+    case TASK_COMPLEX_GO_TO_POINT_SHOOTING: //> 0x62C411
+    case TASK_SIMPLE_GUN_CTRL:              //> 0x62C411
+    case TASK_SIMPLE_THROW_CTRL: {          //> 0x62C411
+        // TODO(re): The retail branch (0x62C411..0x62CCCA, ~2.1KB) contains the whole strafing/cover/goto state
+        //           machine (uses `ped->m_pCoverPoint`, `CCover` position helpers, weapon ranges and ped flags
+        //           0x200000/0x400000). Only the outer shape is established here.
+        if (LineOfSightClearForAttack(ped)) {
+            return CreateSubTask(TASK_SIMPLE_GUN_CTRL, ped);
+        }
+        if (!m_needToMoveInCloserTime) {
+            m_needToMoveInCloserTime = CTimer::GetTimeInMS();
+        }
+        ped->Say(CTX_GLOBAL_MOVE_IN);
+        return CreateSubTask(TASK_COMPLEX_SEEK_ENTITY, ped);
+    }
+    default:
+        return nullptr;
+    }
 }
 
 // 0x62BF00

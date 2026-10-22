@@ -43,36 +43,32 @@ void FxEmitter_c::Reset() {
 
 // 0x4A3EA0
 void FxEmitter_c::AddParticle(const CVector& pos, const CVector& vel, float timeSince, const FxPrtMult_c& fxMults, float rotZ, float brightness, bool createLocal) {
-    return plugin::CallMethod<0x4A3EA0, FxEmitter_c*, const CVector*, const CVector*, float, const FxPrtMult_c*, float, float, bool>(this, &pos, &vel, timeSince, &fxMults, rotZ, brightness,
-                                                                                                                   createLocal);
-
-    // todo:
     EmissionInfo_t emission;
     m_PrimBP->m_FxInfoManager.ProcessEmissionInfo(0.0f, 0.0f, m_System->m_SystemBP->m_fLength, m_System->m_UseConstTime, &emission);
 
-    auto mat1 = g_fxMan.FxRwMatrixCreate();
-    auto mat0 = g_fxMan.FxRwMatrixCreate();
     auto mat  = g_fxMan.FxRwMatrixCreate();
+    auto mat0 = g_fxMan.FxRwMatrixCreate();
+    auto mat1 = g_fxMan.FxRwMatrixCreate();
 
+    // Matrix of the effect, translated to `pos`, in world space
     RwMatrixSetIdentity(mat);
     RwV3dAssign(RwMatrixGetPos(mat), &pos);
-
     RwMatrixUpdate(mat);
     if (m_System->m_ParentMatrix) {
         RwMatrixMultiply(mat0, mat, m_System->m_ParentMatrix);
-    }
-    else {
-        mat0 = mat;
+    } else {
+        *mat0 = *mat;
     }
 
-    auto mat2 = g_fxMan.FxRwMatrixCreate();
-    m_PrimBP->GetRWMatrix(*mat2);
-    RwMatrixMultiply(mat1, mat2, mat0);
-    g_fxMan.FxRwMatrixDestroy(mat2);
+    // Combine it with the emitter's own matrix
+    auto primMatrix = g_fxMan.FxRwMatrixCreate();
+    m_PrimBP->GetRWMatrix(*primMatrix);
+    RwMatrixMultiply(mat1, primMatrix, mat0);
+    g_fxMan.FxRwMatrixDestroy(primMatrix);
 
     if (auto* particle = CreateParticle(emission, *mat1, &vel, timeSince, fxMults, brightness, createLocal)) {
         if (rotZ >= 0.0f) {
-            particle->m_RotZ = (uint8)(rotZ / 2.0f); // todo: int8/uint8 conversion
+            particle->m_RotZ = static_cast<int8>(std::floor(rotZ * 0.5f));
         }
     }
 
@@ -83,38 +79,38 @@ void FxEmitter_c::AddParticle(const CVector& pos, const CVector& vel, float time
 
 // 0x4A4050
 void FxEmitter_c::AddParticle(const RwMatrix& mat, const CVector& vel, float timeSince, const FxPrtMult_c& fxMults, float rotZ, float brightness, bool createLocal) {
-    return plugin::CallMethod<0x4A4050, FxEmitter_c*, const RwMatrix*, const CVector*, float, const FxPrtMult_c*, float, float, bool>(this, &mat, &vel, timeSince, &fxMults, rotZ, brightness,
-                                                                                                                    createLocal);
-
-    // todo:
     EmissionInfo_t emission;
     m_PrimBP->m_FxInfoManager.ProcessEmissionInfo(0.0f, 0.0f, m_System->m_SystemBP->m_fLength, m_System->m_UseConstTime, &emission);
-    auto mat2 = g_fxMan.FxRwMatrixCreate();
-    auto mat1 = g_fxMan.FxRwMatrixCreate();
-    auto mat0 = g_fxMan.FxRwMatrixCreate();
-    RwMatrixSetIdentity(mat0);
-    *mat0 = mat;
 
-    RwMatrixUpdate(mat0);
+    auto compositeMatrix = g_fxMan.FxRwMatrixCreate();
+    auto mat0            = g_fxMan.FxRwMatrixCreate();
+    auto worldMatrix     = g_fxMan.FxRwMatrixCreate();
+
+    // World matrix of the effect, combined with the system's parent matrix (if any)
+    RwMatrixSetIdentity(worldMatrix);
+    *worldMatrix = mat;
+    RwMatrixUpdate(worldMatrix);
     if (m_System->m_ParentMatrix) {
-        RwMatrixMultiply(mat1, mat0, m_System->m_ParentMatrix);
+        RwMatrixMultiply(mat0, worldMatrix, m_System->m_ParentMatrix);
     } else {
-        mat1 = mat0;
+        *mat0 = *worldMatrix;
     }
 
-    auto mat3 = g_fxMan.FxRwMatrixCreate();
-    m_PrimBP->GetRWMatrix(*mat3);
-    RwMatrixMultiply(mat2, mat3, mat1);
-    g_fxMan.FxRwMatrixDestroy(mat3);
+    // Combine it with the emitter's own matrix
+    auto primMatrix = g_fxMan.FxRwMatrixCreate();
+    m_PrimBP->GetRWMatrix(*primMatrix);
+    RwMatrixMultiply(compositeMatrix, primMatrix, mat0);
+    g_fxMan.FxRwMatrixDestroy(primMatrix);
 
-    if (auto* particle = CreateParticle(emission, *mat2, &vel, timeSince, fxMults, brightness, createLocal)) {
-        if (rotZ >= 0.0f)
-            particle->m_RotZ = (uint8)(rotZ * 2.0f); // todo:: see above
+    if (auto* particle = CreateParticle(emission, *compositeMatrix, &vel, timeSince, fxMults, brightness, createLocal)) {
+        if (rotZ >= 0.0f) {
+            particle->m_RotZ = static_cast<int8>(std::floor(rotZ * 0.5f));
+        }
     }
 
+    g_fxMan.FxRwMatrixDestroy(worldMatrix);
     g_fxMan.FxRwMatrixDestroy(mat0);
-    g_fxMan.FxRwMatrixDestroy(mat1);
-    g_fxMan.FxRwMatrixDestroy(mat2);
+    g_fxMan.FxRwMatrixDestroy(compositeMatrix);
 }
 
 // 0x4A41E0
@@ -181,9 +177,6 @@ void FxEmitter_c::CreateParticles(float currentTime, float deltaTime) {
 
 // 0x4A2580
 FxEmitterPrt_c* FxEmitter_c::CreateParticle(const EmissionInfo_t& emissionInfo, RwMatrix& wldMat, const CVector* velOverride, float timeSince, const FxPrtMult_c& fxMults, float brightness, bool createLocal) {
-    //return plugin::CallMethodAndReturn<FxEmitterPrt_c*, 0x4A2580, FxEmitter_c*, EmissionInfo_t*, RwMatrix*, CVector*, float, FxPrtMult_c*, float, bool>(this, &emissionInfo, &wldMat, velOverride, timeSince, &fxMults, brightness, createLocal);
-
-    // todo:
     auto* particle = [&]() -> FxEmitterPrt_c* {
         auto* prt = g_fxMan.GetParticle(0);
         if (!prt) {
@@ -195,6 +188,11 @@ FxEmitterPrt_c* FxEmitter_c::CreateParticle(const EmissionInfo_t& emissionInfo, 
         }
         return reinterpret_cast<FxEmitterPrt_c*>(prt);
     }();
+
+    // No free particle and this system may not steal one - retail bails out here (`0x4A25A0`/`0x4A25BF` jump to the epilogue with `EAX = 0`)
+    if (!particle) {
+        return nullptr;
+    }
 
     particle->m_fCurrentLife = 0.0f;
     particle->m_fTotalLife = (((float)(CGeneral::GetRandomNumber() % 10'000) / 5'000.0f - 1.0f) * emissionInfo.m_fLifeBias + emissionInfo.m_fLife) * fxMults.m_fLife;

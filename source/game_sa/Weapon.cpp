@@ -15,6 +15,7 @@
 #include "InterestingEvents.h"
 #include "Shadows.h"
 #include "Birds.h"
+#include "WaterLevel.h"
 
 #include "Tasks/TaskTypes/TaskSimpleUseGun.h"
 
@@ -1905,9 +1906,27 @@ bool CWeapon::FireInstantHit(CEntity* firingEntity, CVector* origin, CVector* mu
         }
     }
 
-    //> Water splash feedback
-    // TODO(re): `CWaterLevel::TestLineAgainstWater` (0x6E61B0) isn't reversed in this port, so the
-    //           water splash FX/audio feedback for shots that end up in water is omitted.
+    //> Water splash feedback - Only if the shot could have hit water
+    if (targetEntity
+            ? (targetEntity->GetType() >= ENTITY_TYPE_VEHICLE                     // 0x740E53 - Vehicles, peds & objects only
+                && targetEntity->GetType() <= ENTITY_TYPE_OBJECT
+                && targetEntity->AsPhysical()->m_nPhysicalFlags & PHYSICAL_SUBMERGED_IN_WATER)
+            : (   (shooter && shooter->IsPlayer())
+                || firingEntity->GetStatus() == STATUS_PLAYER
+                || firingEntity->GetStatus() == STATUS_REMOTE_CONTROLLED
+              )
+              && shotEnd.z < shotStart.z                                            // 0x740E6F - Only if the shot goes downwards
+    ) {
+        // 0x740EAB - If nothing was hit, the whole shot is tested, otherwise only up to where it hit
+        CVector waterSplashPos;
+        if (hitEntity
+                ? CWaterLevel::TestLineAgainstWater(shotStart, hitCP.m_vecPoint, &waterSplashPos)
+                : CWaterLevel::TestLineAgainstWater(shotEnd, shotStart, &waterSplashPos)
+        ) {
+            g_fx.TriggerBulletSplash(waterSplashPos);                                   // 0x740F42
+            AudioEngine.ReportBulletHit(nullptr, SURFACE_WATER_SHALLOW, waterSplashPos, 0.f); // 0x740F51
+        }
+    }
 
     //> Bullet impacts
     if (CWorld::fWeaponSpreadRate <= 0.f || !hitEntity

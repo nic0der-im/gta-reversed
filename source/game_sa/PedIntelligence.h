@@ -174,4 +174,8 @@ private:
 };
 
 VALIDATE_SIZE(CPedIntelligence, 0x294);
+VALIDATE_OFFSET(CPedIntelligence, m_eventGroup, 0x68);
+// `m_mentalState.m_AngerAtPlayer` is at `+0x174` and its `m_AngerTimer` (`CTaskTimer`) at `+0x178`.
+VALIDATE_OFFSET(CPedIntelligence, m_mentalState, 0x174);
+VALIDATE_OFFSET(CPedIntelligence, m_collisionScanner, 0x260);
 VALIDATE_OFFSET(CPedIntelligence, m_AnotherStaticCounter, 0x274);

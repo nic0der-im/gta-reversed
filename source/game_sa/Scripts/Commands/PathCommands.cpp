@@ -77,11 +77,17 @@ void SwitchPedRoadsBackToOriginal(float xA, float yA, float zA, float xB, float 
     ThePaths.SwitchPedRoadsOffInArea(xMin, xMax, yMin, yMax, zMin, zMax, false, true);
 }
 
+/// MARK_ROAD_NODE_AS_DONT_WANDER(0994)
+void MarkRoadNodeAsDontWander(float x, float y, float z) {
+    ThePaths.MarkRoadNodeAsDontWander(x, y, z);
+}
+
 };
 
 void notsa::script::commands::path::RegisterHandlers() {
     REGISTER_COMMAND_HANDLER_BEGIN("Path");
 
+    REGISTER_COMMAND_HANDLER(COMMAND_MARK_ROAD_NODE_AS_DONT_WANDER, MarkRoadNodeAsDontWander);
     REGISTER_COMMAND_HANDLER(COMMAND_SWITCH_ROADS_ON, SwitchRoadsOn);
     REGISTER_COMMAND_HANDLER(COMMAND_SWITCH_ROADS_OFF, SwitchRoadsOff);
     REGISTER_COMMAND_HANDLER(COMMAND_SWITCH_ROADS_BACK_TO_ORIGINAL, SwitchRoadsBackToOriginal);

@@ -112,12 +112,14 @@ void CRunningScript::InjectCustomCommandHooks() {
     c::character::RegisterHandlers();
     c::clock::RegisterHandlers();
     c::comparasion::RegisterHandlers();
+    c::draw::RegisterHandlers();
     c::game::RegisterHandlers();
     c::generic::RegisterHandlers();
     c::math::RegisterHandlers();
     c::mission::RegisterHandlers();
     c::object::RegisterHandlers();
     c::pad::RegisterHandlers();
+    c::path::RegisterHandlers();
     c::ped::RegisterHandlers();
     c::player::RegisterHandlers();
     c::script::RegisterHandlers();

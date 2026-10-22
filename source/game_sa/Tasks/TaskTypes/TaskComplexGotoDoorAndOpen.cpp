@@ -3,6 +3,8 @@
 #include "TaskComplexGotoDoorAndOpen.h"
 #include "TaskSimpleRunAnim.h"
 #include "TaskSimpleGoToPoint.h"
+#include "EventAreaCodes.h"
+#include "RwHelper.h"
 
 void CTaskComplexGotoDoorAndOpen::InjectHooks() {
     RH_ScopedVirtualClass(CTaskComplexGotoDoorAndOpen, 0x86FFC0, 11);
@@ -13,8 +15,8 @@ void CTaskComplexGotoDoorAndOpen::InjectHooks() {
     RH_ScopedInstall(Destructor, 0x66BC00);
     RH_ScopedVMTInstall(Clone, 0x66BCA0);
     RH_ScopedVMTInstall(CreateNextSubTask, 0x66C0D0);
-    RH_ScopedVMTInstall(CreateFirstSubTask, 0x66BD40, { .Reversed = false });
-    RH_ScopedVMTInstall(ControlSubTask, 0x66C1F0, { .Reversed = false });
+    RH_ScopedVMTInstall(CreateFirstSubTask, 0x66BD40);
+    RH_ScopedVMTInstall(ControlSubTask, 0x66C1F0);
 }
 
 // 0x66BB20
@@ -91,10 +93,81 @@ CTask* CTaskComplexGotoDoorAndOpen::CreateNextSubTask(CPed* ped) {
 
 // 0x66BD40
 CTask* CTaskComplexGotoDoorAndOpen::CreateFirstSubTask(CPed* ped) {
-    return plugin::CallMethodAndReturn<CTask*, 0x66BD40, CTaskComplexGotoDoorAndOpen*, CPed*>(this, ped);
+    if (ped->IsPlayer()) {
+        CPad::GetPad()->bPlayerOnInteriorTransition = true;
+        m_nFlags |= 8;
+    }
+
+    CEventAreaCodes event{ped};
+    GetEventGlobalGroup()->Add(&event, false);
+
+    m_nStartTime   = CTimer::GetTimeInMS();
+    m_nOffsetTime  = 1000;
+    byte30         = 1;
+
+    if (!m_Object) {
+        // No door (Anymore) - If this task was created from a door there's nothing we can do
+        if (m_nFlags & 1) {
+            return nullptr;
+        }
+
+        m_nFlags |= 2;
+        return new CTaskSimpleGoToPoint(PEDMOVE_WALK, m_End, 0.5f, false, false);
+    }
+
+    // Compute the point in front of (or behind) the door's plane
+    const CMatrix& doorMat = m_Object->GetMatrix();
+    const auto  doorPos    = m_Object->GetPosition();
+    const auto  ahead      = doorPos + doorMat.GetRight() * 0.75f;
+
+    // `behind` = The ped is on the negative side of the door's `up` vector
+    const bool behind = DotProduct(doorPos - ped->GetPosition(), doorMat.GetUp()) >= 0.0f;
+
+    if (behind) {
+        m_Start = ahead + doorMat.GetUp() * -0.5f; // Near side
+        m_End   = ahead + doorMat.GetUp() *  2.0f; // Far side
+    } else {
+        m_Start = ahead + doorMat.GetUp() *  0.5f; // Near side
+        m_End   = ahead + doorMat.GetUp() * -2.0f; // Far side
+    }
+
+    // Disable the door's collision so the ped can walk through it
+    if (m_Object->physicalFlags.bCollidable) {
+        m_nFlags |= 4;
+        m_Object->physicalFlags.bCollidable = false;
+    }
+    m_Object->physicalFlags.bDisableCollisionForce = false;
+
+    // Stop the ped from sprinting into the door
+    if (RpAnimBlendClumpGetAssociation(ped->GetRpClump(), ANIM_ID_SPRINT)) {
+        CAnimManager::BlendAnimation(ped->GetRpClump(), ped->m_nAnimGroup, ANIM_ID_WALK, 1000.0f);
+    }
+
+    return new CTaskSimpleGoToPoint(PEDMOVE_WALK, m_Start, 0.35f, false, false);
 }
 
 // 0x66C1F0
 CTask* CTaskComplexGotoDoorAndOpen::ControlSubTask(CPed* ped) {
-    return plugin::CallMethodAndReturn<CTask*, 0x66C1F0, CTaskComplexGotoDoorAndOpen*, CPed*>(this, ped);
+    bool isWaiting = false;
+    if (byte30) {
+        if (m_bRefreshTime) {
+            m_nStartTime   = CTimer::GetTimeInMS();
+            m_bRefreshTime = false;
+        }
+        isWaiting = CTimer::GetTimeInMS() < m_nStartTime + m_nOffsetTime;
+    }
+
+    // Either we're still waiting for the door to open, or the door is gone and we're stuck
+    if (!isWaiting && (m_Object || !(m_nFlags & 1))) {
+        return m_pSubTask;
+    }
+
+    if (m_pSubTask->MakeAbortable(ped, ABORT_PRIORITY_URGENT, nullptr)) {
+        if (ped->IsPlayer()) {
+            CPad::GetPad()->bPlayerOnInteriorTransition = true;
+        }
+        return nullptr;
+    }
+
+    return m_pSubTask;
 }

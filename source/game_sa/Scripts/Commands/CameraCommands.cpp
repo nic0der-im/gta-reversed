@@ -303,10 +303,17 @@ void SetCameraPositionUnfixed(CVector2D offset) {
 auto GetPlayerInCarCameraMode() {
     return TheCamera.m_nCarZoom;
 }
+
+/// SET_NEAR_CLIP(041D)
+void SetNearClip(float distance) {
+    TheCamera.SetNearClipScript(distance);
+}
 };
 
 void notsa::script::commands::camera::RegisterHandlers() {
     REGISTER_COMMAND_HANDLER_BEGIN("Camera");
+
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_NEAR_CLIP, SetNearClip);
 
     REGISTER_COMMAND_HANDLER(COMMAND_IS_POINT_ON_SCREEN, IsPointOnScreen);
     REGISTER_COMMAND_HANDLER(COMMAND_SHAKE_CAM, ShakeCam);

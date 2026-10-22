@@ -11,8 +11,12 @@
 
 #include "AnimManager.h"
 #include "AudioEngine.h"
+#include "BreakManager_c.h"
 #include "Camera.h"
 #include "ClumpModelInfo.h"
+#include "Entity/Ped/PlayerPed.h"
+#include "Glass.h"
+#include "ObjectData.h"
 #include "PedIntelligence.h"
 #include "Radar.h"
 #include "TaskManager.h"
@@ -82,6 +86,17 @@ void MarkObjectNoLongerNeeded(CRunningScript& S, CObject* object) {
 
 void DoNotRemoveObject(CObject& object) {
     CTheScripts::MissionCleanUp.RemoveEntityFromList(object);
+}
+
+/// SET_OBJECT_AREA_VISIBLE(0566)
+void SetObjectAreaVisible(CObject& object, eAreaCodes area) {
+    object.SetAreaCode(area);
+}
+
+/// CONNECT_LODS(0827)
+void ConnectLods(script::ScriptEntity<CObject> lod, script::ScriptEntity<CObject> object) {
+    CTheScripts::ScriptConnectLodsFunction(lod.h, object.h);
+    CTheScripts::AddToListOfConnectedLodObjects(lod.e, object.e);
 }
 
 CVector GetObjectCoordinates(CObject& object) {
@@ -638,6 +653,82 @@ tBlipHandle AddBlipForObject(script::ScriptEntity<CObject> object) {
     CRadar::ChangeBlipScale(blip, 3);
     return blip;
 }
+
+/// SET_OBJECT_HEALTH(071F)
+void SetObjectHealth(CObject* object, int32 health) {
+    if (object) {
+        object->m_fHealth = static_cast<float>(health);
+    }
+}
+
+/// SET_OBJECT_ONLY_DAMAGED_BY_PLAYER(0875)
+void SetObjectOnlyDamagedByPlayer(CObject* object, bool state) {
+    if (object) {
+        object->physicalFlags.bInvulnerable = state;
+    }
+}
+
+/// MAKE_OBJECT_TARGETTABLE(035D)
+void MakeObjectTargettable(CObject* object, bool state) {
+    if (!object) {
+        return;
+    }
+    object->SetObjectTargettable(state);
+
+    // Stop the player from locking-on to an object that's no longer targettable
+    if (!state) {
+        if (const auto ped = FindPlayerPed()) {
+            if (ped->m_pTargetedObject == object) {
+                CEntity::ClearReference(ped->m_pTargetedObject);
+            }
+        }
+    }
+}
+
+/// HAS_OBJECT_BEEN_DAMAGED(0366)
+bool HasObjectBeenDamaged(const CObject* object) {
+    // Retail (0x46A2F0): `m_bRenderDamaged || !m_bIsVisible`
+    return object && (object->m_bRenderDamaged || !object->m_bIsVisible);
+}
+
+/// BREAK_OBJECT(0723)
+void BreakObject(CObject* object, int32 intensity) {
+    if (!object) {
+        return;
+    }
+    if (CGlass::IsObjectGlass(object)) {
+        CGlass::WindowRespondsToCollision(object, 100000.f, CVector{}, object->GetPosition(), false);
+        object->objectFlags.bIsBroken = true;
+    } else if (object->m_pObjectInfo) {
+        auto breakVelocity = object->m_pObjectInfo->m_vecBreakVelocity;
+        g_breakMan.Add(object, &breakVelocity, object->m_pObjectInfo->m_fBreakVelocityRand, intensity != 0);
+    }
+}
+
+/// IS_CLOSEST_OBJECT_OF_TYPE_SMASHED_OR_DAMAGED(0716)
+bool IsClosestObjectOfTypeSmashedOrDamaged(float x, float y, float z, float radius, int32 modelId, bool smashed, bool damaged) {
+    CVector point{x, y, z};
+    if (z <= -100.f) {
+        point.z = CWorld::FindGroundZForCoord(x, y);
+    }
+    if (modelId < 0) {
+        modelId = CTheScripts::UsedObjectArray[-modelId].nModelIndex;
+    }
+
+    bool result = false;
+    if (const auto entity = CWorld::FindNearestObjectOfType(modelId, point, radius, false, false, false, false, true, true)) {
+        if (entity->GetType() == ENTITY_TYPE_OBJECT) {
+            const auto object = static_cast<CObject*>(entity);
+            if (smashed && object->objectFlags.bIsBroken) {
+                result = true;
+            }
+            if (damaged && HasObjectBeenDamaged(object)) {
+                result = true;
+            }
+        }
+    }
+    return result;
+}
 } // namespace Object
 
 namespace Model {
@@ -719,6 +810,13 @@ auto SetObjectAnimCurrentTime(CObject& obj, const char* animName, float progress
 void notsa::script::commands::object::RegisterHandlers() {
     REGISTER_COMMAND_HANDLER_BEGIN("Object");
 
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_OBJECT_HEALTH, Object::SetObjectHealth);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_OBJECT_ONLY_DAMAGED_BY_PLAYER, Object::SetObjectOnlyDamagedByPlayer);
+    REGISTER_COMMAND_HANDLER(COMMAND_MAKE_OBJECT_TARGETTABLE, Object::MakeObjectTargettable);
+    REGISTER_COMMAND_HANDLER(COMMAND_HAS_OBJECT_BEEN_DAMAGED, Object::HasObjectBeenDamaged);
+    REGISTER_COMMAND_HANDLER(COMMAND_BREAK_OBJECT, Object::BreakObject);
+    REGISTER_COMMAND_HANDLER(COMMAND_IS_CLOSEST_OBJECT_OF_TYPE_SMASHED_OR_DAMAGED, Object::IsClosestObjectOfTypeSmashedOrDamaged);
+
     using namespace Object;
     using namespace Model;
     using namespace Fx;
@@ -767,6 +865,8 @@ void notsa::script::commands::object::RegisterHandlers() {
     REGISTER_COMMAND_HANDLER(COMMAND_DROP_SECOND_OBJECT, DropSecondObject);
     REGISTER_COMMAND_HANDLER(COMMAND_IS_CHAR_HOLDING_OBJECT, IsCharHoldingObject);
     REGISTER_COMMAND_HANDLER(COMMAND_SET_OBJECT_VISIBLE, SetObjectVisible);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_OBJECT_AREA_VISIBLE, SetObjectAreaVisible);
+    REGISTER_COMMAND_HANDLER(COMMAND_CONNECT_LODS, ConnectLods);
     REGISTER_COMMAND_HANDLER(COMMAND_PLAY_OBJECT_ANIM, PlayObjectAnim);
     REGISTER_COMMAND_HANDLER(COMMAND_GET_ROPE_HEIGHT_FOR_OBJECT, GetRopeHeightForObject);
     REGISTER_COMMAND_HANDLER(COMMAND_SET_ROPE_HEIGHT_FOR_OBJECT, SetRopeHeightForObject);

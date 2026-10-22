@@ -3,6 +3,7 @@
 #include "TaskComplexGoToPointAiming.h"
 #include "TaskComplexGoToPointAndStandStill.h"
 #include "TaskSimpleGunControl.h"
+#include "TaskSimpleUseGun.h"
 
 void CTaskComplexGoToPointAiming::InjectHooks() {
     RH_ScopedVirtualClass(CTaskComplexGoToPointAiming, 0x86fe00, 11);
@@ -15,8 +16,8 @@ void CTaskComplexGoToPointAiming::InjectHooks() {
     RH_ScopedVMTInstall(Clone, 0x66CD80);
     RH_ScopedVMTInstall(GetTaskType, 0x668860);
     RH_ScopedVMTInstall(CreateNextSubTask, 0x66DD70);
-    RH_ScopedVMTInstall(CreateFirstSubTask, 0x66DDB0, { .Reversed = false });
-    RH_ScopedVMTInstall(ControlSubTask, 0x6689E0, { .Reversed = false });
+    RH_ScopedVMTInstall(CreateFirstSubTask, 0x66DDB0);
+    RH_ScopedVMTInstall(ControlSubTask, 0x6689E0);
 }
 
 // 0x668790
@@ -96,10 +97,103 @@ CTask* CTaskComplexGoToPointAiming::CreateNextSubTask(CPed* ped) {
 
 // 0x66DDB0
 CTask* CTaskComplexGoToPointAiming::CreateFirstSubTask(CPed* ped) {
-    return plugin::CallMethodAndReturn<CTask*, 0x66DDB0, CTaskComplexGoToPointAiming*, CPed*>(this, ped);
+    m_newTargetSet = false;
+
+    const auto& weaponInfo = ped->GetActiveWeapon().GetWeaponInfo(ped);
+
+    if (weaponInfo.flags.bAimWithArm) {
+        // The ped needs a secondary "use gun" task while walking to the point
+        if (!ped->GetTaskManager().GetTaskSecondary(TASK_SECONDARY_ATTACK)) {
+            ped->GetTaskManager().SetTaskSecondary(
+                GetTaskType() == TASK_COMPLEX_GO_TO_POINT_SHOOTING
+                    ? new CTaskSimpleUseGun{m_aimAtEntity, m_aimPos, eGunCommand::FIREBURST, 3, false}
+                    : new CTaskSimpleUseGun{m_aimAtEntity, m_aimPos, eGunCommand::AIM,       1, false},
+                TASK_SECONDARY_ATTACK
+            );
+        } else {
+            ped->GetTaskManager().GetTaskSecondary(TASK_SECONDARY_ATTACK)->MakeAbortable(ped, ABORT_PRIORITY_URGENT, nullptr);
+        }
+    } else if (   weaponInfo.flags.bCanAim
+               && notsa::contains({ WEAPON_FIRE_INSTANT_HIT, WEAPON_FIRE_AREA_EFFECT }, weaponInfo.m_nWeaponFire)
+    ) {
+        return CreateSubTask(TASK_SIMPLE_GUN_CTRL); //> 0x66DEF7
+    }
+
+    //> 0x66DEF7 / 0x66DF17
+    return new CTaskComplexGoToPointAndStandStill{
+        m_moveState,
+        m_movePos,
+        m_moveTargetRadius,
+        m_slowDownDistance,
+        false,
+        false
+    };
 }
 
 // 0x6689E0
 CTask* CTaskComplexGoToPointAiming::ControlSubTask(CPed* ped) {
-    return plugin::CallMethodAndReturn<CTask*, 0x6689E0, CTaskComplexGoToPointAiming*, CPed*>(this, ped);
+    const auto& weaponInfo = ped->GetActiveWeapon().GetWeaponInfo(ped);
+
+    //> 0x668A2D - A new target was set, restart from scratch
+    if (m_newTargetSet) {
+        return CreateFirstSubTask(ped);
+    }
+
+    switch (m_pSubTask->GetTaskType()) {
+    case TASK_COMPLEX_GO_TO_POINT_AND_STAND_STILL: { //> 0x668B31
+        static_cast<CTaskComplexGoToPointAndStandStill*>(m_pSubTask)->GoToPoint(m_movePos, 0.5f, 2.f, false);
+
+        if (!weaponInfo.flags.bAimWithArm) {
+            break;
+        }
+
+        auto* const secondaryTask = ped->GetTaskManager().GetTaskSecondary(TASK_SECONDARY_ATTACK);
+        if (!secondaryTask) {
+            ped->GetTaskManager().SetTaskSecondary(
+                new CTaskSimpleUseGun{m_aimAtEntity, m_aimPos, eGunCommand::AIM, 1, false},
+                TASK_SECONDARY_ATTACK
+            );
+            break;
+        }
+
+        auto* const useGun = ped->GetIntelligence()->GetTaskUseGun();
+        if (!useGun) {
+            secondaryTask->MakeAbortable(ped, ABORT_PRIORITY_URGENT, nullptr);
+            break;
+        }
+
+        useGun->ControlGun(
+            ped,
+            m_aimAtEntity,
+            GetTaskType() == TASK_COMPLEX_GO_TO_POINT_SHOOTING && CGeneral::GetRandomNumberInRange(0, 63) == 0
+                ? eGunCommand::FIRE
+                : eGunCommand::AIM
+        );
+        break;
+    }
+    case TASK_SIMPLE_GUN_CTRL: { //> 0x668A62
+        auto* const useGun = ped->GetIntelligence()->GetTaskUseGun();
+        if (!useGun) {
+            break;
+        }
+
+        //> Movement direction towards `m_movePos`, in the ped's local space (X = right, Y = backwards)
+        const auto delta = m_movePos - ped->GetPosition();
+        const auto& mat  = ped->GetMatrix();
+
+        CVector2D moveSpeed{ delta.Dot(mat.GetRight()), -delta.Dot(mat.GetForward()) };
+        if (const auto lenSq = moveSpeed.SquaredMagnitude(); lenSq > sq(m_moveTargetRadius)) {
+            moveSpeed /= std::sqrt(lenSq);
+        } else {
+            moveSpeed = {};
+        }
+
+        useGun->ControlGunMove(moveSpeed);
+        break;
+    }
+    default:
+        break;
+    }
+
+    return m_pSubTask;
 }

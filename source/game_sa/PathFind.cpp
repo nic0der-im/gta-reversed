@@ -20,6 +20,7 @@ auto& XCoorGiven = StaticRef<std::array<float, 64>>(0x96EE80);
 auto& YCoorGiven = StaticRef<std::array<float, 64>>(0x96ED80);
 auto& ZCoorGiven = StaticRef<std::array<float, 64>>(0x96EC80);
 auto& ConnectsToGiven = StaticRef<std::array<std::array<int8, 8>, 64>>(0x96EAC0);
+auto& aDontWanderGiven = StaticRef<std::array<bool, 64>>(0x96EC40);
 
 auto& aInteriorNodeLinkedToExterior = StaticRef<std::array<int32, NUM_PATH_INTERIOR_AREAS>>(0x96EA98);
 auto& aExteriorNodeLinkedTo = StaticRef<std::array<CNodeAddress, NUM_PATH_INTERIOR_AREAS>>(0x977B7C);
@@ -43,6 +44,7 @@ void CPathFind::InjectHooks() {
     RH_ScopedInstall(FindXRegionForCoors, 0x44D890);
     RH_ScopedInstall(AddInteriorLinkToExternalNode, 0x44DF30);
     RH_ScopedInstall(AddInteriorLink, 0x44DED0);
+    RH_ScopedInstall(RemoveInteriorLinks, 0x44DF60);
     RH_ScopedInstall(MarkRegionsForCoors, 0x44DB60);
     RH_ScopedOverloadedInstall(FindStartPointOfRegion, "", 0x44D930, void(CPathFind::*)(size_t, size_t, float&, float&));
     RH_ScopedInstall(FindYCoorsForRegion, 0x44D910);
@@ -69,7 +71,7 @@ void CPathFind::InjectHooks() {
     RH_ScopedInstall(SwitchRoadsOffInArea, 0x452C80);
     RH_ScopedInstall(SwitchRoadsOffInAreaForOneRegion, 0x452820);
     RH_ScopedInstall(ComputeRoute, 0x452760);
-    //RH_ScopedInstall(CompleteNewInterior, 0x452270);
+    RH_ScopedInstall(CompleteNewInterior, 0x452270);
     RH_ScopedInstall(SwitchOffNodeAndNeighbours, 0x452160);
     RH_ScopedInstall(Find2NodesForCarCreation, 0x452090);
     //RH_ScopedInstall(TestCoorsCloseness, 0x452000);
@@ -1346,6 +1348,7 @@ CNodeAddress CPathFind::AddNodeToNewInterior(
     XCoorGiven[idx] = x;
     YCoorGiven[idx] = y;
     ZCoorGiven[idx] = z;
+    aDontWanderGiven[idx] = bDontWander;
     rng::copy(std::array{ con0, con1, con2, con3, con4, con5 }, ConnectsToGiven[idx].begin());
     return { (uint16)(NUM_PATH_MAP_AREAS + NewInteriorSlot), (uint16)idx };
 }
@@ -1696,11 +1699,175 @@ void CPathFind::SwitchOffNodeAndNeighbours(CPathNode* node, CPathNode*& outNext1
     }
 }
 
+/*!
+* @addr 0x450FB0
+* @brief Adds a link from the node at index `fromNodeIdx` to the node at `toNodeIdx` of the interior currently being built.
+*
+* Retail also computes the link's length from the (decompressed) distance between both nodes (Truncated, clamped to `[1, 255]`),
+* and bumps the link counter of the node the link originates from.
+*/
+static void SetNewInteriorNodeLink(CPathFind& paths, uint16 areaId, int32 fromNodeIdx, int32 toNodeIdx, int32& nextLinkId) {
+    paths.m_pNodeLinks[areaId][nextLinkId] = CNodeAddress{ areaId, (uint16)toNodeIdx };
+
+    const auto& fromNode = paths.m_pPathNodes[areaId][fromNodeIdx];
+    const auto& toNode   = paths.m_pPathNodes[areaId][toNodeIdx];
+
+    // Retail clamps the distance to 255 *before* converting it to an int, and bumps lengths below 1 to 1
+    const auto dist = std::min((toNode.GetPosition() - fromNode.GetPosition()).Magnitude(), 255.f);
+    paths.m_pLinkLengths[areaId][nextLinkId] = (uint8)std::max(1, (int32)dist);
+    paths.m_pPathIntersections[areaId][nextLinkId].Clear();
+
+    paths.m_pPathNodes[areaId][fromNodeIdx].m_nNumLinks++;
+
+    nextLinkId++;
+}
+
+// 0x452270
+void CPathFind::CompleteNewInterior(CNodeAddress* outAddress) {
+    if (outAddress) {
+        outAddress->ResetAreaId(); // Retail only invalidates the area id of the out address
+    }
+
+    if (!NumNodesGiven) {
+        bInteriorBeingBuilt = false;
+        return;
+    }
+
+    const auto intSlot  = NewInteriorSlot;
+    const auto areaId   = (uint16)(NUM_PATH_MAP_AREAS + intSlot);
+    const auto numNodes = (int32)NumNodesGiven;
+
+    // Every node of the new interior shares the same flood fill group.
+    // Retail uses `100 + interiorSlot`, unless a node of this interior was already linked to an exterior node.
+    uint8 floodFillGroup = (uint8)(100 + intSlot);
+    if (NumLinksToExteriorNodes > 0) {
+        const auto& extNodeAddr = aExteriorNodeLinkedTo[0];
+        floodFillGroup = m_pPathNodes[extNodeAddr.m_wAreaId][extNodeAddr.m_wNodeId].m_nFloodFill;
+    }
+
+    m_interiorIDs[intSlot] = (uint32)InteriorIDBeingBuilt;
+
+    // Create the nodes
+    m_pPathNodes[areaId] = static_cast<CPathNode*>(CMemoryMgr::Malloc(sizeof(CPathNode) * numNodes));
+    for (auto i = 0; i < numNodes; i++) {
+        auto& node = m_pPathNodes[areaId][i];
+
+        node.m_next = nullptr; // notsa: Retail leaves these uninitialized (These nodes aren't added to the hash table)
+        node.m_prev = nullptr;
+
+        node.m_vPos                = CompressedLargeVector{ CVector{ XCoorGiven[i], YCoorGiven[i], ZCoorGiven[i] } };
+        node.m_wNodeId             = (uint16)i;
+        node.m_wAreaId             = areaId;
+        node.m_nPathWidth          = 0;
+        node.m_nFloodFill          = floodFillGroup;
+
+        node.m_nNumLinks           = 0;
+        node.m_onDeadEnd           = false;
+        node.m_isSwitchedOff       = true;
+        node.m_bRoadBlocks         = false;
+        node.m_bWaterNode          = false;
+
+        node.m_isSwitchedOffOriginal = true;
+        node.unk1                  = false;
+        node.m_bDontWander         = aDontWanderGiven[i];
+        node.unk2                  = true;
+        node.m_nSpeedLimit         = 0;
+        node.unk3                  = false; // notsa: Retail doesn't initialize these 2 (Unused)
+        node.unk4                  = false;
+
+        node.m_nSpawnProbability   = 0xF;
+        node.m_nBehaviourType      = 0;
+
+        node.m_totalDistFromOrigin = SHRT_MAX - 1;
+    }
+
+    // Make the links bidirectional (Retail only requires them to be specified one way)
+    for (auto i = 0; i < numNodes; i++) {
+        for (auto k = 0u; k < 6; k++) {
+            const auto linkedNodeIdx = ConnectsToGiven[i][k];
+            if (linkedNodeIdx < 0) {
+                continue;
+            }
+
+            const auto reverseLinks = std::span{ ConnectsToGiven[linkedNodeIdx] }.first(6);
+            if (rng::contains(reverseLinks, (int8)i)) {
+                continue;
+            }
+            if (const auto freeSlot = rng::find(reverseLinks, (int8)-1); freeSlot != reverseLinks.end()) {
+                *freeSlot = (int8)i;
+            }
+        }
+    }
+
+    // Count the resulting links (Each of them takes up an address)
+    int32 numAddresses = 0;
+    for (auto i = 0; i < numNodes; i++) {
+        for (auto k = 0u; k < 6; k++) {
+            if (ConnectsToGiven[i][k] >= 0) {
+                numAddresses++;
+            }
+        }
+    }
+
+    // Allocate the links (Plus the extra addresses dynamic links can use)
+    const auto numLinkSlots = numAddresses + NUM_DYNAMIC_LINKS_PER_AREA * 12;
+    m_pNodeLinks[areaId]         = static_cast<CNodeAddress*>(CMemoryMgr::Malloc(sizeof(CNodeAddress) * numLinkSlots));
+    m_pLinkLengths[areaId]       = static_cast<uint8*>(CMemoryMgr::Malloc(numLinkSlots));
+    m_pPathIntersections[areaId] = static_cast<CPathIntersectionInfo*>(CMemoryMgr::Malloc(sizeof(CPathIntersectionInfo) * numLinkSlots));
+
+    // Create the links of every node
+    int32 nextLinkId = 0;
+    for (auto i = 0; i < numNodes; i++) {
+        m_pPathNodes[areaId][i].m_wBaseLinkId = (int16)nextLinkId;
+        m_pPathNodes[areaId][i].m_nNumLinks   = 0;
+        for (auto k = 0u; k < 6; k++) {
+            const auto linkedNodeIdx = ConnectsToGiven[i][k];
+            if (linkedNodeIdx < 0) {
+                continue;
+            }
+            SetNewInteriorNodeLink(*this, areaId, i, linkedNodeIdx, nextLinkId);
+        }
+    }
+
+    // Invalidate the extra addresses (Only the area id is written, as in retail)
+    for (auto i = numAddresses; i < numLinkSlots; i++) {
+        m_pNodeLinks[areaId][i].m_wAreaId = (uint16)-1;
+    }
+
+    m_anNumNodes[areaId]          = (uint32)numNodes;
+    m_anNumVehicleNodes[areaId]   = 0;
+    m_anNumPedNodes[areaId]       = (uint32)numNodes;
+    m_anNumCarPathLinks[areaId]   = 0;
+    m_anNumAddresses[areaId]      = (uint32)numAddresses;
+
+    // Link the interior nodes that were linked to exterior nodes while the interior was being built
+    for (auto i = 0; i < NumLinksToExteriorNodes; i++) {
+        const CNodeAddress intNodeAddr{ areaId, (uint16)aInteriorNodeLinkedToExterior[i] };
+        const auto         extNodeAddr = aExteriorNodeLinkedTo[i];
+        AddDynamicLinkBetween2Nodes_For1Node(intNodeAddr, extNodeAddr);
+        AddDynamicLinkBetween2Nodes_For1Node(extNodeAddr, intNodeAddr);
+    }
+
+    bInteriorBeingBuilt = false;
+}
+
 // 0x44DF30
 void CPathFind::AddInteriorLinkToExternalNode(int32 interiorNodeIdx, CNodeAddress externalNodeAddr) {
     const auto idx = NumLinksToExteriorNodes++;
     aInteriorNodeLinkedToExterior[idx] = interiorNodeIdx;
     aExteriorNodeLinkedTo[idx] = externalNodeAddr;
+}
+
+// 0x44DF60
+void CPathFind::RemoveInteriorLinks(uint32 intIdx) {
+    // Remove every link (In both directions) that points to the given interior node
+    for (auto i = 0u; i < NumNodesGiven; i++) {
+        for (auto k = 0u; k < 6; k++) {
+            if (i == intIdx || (int32)ConnectsToGiven[i][k] == (int32)intIdx) {
+                ConnectsToGiven[i][k] = -1;
+            }
+        }
+    }
 }
 
 // 0x44E1A0

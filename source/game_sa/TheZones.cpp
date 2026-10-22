@@ -241,7 +241,18 @@ void CTheZones::Init() {
 // Unlock the current zone
 // 0x572800
 void CTheZones::SetCurrentZoneAsUnlocked() {
-    plugin::Call<0x572800>();
+    const CVector pos = FindPlayerCoors();
+
+    m_CurrLevel = GetLevelFromPosition(pos);
+
+    // Only revealed while the player is on the map and outside (retail tests `currArea` for zero).
+    if (CTheScripts::bPlayerIsOffTheMap || !CGame::CanSeeOutSideFromCurrArea()) {
+        return;
+    }
+
+    if (SetZoneWasVisited(pos, true)) {
+        ZonesRevealed++;
+    }
 }
 
 // Creates a zone

@@ -56,7 +56,7 @@ void CFont::InjectHooks() {
     RH_ScopedInstall(PrintStringFromBottom, 0x71A820);
     RH_ScopedInstall(GetCharacterSize, 0x719750);
     RH_ScopedInstall(LoadFontValues, 0x7187C0);
-    // Install("", "GetScriptLetterSize", 0x719670, &GetScriptLetterSize);
+    RH_ScopedGlobalInstall(GetScriptLetterSize, 0x719670);
     RH_ScopedInstall(FindSubFontCharacter, 0x7192C0, { .StackArgumentsToPreserve = 2, .PreserveRegisters = true });
     RH_ScopedGlobalInstall(GetLetterIdPropValue, 0x718770);
 }
@@ -983,8 +983,34 @@ float CFont::GetHeight(bool a1) {
 }
 
 // 0x719670, original name unknown
+//! Advance width of `letterId` for the script text line currently being built: the current
+//! `CTheScripts::IntroTextLines` entry supplies the scale, proportional flag, edge and style.
 float GetScriptLetterSize(uint8 letterId) {
-    return plugin::CallAndReturn<float, 0x719670, uint8>(letterId);
+    const auto& text = CTheScripts::IntroTextLines[CTheScripts::NumberOfIntroTextLinesThisFrame];
+
+    const uint8 ch = letterId == '?' ? 0 : letterId;
+
+    uint8 row, col;
+    if (text.FontStyle == FONT_MENU) {
+        row = CFont::FindSubFontCharacter(ch, 2);
+        col = 0;
+    } else if (text.FontStyle == FONT_PRICEDOWN) {
+        row = CFont::FindSubFontCharacter(ch, 1);
+        col = 1;
+    } else {
+        col = static_cast<uint8>(+text.FontStyle);
+        row = ch == 0x91 ? 0x40 : (ch > 0x9B ? 0 : ch);
+    }
+
+    // The executable indexes the flat font data block: the proportional table when the line is
+    // proportional, otherwise the fixed width. `row` may reach `tFontData::m_spaceValue` (208), so
+    // the block is addressed as bytes instead of `m_propValues[row]`.
+    const uint8* const widths = reinterpret_cast<const uint8*>(&gFontData[col]);
+    const uint8 width = text.IsProportional
+        ? widths[row]
+        : widths[offsetof(tFontData, m_unpropValue)];
+
+    return (static_cast<float>(width) + static_cast<float>(text.TextEdge)) * text.Scale.x;
 }
 
 // 0x7192C0

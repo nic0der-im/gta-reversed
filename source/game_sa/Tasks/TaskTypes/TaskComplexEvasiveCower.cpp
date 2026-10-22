@@ -1,6 +1,9 @@
 #include "StdInc.h"
 
 #include "TaskComplexEvasiveCower.h"
+#include "TaskSimpleCower.h"
+#include "TaskSimpleAchieveHeading.h"
+#include "General.h"
 
 // 0x655460
 CTaskComplexEvasiveCower::CTaskComplexEvasiveCower(CEntity* entity, const CVector& pos) :
@@ -33,5 +36,17 @@ CTask* CTaskComplexEvasiveCower::CreateFirstSubTask(CPed* ped) {
 
 // 0x655570
 CTask* CTaskComplexEvasiveCower::CreateSubTask(eTaskType taskType) {
-    return plugin::CallMethodAndReturn<CTask*, 0x655570, CTaskComplexEvasiveCower*, eTaskType>(this, taskType);
+    switch (taskType) {
+    case TASK_SIMPLE_COWER:
+        return new CTaskSimpleCower{};
+    case TASK_SIMPLE_ACHIEVE_HEADING:
+        return new CTaskSimpleAchieveHeading(
+            CGeneral::GetRadianAngleBetweenPoints(-m_Pos.x, -m_Pos.y, 0.0f, 0.0f),
+            2.0f,
+            0.2f
+        );
+    case TASK_FINISHED:
+    default:
+        return nullptr;
+    }
 }

@@ -58,6 +58,8 @@
 #include "Entity/Vehicle/Train.h"
 #include "Tasks/TaskManager.h"
 #include "Tasks/TaskTypes/TaskSimpleStandStill.h"
+#include "Scripted2dEffects.h"
+#include "Explosion.h"
 #include "Tasks/TaskTypes/TaskComplexDie.h"
 #include "Tasks/TaskTypes/TaskComplexGoToPointAndStandStill.h"
 #include "Tasks/TaskTypes/TaskComplexGoToPointAndStandStillTimed.h"
@@ -83,6 +85,11 @@
 #include "Tasks/TaskTypes/TaskSimpleDuckToggle.h"
 #include "Tasks/TaskTypes/TaskSimplePause.h"
 #include "Tasks/TaskTypes/TaskSimpleSetStayInSamePlace.h"
+#include "StuntJumpManager.h"
+#include "WaterLevel.h"
+#include "CarCtrl.h"
+#include "Entity/Vehicle/Plane.h"
+#include "Fx/FxManager.h"
 
 /*!
 * Various game related commands
@@ -1731,10 +1738,560 @@ void TaskGoToCoordAnyMeans(CRunningScript& S, int32 pedHandle, CVector target, i
     );
 }
 
+//
+// Restart points, garages & collectibles (script persistence)
+//
+
+//! Resolve a script coordinate the way most commands do: `z <= -100` means "snap to the ground"
+CVector PointWithGroundZ(float x, float y, float z) {
+    return { x, y, z <= -100.0f ? CWorld::FindGroundZForCoord(x, y) : z };
+}
+
+/// ADD_HOSPITAL_RESTART(016C)
+void AddHospitalRestart(float x, float y, float z, float heading, int32 citiesPassed) {
+    CRestart::AddHospitalRestartPoint(PointWithGroundZ(x, y, z), heading, citiesPassed);
+}
+
+/// ADD_POLICE_RESTART(016D)
+void AddPoliceRestart(float x, float y, float z, float heading, int32 citiesPassed) {
+    CRestart::AddPoliceRestartPoint(PointWithGroundZ(x, y, z), heading, citiesPassed);
+}
+
+/// OVERRIDE_NEXT_RESTART(016E)
+void OverrideNextRestart(float x, float y, float z, float heading) {
+    CRestart::OverrideNextRestart(PointWithGroundZ(x, y, z), heading);
+}
+
+/// CANCEL_OVERRIDE_RESTART(01F6)
+void CancelOverrideRestart() {
+    CRestart::CancelOverrideRestart();
+}
+
+/// FORCE_DEATH_RESTART(0970)
+void ForceDeathRestart() {
+    CGameLogic::ForceDeathRestart();
+}
+
+/// SET_EXTRA_POLICE_STATION_RESTART_POINT(08E0)
+/// NOTE: Unlike the hospital variant, retail consumes the arguments as `(x, y, radius, z, heading)`
+///       (see `0x474900` case 0x48: `p2` is stored into `ExtraPoliceStationRestartRadius`, `p3` into the coords' `z`).
+void SetExtraPoliceStationRestartPoint(float x, float y, float radius, float z, float heading) {
+    CRestart::ExtraPoliceStationRestartCoors   = CVector{x, y, z};
+    CRestart::ExtraPoliceStationRestartRadius  = radius;
+    CRestart::ExtraPoliceStationRestartHeading = heading;
+}
+
+/// OPEN_GARAGE(0360)
+void OpenGarage(const char* name) {
+    const auto garageId = CGarages::GetGarageNumberByName(name);
+    if (garageId >= 0) {
+        CGarages::GetGarage(garageId).OpenThisGarage();
+    }
+}
+
+/// IS_GARAGE_CLOSED(03B1)
+bool IsGarageClosed(const char* name) {
+    const auto garageId = CGarages::GetGarageNumberByName(name);
+    return garageId >= 0 && CGarages::IsGarageClosed(garageId);
+}
+
+/// SET_TARGET_CAR_FOR_MISSION_GARAGE(021B)
+void SetTargetCarForMissionGarage(const char* name, CVehicle* vehicle) {
+    const auto garageId = CGarages::GetGarageNumberByName(name);
+    if (garageId >= 0) {
+        CGarages::SetTargetCarForMissionGarage(garageId, vehicle);
+    }
+}
+
+/// CLEAR_WANTED_LEVEL_IN_GARAGE(09D4)
+void ClearWantedLevelInGarage() {
+    if (auto* const wanted = FindPlayerWanted()) {
+        wanted->ClearWantedLevelAndGoOnParole();
+    }
+}
+
+/// ADD_STUNT_JUMP(0814)
+void AddStuntJump(CVector start, CVector startRadius, CVector finish, CVector finishRadius, CVector camera, int32 reward) {
+    CStuntJumpManager::AddOne(
+        CBoundingBox{start - startRadius, start + startRadius},
+        CBoundingBox{finish - finishRadius, finish + finishRadius},
+        camera,
+        reward
+    );
+}
+
+/// CREATE_SNAPSHOT_PICKUP(0958)
+int32 CreateSnapshotPickup(float x, float y, float z) {
+    CStats::IncrementStat(STAT_TOTAL_SNAPSHOTS);
+    CVector posn{x, y, z};
+    if (z <= -100.0f) {
+        posn.z = CWorld::FindGroundZForCoord(x, y) + 0.5f;
+    }
+    return CPickups::GenerateNewOne(posn, ModelIndices::MI_PICKUP_CAMERA, PICKUP_SNAPSHOT, 0u).num;
+}
+
+/// CREATE_HORSESHOE_PICKUP(0959)
+int32 CreateHorseshoePickup(float x, float y, float z) {
+    CStats::IncrementStat(STAT_TOTAL_HORSESHOES);
+    CVector posn{x, y, z};
+    if (z <= -100.0f) {
+        posn.z = CWorld::FindGroundZForCoord(x, y) + 0.5f;
+    }
+    return CPickups::GenerateNewOne(posn, ModelIndices::MI_HORSESHOE, PICKUP_ONCE, 0u).num;
+}
+
+/// CREATE_OYSTER_PICKUP(095A)
+int32 CreateOysterPickup(float x, float y, float z) {
+    CStats::IncrementStat(STAT_TOTAL_OYSTERS);
+    CVector posn{x, y, z};
+    if (z <= -100.0f) {
+        posn.z = CWorld::FindGroundZForCoord(x, y) + 0.5f;
+    }
+    return CPickups::GenerateNewOne(posn, ModelIndices::MI_OYSTER, PICKUP_ONCE, 0u).num;
+}
+
+//
+// Onscreen counters & shops
+//
+
+/// DISPLAY_ONSCREEN_COUNTER_WITH_STRING(03C4)
+void DisplayOnscreenCounterWithString(CRunningScript& S) {
+    const auto varId = S.GetIndexOfGlobalVariable();
+
+    S.CollectParameters(1);
+    const auto type = static_cast<eOnscreenCounter>(ScriptParams[0].iParam & 0xFFFF);
+
+    char label[SHORT_STRING_SIZE + 1]{};
+    S.ReadTextLabelFromScript(label, SHORT_STRING_SIZE);
+
+    (void)TheText.Get(label); // Original calls this just for the side effects
+    CUserDisplay::OnscnTimer.AddCounter(varId, type, label, 0);
+}
+
+/// FREEZE_ONSCREEN_TIMER(0396)
+void FreezeOnscreenTimer(bool freeze) {
+    CUserDisplay::OnscnTimer.m_bPaused = freeze;
+}
+
+// `CShopping::ms_numItemsInShop` and `CShopping::ms_shopContents` are private in `Shopping.h`, so reach them by address
+static auto& s_numItemsInShop = StaticRef<int32>(0xA9A7F0);
+static auto& s_shopContents   = StaticRef<std::array<uint32, 300u>>(0xA9A318);
+
+/// GET_NUMBER_OF_ITEMS_IN_SHOP(075F)
+int32 GetNumberOfItemsInShop() {
+    return s_numItemsInShop;
+}
+
+/// GET_ITEM_IN_SHOP(0760)
+int32 GetItemInShop(int32 nth) {
+    if (nth < 0 || nth >= (int32)(s_shopContents.size())) {
+        return -1;
+    }
+    return static_cast<int32>(s_shopContents[nth]);
+}
+
+/// GET_PRICE_OF_ITEM(0761)
+int32 GetPriceOfItem(int32 itemId) {
+    return CShopping::GetPrice(static_cast<uint32>(itemId));
+}
+
+/// GET_SHOPPING_EXTRA_INFO(0783)
+int32 GetShoppingExtraInfo(int32 itemId, int32 index) {
+    return CShopping::GetExtraInfo(static_cast<uint32>(itemId), index);
+}
+
+/// GET_NAME_OF_ITEM(078C)
+void GetNameOfItem(CRunningScript& S, int32 itemId) {
+    const auto name = CShopping::GetNameTag(static_cast<uint32>(itemId));
+    auto* const dst = reinterpret_cast<char*>(S.GetPointerToScriptVariable(VAR_GLOBAL));
+    strncpy(dst, name, SHORT_STRING_SIZE);
+}
+
+//
+// FX, weather & world queries
+//
+
+/// CREATE_FX_SYSTEM(064B)
+int32 CreateFxSystem(CRunningScript& S, const char* name, float x, float y, float z, bool ignoreBoundingChecks) {
+    // TODO(re): retail also calls `GetActualScriptThingIndex(CollectNextParameterWithoutIncreasingPC(), SCRIPT_THING_EFFECT_SYSTEM)`
+    // and discards the result (`0x493FE0` case 9); the purpose is unknown, so it isn't replicated.
+    auto* const fx = g_fxMan.CreateFxSystem(name, PointWithGroundZ(x, y, z), nullptr, ignoreBoundingChecks);
+    if (!fx) {
+        return -1;
+    }
+
+    const auto handle = static_cast<int32>(CTheScripts::AddScriptEffectSystem(fx));
+    if (S.m_UsesMissionCleanup) {
+        CTheScripts::MissionCleanUp.AddEntityToList(handle, MISSION_CLEANUP_ENTITY_TYPE_PARTICLE);
+    }
+    return handle;
+}
+
+/// PLAY_FX_SYSTEM(064C)
+void PlayFxSystem(int32 scriptEffect) {
+    const auto idx = CTheScripts::GetActualScriptThingIndex(scriptEffect, SCRIPT_THING_EFFECT_SYSTEM);
+    if (idx < 0 || idx >= (int32)(CTheScripts::ScriptEffectSystemArray.size())) {
+        return;
+    }
+    if (auto* const fx = CTheScripts::ScriptEffectSystemArray[idx].m_pFxSystem) {
+        fx->Play();
+    }
+}
+
+/// PLAY_AND_KILL_FX_SYSTEM(064F)
+void PlayAndKillFxSystem(CRunningScript& S, int32 scriptEffect) {
+    const auto idx = CTheScripts::GetActualScriptThingIndex(scriptEffect, SCRIPT_THING_EFFECT_SYSTEM);
+    if (idx < 0 || idx >= (int32)(CTheScripts::ScriptEffectSystemArray.size())) {
+        return;
+    }
+    auto* const fx = CTheScripts::ScriptEffectSystemArray[idx].m_pFxSystem;
+    if (!fx) {
+        return;
+    }
+    fx->PlayAndKill();
+    CTheScripts::RemoveScriptEffectSystem(scriptEffect);
+    if (S.m_UsesMissionCleanup) {
+        CTheScripts::MissionCleanUp.RemoveEntityFromList(scriptEffect, MISSION_CLEANUP_ENTITY_TYPE_PARTICLE);
+    }
+}
+
+/// FORCE_WEATHER(01B5)
+void ForceWeather(int32 type) {
+    CWeather::ForceWeather(static_cast<eWeatherType>(type & 0xFFFF));
+}
+
+/// SYNC_WATER(0971)
+void SyncWater() {
+    CWaterLevel::SyncWater();
+}
+
+/// SWITCH_AMBIENT_PLANES(0923)
+void SwitchAmbientPlanes(bool enable) {
+    CPlane::SwitchAmbientPlanes(enable);
+}
+
+/// SWITCH_EMERGENCY_SERVICES(06D0)
+void SwitchEmergencyServices(bool enable) {
+    CCarCtrl::bAllowEmergencyServicesToBeCreated = enable;
+}
+
+//! Same variable as `MissionCleanup.cpp`'s `g_bCriminalWanted` (checked by `CTaskComplexKillCriminal`)
+static auto& s_bCriminalWanted = StaticRef<bool>(0xB72994);
+
+/// ENABLE_AMBIENT_CRIME(09D2)
+void EnableAmbientCrime(bool enable) {
+    s_bCriminalWanted = enable;
+}
+
+/// IS_AREA_OCCUPIED(0339)
+bool IsAreaOccupied(CVector cornerA, CVector cornerB, bool solid, bool car, bool ped, bool object, bool particle) {
+    const CVector min{
+        std::min(cornerA.x, cornerB.x),
+        std::min(cornerA.y, cornerB.y),
+        std::min(cornerA.z, cornerB.z)
+    };
+    const CVector max{
+        std::max(cornerA.x, cornerB.x),
+        std::max(cornerA.y, cornerB.y),
+        std::max(cornerA.z, cornerB.z)
+    };
+
+    int16 count{};
+    CWorld::FindObjectsIntersectingCube(min, max, &count, 2, nullptr, solid, car, ped, object, particle);
+    return count > 0;
+}
+
+/// IS_POINT_OBSCURED_BY_A_MISSION_ENTITY(038A)
+bool IsPointObscuredByAMissionEntity(CVector point, CVector radius) {
+    int16 count{};
+    CWorld::FindMissionEntitiesIntersectingCube(point - radius, point + radius, &count, 2, nullptr, true, true, true);
+    return count > 0;
+}
+
+//
+// Screen effects, skips & HUD
+//
+
+/// SET_DARKNESS_EFFECT(0924)
+void SetDarknessEffect(bool enable, int32 pitchBlack) {
+    CPostEffects::ScriptDarknessFilterSwitch(enable, pitchBlack);
+}
+
+/// SET_HEATHAZE_EFFECT(08FD)
+void SetHeatHazeEffect(bool enable) {
+    CPostEffects::ScriptHeatHazeFXSwitch(enable);
+}
+
+/// SET_UP_SKIP(0950)
+void SetUpSkip(float x, float y, float z, float heading) {
+    CGameLogic::SetUpSkip(CVector{x, y, z}, heading, false, nullptr, false);
+}
+
+/// CLEAR_SKIP(0951)
+void ClearSkip() {
+    CGameLogic::ClearSkip(false);
+}
+
+/// SET_HELP_MESSAGE_BOX_SIZE(0989)
+void SetHelpMessageBoxSize(int32 size) {
+    CHud::m_fHelpMessageBoxWidth = static_cast<float>(size);
+}
+
+/// DISPLAY_CAR_NAMES(09B9)
+void DisplayCarNames(bool display) {
+    CHud::bScriptDontDisplayVehicleName = !display;
+}
+
+/// HIDE_ALL_FRONTEND_BLIPS(09AC)
+void HideAllFrontendBlips(bool hide) {
+    CTheScripts::HideAllFrontEndMapBlips = hide;
+}
+
+/// GET_CONTROLLER_MODE(0293)
+int32 GetControllerMode() {
+    return 0; // Retail always stores 0 (the PC build has no controller-mode selection)
+}
+
+//
+// Menus (part 2)
+//
+
+/// SET_MENU_COLUMN_WIDTH(09DB)
+void SetMenuColumnWidth(int32 menu, int32 column, int32 width) {
+    CMenuSystem::SetColumnWidth(
+        static_cast<MenuId>(menu),
+        static_cast<uint8>(column),
+        static_cast<uint16>(width)
+    );
+}
+
+/// SET_MENU_COLUMN_ORIENTATION(08D6)
+void SetMenuColumnOrientation(int32 menu, int32 column, int32 alignment) {
+    CMenuSystem::SetColumnOrientation(
+        static_cast<MenuId>(menu),
+        static_cast<uint8>(column),
+        static_cast<uint8>(alignment)
+    );
+}
+
+/// ACTIVATE_MENU_ITEM(08D9)
+void ActivateMenuItem(int32 menu, int32 row, bool enable) {
+    CMenuSystem::ActivateOneItem(static_cast<MenuId>(menu), static_cast<uint8>(row), enable);
+}
+
+/// SET_MENU_ITEM_WITH_2_NUMBERS(08EF)
+void SetMenuItemWith2Numbers(int32 menu, int32 column, int32 row, const char* label, int32 number1, int32 number2) {
+    CMenuSystem::InsertOneMenuItemWithNumber(
+        static_cast<MenuId>(menu),
+        static_cast<uint8>(column),
+        static_cast<uint8>(row),
+        label,
+        number1,
+        number2
+    );
+}
+
+//
+// Radar (Blips)
+//
+
+/// SET_COORD_BLIP_APPEARANCE(08FB)
+void SetCoordBlipAppearance(tBlipHandle blip, uint8 appearance) {
+    CRadar::SetCoordBlipAppearance(blip, static_cast<eBlipAppearance>(appearance));
+}
+
+/// SET_BLIP_ALWAYS_DISPLAY_ON_ZOOMED_RADAR(07BF)
+void SetBlipAlwaysDisplayInZoom(tBlipHandle blip, bool state) {
+    CRadar::SetBlipAlwaysDisplayInZoom(blip, state);
+}
+
+/// ADD_SPRITE_BLIP_FOR_COORD(02A8)
+tBlipHandle AddSpriteBlipForCoord(CRunningScript& S, float x, float y, float z, int32 sprite) {
+    CVector posn{x, y, z};
+    if (z <= -100.0f) {
+        posn.z = CWorld::FindGroundZForCoord(x, y);
+    }
+    const auto blip = CRadar::SetCoordBlip(BLIP_COORD, posn, BLIP_COLOUR_REDCOPY, BLIP_DISPLAY_BOTH, S.m_szName);
+    CRadar::SetBlipSprite(blip, static_cast<eRadarSprite>(sprite));
+    return blip;
+}
+
+/// ADD_BLIP_FOR_PICKUP(03DC)
+tBlipHandle AddBlipForPickup(int32 pickupRef) {
+    const auto blip = CRadar::SetEntityBlip(BLIP_PICKUP, CPickups::GetActualPickupIndex(pickupRef), 6, BLIP_DISPLAY_BOTH);
+    CRadar::ChangeBlipScale(blip, 3);
+    return blip;
+}
+
+/// SET_RADAR_ZOOM(075B)
+void SetRadarZoom(int32 zoom) {
+    CTheScripts::RadarZoomValue = static_cast<uint8>(zoom);
+}
+
+//
+// Streaming / models
+//
+
+/// SUPPRESS_CAR_MODEL(0732)
+void SuppressCarModel(int32 model) {
+    if (model < 0) {
+        return;
+    }
+    // Already suppressed?
+    for (const auto suppressed : CTheScripts::SuppressedVehicleModels) {
+        if (suppressed == static_cast<eModelID>(model)) {
+            return;
+        }
+    }
+    // Store in the first free slot
+    for (auto& suppressed : CTheScripts::SuppressedVehicleModels) {
+        if (suppressed == MODEL_INVALID) {
+            suppressed = static_cast<eModelID>(model);
+            return;
+        }
+    }
+    // Retail keeps writing one past the end of the array here, which we don't replicate.
+}
+
+//
+// Player gang
+//
+
+/// SET_SCRIPT_LIMIT_TO_GANG_SIZE(08F4)
+void SetScriptLimitToGangSize(int32 size) {
+    const auto ped = FindPlayerPed();
+    if (!ped) {
+        return;
+    }
+    auto& data = *ped->GetPlayerData();
+    data.m_nScriptLimitToGangSize = static_cast<uint8>(size);
+
+    auto& membership = CPedGroups::ms_groups[data.m_nPlayerGroup].GetMembership();
+    const auto toRemove = (int32)membership.CountMembersExcludingLeader() - (int32)data.m_nScriptLimitToGangSize;
+    if (toRemove > 0) {
+        membership.RemoveNFollowers(toRemove);
+    }
+}
+
+/// MAKE_PLAYER_GANG_DISAPPEAR(08F5)
+void MakePlayerGangDisappear() {
+    if (const auto ped = FindPlayerPed()) {
+        ped->MakePlayerGroupDisappear();
+    }
+}
+
+/// MAKE_PLAYER_GANG_REAPPEAR(08F6)
+void MakePlayerGangReappear() {
+    if (const auto ped = FindPlayerPed()) {
+        ped->MakePlayerGroupReappear();
+    }
+}
+
+/// MAKE_ROOM_IN_PLAYER_GANG_FOR_MISSION_PEDS(09DD)
+void MakeRoomInPlayerGangForMissionPeds(int32 numPeds) {
+    const auto ped = FindPlayerPed();
+    if (!ped) {
+        return;
+    }
+    auto& data = *ped->GetPlayerData();
+
+    auto& membership = CPedGroups::ms_groups[data.m_nPlayerGroup].GetMembership();
+    const auto toRemove = (int32)membership.CountMembersExcludingLeader() - (int32)data.m_nScriptLimitToGangSize - numPeds;
+    if (toRemove > 0) {
+        membership.RemoveNFollowers(toRemove);
+    }
+}
+
+//
+// Stats, explosions & trains
+//
+
+/// AWARD_PLAYER_MISSION_RESPECT(0998)
+void AwardPlayerMissionRespect(int32 value) {
+    CStats::IncrementStat(STAT_RESPECT_MISSION, static_cast<float>(value));
+}
+
+/// ADD_EXPLOSION_VARIABLE_SHAKE(0948)
+void AddExplosionVariableShake(float x, float y, float z, int32 type, float cameraShake) {
+    CExplosion::AddExplosion(nullptr, nullptr, static_cast<eExplosionType>(type), CVector{x, y, z}, 0, 1, cameraShake, 0);
+}
+
+/// SWITCH_RANDOM_TRAINS(06D7)
+void SwitchRandomTrains(bool state) {
+    CTrain::DisableRandomTrains(!state);
+}
+
+//
+// Scripted 2D effects (Ped attractors)
+//
+
+/// ADD_ATTRACTOR(061D)
+int32 AddAttractor(CRunningScript& S, float x, float y, float z, float angle, float useAngle, int32 sequence) {
+    const auto effectIdx = CScripted2dEffects::AddScripted2DEffect(-1.0f);
+    const auto seqIdx    = CTheScripts::GetActualScriptThingIndex(sequence, SCRIPT_THING_SEQUENCE_TASK);
+    if (effectIdx < 0 || effectIdx >= (int32)NUM_SCRIPTED_2D_EFFECTS || seqIdx < 0 || seqIdx >= (int32)NUM_SCRIPTED_2D_EFFECTS) {
+        return -1;
+    }
+
+    const auto DirFromAngle = [](float angleInDegrees) {
+        const auto radians = DegreesToRadians(angleInDegrees);
+        return CVector{-std::sin(radians), std::cos(radians), 0.0f};
+    };
+
+    auto* effect = CScripted2dEffects::GetEffect(effectIdx);
+    effect->m_Pos                          = CVector{x, y, z};
+    effect->m_Type                         = EFFECT_ATTRACTOR;
+    effect->m_vecQueueDir     = DirFromAngle(angle);
+    effect->m_vecUseDir       = DirFromAngle(useAngle);
+    effect->m_vecForwardDir   = DirFromAngle(useAngle);
+    effect->m_nAttractorType  = PED_ATTRACTOR_SCRIPTED;
+
+    CScripted2dEffects::ms_effectSequenceTaskIDs[effectIdx] = seqIdx;
+
+    const auto handle = CTheScripts::GetNewUniqueScriptThingIndex(effectIdx, SCRIPT_THING_2D_EFFECT);
+    if (S.m_UsesMissionCleanup) {
+        CTheScripts::MissionCleanUp.AddEntityToList(handle, MISSION_CLEANUP_ENTITY_TYPE_PED_QUEUE);
+    }
+    return handle;
+}
+
+//
+// Patrol routes
+//
+// TODO(re): `CPatrolRoute` isn't reversed in this codebase yet (only `CPatrolRoutePool` exists, holding `void*`),
+//           so the route-manipulating commands can only consume their parameters for now.
+
+/// FLUSH_PATROL_ROUTE(0754)
+void FlushPatrolRoute(CRunningScript&) {
+    // TODO(re): clear `CPatrolRoute` at 0xC18DB8 (`CPatrolRoute::Flush`).
+}
+
+/// EXTEND_PATROL_ROUTE(0755)
+void ExtendPatrolRoute(float x, float y, float z, const char* animName, const char* animFile) {
+    // TODO(re): `CPatrolRoute::ExtendRoutePoint({x, y, z}, animName, animFile, isNone)` at 0xC18DB8.
+}
+
 }
 
 void notsa::script::commands::game::RegisterHandlers() {
     REGISTER_COMMAND_HANDLER_BEGIN("Game");
+
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_COORD_BLIP_APPEARANCE, SetCoordBlipAppearance);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_BLIP_ALWAYS_DISPLAY_ON_ZOOMED_RADAR, SetBlipAlwaysDisplayInZoom);
+    REGISTER_COMMAND_HANDLER(COMMAND_ADD_SPRITE_BLIP_FOR_COORD, AddSpriteBlipForCoord);
+    REGISTER_COMMAND_HANDLER(COMMAND_ADD_BLIP_FOR_PICKUP, AddBlipForPickup);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_RADAR_ZOOM, SetRadarZoom);
+    REGISTER_COMMAND_HANDLER(COMMAND_SUPPRESS_CAR_MODEL, SuppressCarModel);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_SCRIPT_LIMIT_TO_GANG_SIZE, SetScriptLimitToGangSize);
+    REGISTER_COMMAND_HANDLER(COMMAND_MAKE_PLAYER_GANG_DISAPPEAR, MakePlayerGangDisappear);
+    REGISTER_COMMAND_HANDLER(COMMAND_MAKE_PLAYER_GANG_REAPPEAR, MakePlayerGangReappear);
+    REGISTER_COMMAND_HANDLER(COMMAND_MAKE_ROOM_IN_PLAYER_GANG_FOR_MISSION_PEDS, MakeRoomInPlayerGangForMissionPeds);
+    REGISTER_COMMAND_HANDLER(COMMAND_AWARD_PLAYER_MISSION_RESPECT, AwardPlayerMissionRespect);
+    REGISTER_COMMAND_HANDLER(COMMAND_ADD_EXPLOSION_VARIABLE_SHAKE, AddExplosionVariableShake);
+    REGISTER_COMMAND_HANDLER(COMMAND_SWITCH_RANDOM_TRAINS, SwitchRandomTrains);
+    REGISTER_COMMAND_HANDLER(COMMAND_ADD_ATTRACTOR, AddAttractor);
+    REGISTER_COMMAND_HANDLER(COMMAND_FLUSH_PATROL_ROUTE, FlushPatrolRoute);
+    REGISTER_COMMAND_HANDLER(COMMAND_EXTEND_PATROL_ROUTE, ExtendPatrolRoute);
 
     REGISTER_COMMAND_HANDLER(COMMAND_SET_ALL_TAXIS_HAVE_NITRO, SetAllTaxisHaveNitro);
     REGISTER_COMMAND_HANDLER(COMMAND_ACTIVATE_PIMP_CHEAT, ActivatePimpCheat);
@@ -2006,6 +2563,59 @@ void notsa::script::commands::game::RegisterHandlers() {
     REGISTER_COMMAND_HANDLER(COMMAND_TASK_FOLLOW_PATH_NODES_TO_COORD, TaskFollowPathNodesToCoord);
     REGISTER_COMMAND_HANDLER(COMMAND_TASK_FOLLOW_POINT_ROUTE, TaskFollowPointRoute);
     REGISTER_COMMAND_HANDLER(COMMAND_TASK_GO_TO_COORD_ANY_MEANS, TaskGoToCoordAnyMeans);
+
+    // Restart points, garages & collectibles
+    REGISTER_COMMAND_HANDLER(COMMAND_ADD_HOSPITAL_RESTART, AddHospitalRestart);
+    REGISTER_COMMAND_HANDLER(COMMAND_ADD_POLICE_RESTART, AddPoliceRestart);
+    REGISTER_COMMAND_HANDLER(COMMAND_OVERRIDE_NEXT_RESTART, OverrideNextRestart);
+    REGISTER_COMMAND_HANDLER(COMMAND_CANCEL_OVERRIDE_RESTART, CancelOverrideRestart);
+    REGISTER_COMMAND_HANDLER(COMMAND_FORCE_DEATH_RESTART, ForceDeathRestart);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_EXTRA_POLICE_STATION_RESTART_POINT, SetExtraPoliceStationRestartPoint);
+    REGISTER_COMMAND_HANDLER(COMMAND_OPEN_GARAGE, OpenGarage);
+    REGISTER_COMMAND_HANDLER(COMMAND_IS_GARAGE_CLOSED, IsGarageClosed);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_TARGET_CAR_FOR_MISSION_GARAGE, SetTargetCarForMissionGarage);
+    REGISTER_COMMAND_HANDLER(COMMAND_CLEAR_WANTED_LEVEL_IN_GARAGE, ClearWantedLevelInGarage);
+    REGISTER_COMMAND_HANDLER(COMMAND_ADD_STUNT_JUMP, AddStuntJump);
+    REGISTER_COMMAND_HANDLER(COMMAND_CREATE_SNAPSHOT_PICKUP, CreateSnapshotPickup);
+    REGISTER_COMMAND_HANDLER(COMMAND_CREATE_HORSESHOE_PICKUP, CreateHorseshoePickup);
+    REGISTER_COMMAND_HANDLER(COMMAND_CREATE_OYSTER_PICKUP, CreateOysterPickup);
+
+    // Onscreen counters & shops
+    REGISTER_COMMAND_HANDLER(COMMAND_DISPLAY_ONSCREEN_COUNTER_WITH_STRING, DisplayOnscreenCounterWithString);
+    REGISTER_COMMAND_HANDLER(COMMAND_FREEZE_ONSCREEN_TIMER, FreezeOnscreenTimer);
+    REGISTER_COMMAND_HANDLER(COMMAND_GET_NUMBER_OF_ITEMS_IN_SHOP, GetNumberOfItemsInShop);
+    REGISTER_COMMAND_HANDLER(COMMAND_GET_ITEM_IN_SHOP, GetItemInShop);
+    REGISTER_COMMAND_HANDLER(COMMAND_GET_PRICE_OF_ITEM, GetPriceOfItem);
+    REGISTER_COMMAND_HANDLER(COMMAND_GET_SHOPPING_EXTRA_INFO, GetShoppingExtraInfo);
+    REGISTER_COMMAND_HANDLER(COMMAND_GET_NAME_OF_ITEM, GetNameOfItem);
+
+    // FX, weather & world queries
+    REGISTER_COMMAND_HANDLER(COMMAND_CREATE_FX_SYSTEM, CreateFxSystem);
+    REGISTER_COMMAND_HANDLER(COMMAND_PLAY_FX_SYSTEM, PlayFxSystem);
+    REGISTER_COMMAND_HANDLER(COMMAND_PLAY_AND_KILL_FX_SYSTEM, PlayAndKillFxSystem);
+    REGISTER_COMMAND_HANDLER(COMMAND_FORCE_WEATHER, ForceWeather);
+    REGISTER_COMMAND_HANDLER(COMMAND_SYNC_WATER, SyncWater);
+    REGISTER_COMMAND_HANDLER(COMMAND_SWITCH_AMBIENT_PLANES, SwitchAmbientPlanes);
+    REGISTER_COMMAND_HANDLER(COMMAND_SWITCH_EMERGENCY_SERVICES, SwitchEmergencyServices);
+    REGISTER_COMMAND_HANDLER(COMMAND_ENABLE_AMBIENT_CRIME, EnableAmbientCrime);
+    REGISTER_COMMAND_HANDLER(COMMAND_IS_AREA_OCCUPIED, IsAreaOccupied);
+    REGISTER_COMMAND_HANDLER(COMMAND_IS_POINT_OBSCURED_BY_A_MISSION_ENTITY, IsPointObscuredByAMissionEntity);
+
+    // Screen effects, skips & HUD
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_DARKNESS_EFFECT, SetDarknessEffect);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_HEATHAZE_EFFECT, SetHeatHazeEffect);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_UP_SKIP, SetUpSkip);
+    REGISTER_COMMAND_HANDLER(COMMAND_CLEAR_SKIP, ClearSkip);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_HELP_MESSAGE_BOX_SIZE, SetHelpMessageBoxSize);
+    REGISTER_COMMAND_HANDLER(COMMAND_DISPLAY_CAR_NAMES, DisplayCarNames);
+    REGISTER_COMMAND_HANDLER(COMMAND_HIDE_ALL_FRONTEND_BLIPS, HideAllFrontendBlips);
+    REGISTER_COMMAND_HANDLER(COMMAND_GET_CONTROLLER_MODE, GetControllerMode);
+
+    // Menus (part 2)
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_MENU_COLUMN_WIDTH, SetMenuColumnWidth);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_MENU_COLUMN_ORIENTATION, SetMenuColumnOrientation);
+    REGISTER_COMMAND_HANDLER(COMMAND_ACTIVATE_MENU_ITEM, ActivateMenuItem);
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_MENU_ITEM_WITH_2_NUMBERS, SetMenuItemWith2Numbers);
 
     // -----------------------------[ NOP ]-----------------------------
     REGISTER_COMMAND_NOP(COMMAND_SAVE_INT_TO_DEBUG_FILE);

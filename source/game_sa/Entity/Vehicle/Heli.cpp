@@ -463,7 +463,9 @@ bool CHeli::SendDownSwat() {
     if (physicalFlags.bSubmergedInWater) {
         return false;
     }
-    if (*reinterpret_cast<uint8*>(0x8E6314) != 1) { // TODO(re): global with no repo declaration, gates the swat drop
+    // The SWAT ped model must be streamed in before it can be dropped (`0x8E6314` is
+    // `ms_aInfoForModel[MODEL_SWAT].m_LoadState`, compared against `LOADSTATE_LOADED`)
+    if (!CStreaming::IsModelLoaded(MODEL_SWAT)) {
         return false;
     }
     if (CGeneral::GetRandomNumber() & 0x7F) {
@@ -553,15 +555,16 @@ void CHeli::UpdateHelis() {
         }
     }
 
-    // TODO(re): `0x8E72F0` and `0x8E73A4` gate the spawn (both compared to `1`); neither has a repo declaration.
+    // The heli's model has to be streamed in before it can be spawned. The retail reads at `0x8E73A4`/`0x8E72F0`
+    // are `ms_aInfoForModel[MODEL_POLMAV/MODEL_VCNMAV].m_LoadState` (both compared against `LOADSTATE_LOADED`).
     bool canSpawn;
     if (!CWanted::UseNewsHeliInAdditionToPolice) {
         newsHeli = false;
-        canSpawn = *reinterpret_cast<uint8*>(0x8E73A4) == 1;
+        canSpawn = CStreaming::IsModelLoaded(MODEL_POLMAV);
     } else if (newsHeli) {
-        canSpawn = *reinterpret_cast<uint8*>(0x8E72F0) == 1;
+        canSpawn = CStreaming::IsModelLoaded(MODEL_VCNMAV);
     } else {
-        canSpawn = *reinterpret_cast<uint8*>(0x8E73A4) == 1;
+        canSpawn = CStreaming::IsModelLoaded(MODEL_POLMAV);
     }
 
     if (canSpawn && TestForNewRandomHelisTimer < CTimer::GetTimeInMS()) {
@@ -1188,9 +1191,9 @@ void CHeli::ProcessControl() {
                     historyY[k] = historyY[k - 1];
                 }
                 // Extrapolate the new sample from the aim point and the aim entity's velocity
-                // TODO(re): the exact velocity scale (`[0x858628]`) is applied to the aim entity's speed here.
-                historyX[0] = aimPos.x + aimSpeed.x * *reinterpret_cast<float*>(0x858628);
-                historyY[0] = aimPos.y + aimSpeed.y * *reinterpret_cast<float*>(0x858628);
+                // (`100.0f` is the constant at `0x858628`)
+                historyX[0] = aimPos.x + aimSpeed.x * 100.0f;
+                historyY[0] = aimPos.y + aimSpeed.y * 100.0f;
                 m_nSearchLightTimer += 1000;
             }
         }
@@ -1311,8 +1314,8 @@ void CHeli::ProcessControl() {
     UpdateWinch();
     ProcessWeapons();
 
-    // TODO(re): `0xC0B184` is an audio/event flag byte with no repo declaration
-    if (*reinterpret_cast<uint8*>(0xC0B184) & 1) {
+    // Fire this event much more often while the player is idling (the idle camera is active)
+    if (gIdleCamFlags & 1) {
         float probability = CTimer::GetTimeStep() * 0.02f * 0.1f;
         probability *= 2.0f; // TODO(re): doubled when the heli is attacking (0x6C792F); the flag isn't tracked here
 

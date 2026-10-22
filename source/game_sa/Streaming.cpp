@@ -2661,7 +2661,7 @@ void CStreaming::FlushRequestList() {
 // 0x407A10
 void CStreaming::ForceLayerToRead(int32 arg1) {
     ms_bReadLayerForceFully = true;
-    *(int32*)0x9654C8 = arg1; // unused
+    ms_forcedLayerValue = arg1; // Only ever written, the value is unused by the executable
 }
 
 // 0x408000

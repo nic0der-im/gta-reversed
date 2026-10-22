@@ -81,6 +81,7 @@ void CWaterLevel::InjectHooks() {
     RH_ScopedInstall(AddToQuadsAndTrianglesList, 0x6E5750);
     RH_ScopedInstall(TestQuadToGetWaterLevel, 0x6E5BB0);
     RH_ScopedInstall(TestTriangleToGetWaterLevel, 0x6E5E90);
+    RH_ScopedInstall(TestLineAgainstWater, 0x6E61B0);
     RH_ScopedInstall(GetGroundLevel, 0x6EA8A0);
     RH_ScopedInstall(RenderSeaBedSegment, 0x6E6870);
     RH_ScopedInstall(RenderDetailedSeaBedSegment, 0x6E6A10);
@@ -1079,6 +1080,91 @@ bool CWaterLevel::TestTriangleToGetWaterLevel(CWaterTriangle* tri, float x, floa
     if ((z >= *outLevel - 6.0f || !tri->bLimitedDepth) && z <= *outLevel + 20.0f) {
         return true;
     }
+    return false;
+}
+
+// 0x6E61B0
+bool CWaterLevel::TestLineAgainstWater(CVector start, CVector end, CVector* out) {
+    //! World coordinate -> water block index.
+    //! NOTE: The OG's conversion truncates towards zero (`__ftol2`), it doesn't `floor`.
+    const auto ToBlockIdx = [](float coord) {
+        return (int32)(coord * 0.002f + 6.0f);
+    };
+
+    const auto minZ = std::min(start.z, end.z);
+    const auto maxZ = std::max(start.z, end.z);
+
+    const int32 loBlockX = ToBlockIdx(std::min(start.x, end.x));
+    const int32 hiBlockX = ToBlockIdx(std::max(start.x, end.x));
+    const int32 loBlockY = ToBlockIdx(std::min(start.y, end.y));
+    const int32 hiBlockY = ToBlockIdx(std::max(start.y, end.y));
+
+    if (loBlockX > hiBlockX) {
+        return false;
+    }
+
+    //! Point where the line crosses the water plane (`z = 0`)
+    const auto CalcWaterPlaneIntersection = [&] {
+        const float t = std::abs(start.z) / (maxZ - minZ);
+        *out = start + (end - start) * t;
+    };
+
+    //! NOTE: Only the quad's X/Y bounding box is considered (The diagonal split is ignored, as in the OG)
+    const auto IsPointInQuad = [&](const CWaterQuad& quad) {
+        const auto& v0 = m_aVertices[quad.verts[0]];
+        const auto& v1 = m_aVertices[quad.verts[1]];
+        const auto& v2 = m_aVertices[quad.verts[2]];
+
+        return out->x > (float)v0.x && out->x <= (float)v1.x
+            && out->y > (float)v0.y && out->y <= (float)v2.y;
+    };
+
+    //! Tests the line against a single quad (Only if it even crosses the water plane)
+    const auto TestQuad = [&](const CWaterQuad& quad) {
+        if (start.z * end.z >= 0.0f) { // The line doesn't cross the water plane
+            return false;
+        }
+        CalcWaterPlaneIntersection();
+        return IsPointInQuad(quad);
+    };
+
+    using PType = PolyInfo::PType;
+
+    for (int32 blockX = loBlockX; blockX <= hiBlockX; blockX++) {
+        for (int32 blockY = loBlockY; blockY <= hiBlockY; blockY++) {
+            if (blockX < 0 || blockX >= NUM_WATER_BLOCKS_ROWCOL || blockY < 0 || blockY >= NUM_WATER_BLOCKS_ROWCOL) {
+                //! Outside of the world everything at the water plane (`z = 0`) is water
+                if (minZ >= 0.0f || maxZ <= 0.0f) {
+                    continue;
+                }
+                CalcWaterPlaneIntersection();
+                if (ToBlockIdx(out->x) != blockX || ToBlockIdx(out->y) != blockY) {
+                    continue;
+                }
+                return true;
+            }
+
+            const auto& blockInfo = m_BlockPolyInfo[blockX][blockY];
+            switch (blockInfo.Type()) {
+            case PType::SINGLE_QUAD:
+                if (TestQuad(WaterQuads[blockInfo.Id()])) {
+                    return true;
+                }
+                break;
+            case PType::COMBO:
+                //! NOTE: Only quads are tested, triangles within a combo are skipped (As in the OG)
+                for (auto idx = blockInfo.Id(); m_PolyCombos[idx].Type() != PType::NONE; idx++) {
+                    if (m_PolyCombos[idx].Type() == PType::SINGLE_QUAD && TestQuad(WaterQuads[m_PolyCombos[idx].Id()])) {
+                        return true;
+                    }
+                }
+                break;
+            default: // `NONE`/`SINGLE_TRI`
+                break;
+            }
+        }
+    }
+
     return false;
 }
 

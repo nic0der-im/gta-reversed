@@ -8,6 +8,8 @@
 
 #include "Link.h"
 
+#include <new>
+
 template <typename T> class CLinkList {
 public:
     CLink<T>  usedListHead{};
@@ -16,12 +18,15 @@ public:
     CLink<T>  freeListTail{};
     CLink<T>* links{};
 
+    //! Both of these are the statically linked CRT `operator new`/`operator delete`
+    //! (The original's `0x821195` and `0x8213AE` are just jumps to the CRT routines that the
+    //! global `operator new`/`operator delete` of this project map to as well)
     void* operator new(size_t size) {
-        return plugin::CallAndReturn<void*, 0x821195, uint32>(size);
+        return ::operator new(size);
     }
 
     void operator delete(void* object) {
-        plugin::Call<0x8213AE, void*>(object);
+        ::operator delete(object);
     }
 
     void Init(int32 count) {

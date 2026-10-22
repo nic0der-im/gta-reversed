@@ -28,6 +28,7 @@
 #include "TaskComplexProstituteSolicit.h"
 
 auto& gbFirstPersonRunThisFrame = StaticRef<bool>(0xB6EC20);
+auto& gIdleCamFlags            = StaticRef<uint8>(0xC0B184); // See `Cam.h` for the bit meanings
 auto& gLastFrameProcessedDWCineyCam = StaticRef<uint32>(0x8CCB9C);
 static auto& s_DWCineyCamSceneEndTime = StaticRef<uint32>(0x8CCBA4);
 
@@ -176,6 +177,15 @@ struct DWHeliChaseState {
         zoomInFraction *= (float)CGeneral::GetRandomNumber() * randomScale * 1.5f + 0.5f;
     }
 };
+
+#ifdef NOTSA_NATIVE
+//! 0x84D770: the executable's initializer table constructs this state with 0x5173F0, which is
+//! `DWHeliChaseState::SetDefaults` (0x50E180). `StaticRef` storage is never constructed, so the
+//! row in `ExeData.manual.cpp` replays the constructor through this function.
+void ApplyDWHeliChaseStateDefaults() {
+    StaticRef<DWHeliChaseState>(0xB6FEC0).SetDefaults();
+}
+#endif
 
 // 0x5B2330
 static void FindSplinePathPositionFloat(float* output, const float* spline, float time, uint32* marker) {
@@ -1064,12 +1074,11 @@ void CCam::ClipBeta() {
 // 0x526FC0
 void CCam::Process() {
     auto& idleTime = gIdleCam.m_IdleTickerFrames;
-    auto& idleFlags = StaticRef<uint8>(0xC0B184);
     if ((float)idleTime <= gIdleCam.m_TimeControlsIdleForIdleToKickIn) {
-        idleFlags &= ~1;
+        gIdleCamFlags &= ~1;
     }
     if (TheCamera.GetActiveCam().m_nMode != MODE_FOLLOWPED) {
-        idleFlags &= ~1;
+        gIdleCamFlags &= ~1;
         idleTime = 0;
     }
     if (!m_pCamTargetEntity) {

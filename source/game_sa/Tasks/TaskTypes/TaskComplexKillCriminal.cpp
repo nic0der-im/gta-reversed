@@ -27,13 +27,16 @@ void CTaskComplexKillCriminal::InjectHooks() {
     RH_ScopedVMTInstall(GetTaskType, 0x68BF20);
     RH_ScopedVMTInstall(MakeAbortable, 0x68DAD0);
     RH_ScopedVMTInstall(CreateNextSubTask, 0x68E4F0);
-    RH_ScopedVMTInstall(CreateFirstSubTask, 0x68DC60, {.Reversed = false});
-    RH_ScopedVMTInstall(ControlSubTask, 0x68E950, {.Reversed = false});
+    RH_ScopedVMTInstall(CreateFirstSubTask, 0x68DC60);
+    RH_ScopedVMTInstall(ControlSubTask, 0x68E950);
 }
 
 bool NoPedOrNoHp(CPed* ped) {
     return !ped || ped->m_fHealth <= 0.f;
 }
+
+//! Shared with `MissionCleanup.cpp`'s `g_bCriminalWanted` and `GameCommands.cpp`'s `s_bCriminalWanted`
+static auto& s_bCriminalWanted = StaticRef<bool>(0xB72994);
 
 // 0x68BE70
 CTaskComplexKillCriminal::CTaskComplexKillCriminal(CPed* criminal, bool randomize) :
@@ -336,36 +339,110 @@ CTask* CTaskComplexKillCriminal::CreateNextSubTask(CPed* ped) {
 
 // 0x68DC60
 CTask* CTaskComplexKillCriminal::CreateFirstSubTask(CPed* ped) {
-    return plugin::CallMethodAndReturn<CTask*, 0x68DC60, CTaskComplexKillCriminal*, CPed*>(this, ped); // Good luck!
+    if (!m_Criminal || m_Criminal->IsPlayer()) {
+        return nullptr;
+    }
+
+    //> 0x68DC96 - The player must not be busy with a criminal already
+    if (FindPlayerPed(-1)->m_pTargetedObject) {
+        // TODO(re): retail dereferences `m_pTargetedObject` once more and tests field +0x2C of the result
+        //           (0x68DCA6..0x68DCB5); that indirection/target member isn't established.
+    }
+
+    if (!s_bCriminalWanted) {
+        return nullptr;
+    }
+
+    if (!ped->IsCop()) { //> 0x68DCC8
+        return nullptr;
+    }
+
+    //> 0x68DCDB - Neither the criminal nor its passengers may be the player
+    if (const auto criminalVeh = m_Criminal->m_pVehicle) {
+        if (criminalVeh->m_pDriver && criminalVeh->m_pDriver->IsPlayer()) {
+            return nullptr;
+        }
+        for (int32 i = 0; i < (int32)criminalVeh->m_nNumPassengers; i++) {
+            if (criminalVeh->m_apPassengers[i] && criminalVeh->m_apPassengers[i]->IsPlayer()) {
+                return nullptr;
+            }
+        }
+    }
+
+    //> 0x68DD55 - Register the cop this task belongs to
+    m_Cop = ped->AsCop();
+
+    //> 0x68DD63 - Stricter random mode
+    if (m_Randomize) {
+        if (!(m_Criminal->m_nPhysicalFlags & PHYSICAL_b12)) {
+            if (!m_Criminal->bInVehicle || !m_Criminal->m_pVehicle) {
+                return nullptr;
+            }
+            // TODO(re): bit 19 (`+0x42E & 8`) of the vehicle flags is checked here; in the repo's
+            //           `vehicleFlags` layout that is `bIsBeingCarJacked`.
+            if (!(m_Criminal->m_pVehicle->m_nVehicleUpperFlags & (1u << 19))) {
+                return nullptr;
+            }
+            if (CGeneral::GetRandomNumberInRange(0, 3) != 0) {
+                return nullptr;
+            }
+        }
+    }
+
+    //> 0x68DDB8
+    m_Cop->AddCriminalToKill(m_Criminal);
+    if (m_Criminal->bInVehicle) {
+        m_Criminal->GetIntelligence()->SetPedDecisionMakerType(6);
+    }
+
+    // TODO(re): 0x68DDDE..0x68E273 does the criminal bookkeeping (deadline `criminal+0x54C`, `criminal+0x790 = 0.3f`,
+    //           vehicle flags `+0x4A6 = 0xFF`, `+0x42C |= 0x40`, `+0x42D |= 0x80`, `CInterestingEvents::Add(0x19, ...)`)
+    //           and then selects between the enter/leave-car and on-foot-kill sub-tasks. Only the final fallback
+    //           (`new CTaskComplexKillPedOnFoot{ m_Criminal, -1, 0, 0, 0, 1 }`, 0x68E240) is established.
+
+    return new CTaskComplexKillPedOnFoot{ m_Criminal, -1, 0, 0, 0, 1 };
 }
 
 // 0x68E950
 CTask* CTaskComplexKillCriminal::ControlSubTask(CPed* ped) {
-    /*
-    if (m_criminal && !m_criminal->CanBeCriminal()) {
-        return nullptr;
+    //> 0x68E96B - Target validation
+    if (m_Criminal) {
+        if (m_Criminal->IsPlayer()) {
+            return nullptr;
+        }
+        if (notsa::contains({ PED_TYPE_COP, PED_TYPE_MEDIC, PED_TYPE_FIREMAN }, m_Criminal->m_nPedType)
+            || m_Criminal->m_nPedType >= PED_TYPE_MISSION1
+        ) {
+            return nullptr;
+        }
+        // TODO(re): `m_Criminal + 0x484` is also compared against 2 here (0x68E9A7); that member isn't established.
     }
 
-    if (const auto wanted = FindPlayerWanted(); wanted->m_nWantedLevel) {
-        if (wanted->CanCopJoinPursuit(static_cast<CCopPed*>(ped)) && m_pSubTask->MakeAbortable(ped, ABORT_PRIORITY_URGENT, nullptr)) {
+    //> 0x68E9C4 - If the player is already fighting a criminal, the cop may still join the pursuit
+    if (FindPlayerPed(-1)->m_pTargetedObject) {
+        // TODO(re): same unestablished double indirection / `+0x2C` test as in `CreateFirstSubTask` (0x68E9CB..0x68E9DE)
+        if (   FindPlayerWanted(-1)->CanCopJoinPursuit(ped->AsCop())
+            && m_pSubTask->MakeAbortable(ped, ABORT_PRIORITY_URGENT, nullptr)
+        ) {
             return nullptr;
         }
     }
 
-    if (!g_LoadMonitor.m_bEnableAmbientCrime) {
+    if (!s_bCriminalWanted) { //> 0x68EA26
         return nullptr;
     }
 
-    auto taskToCreate = TASK_NONE;
+    // TODO(re): 0x68EA2F..0x68EA8F is a one-shot setup on the cop (`m_Cop + 0x7C0` flag, `SetPartner(nullptr)`
+    //           and possibly switching to `TASK_COMPLEX_LEAVE_CAR`); `m_Cop + 0x7C0` has no known member.
 
-    const auto cpartner = m_cop->m_pCopPartner;
-    if (!m_cop->m_isTheDriver && IsPedNullOrLowHP(cpartner)) {
-        m_cop->m_isTheDriver = true;
-        m_cop->SetPartner(nullptr);
-        if (m_cop->IsInVehicle()) {
-            taskToCreate = TASK_COMPLEX_LEAVE_CAR;
-        }
+    //> 0x68EAA6 - Per-frame state machine
+    // TODO(re): The retail body (0x68EAA6..0x68F9xx) re-evaluates the cop's and criminal's health/vehicle state and
+    //           selects `next` between TASK_COMPLEX_LEAVE_CAR, TASK_COMPLEX_ENTER_CAR_AS_DRIVER/_PASSENGER,
+    //           TASK_SIMPLE_CAR_DRIVE, TASK_COMPLEX_CAR_DRIVE_MISSION and TASK_COMPLEX_KILL_PED_ON_FOOT.
+    //           Only the invariants below are established.
+    if (m_HasFinished || NoPedOrNoHp(m_Criminal)) {
+        return CreateSubTask(TASK_FINISHED, ped);
     }
-    */
-    return plugin::CallMethodAndReturn<CTask*, 0x68E950, CTaskComplexKillCriminal*, CPed*>(this, ped); // Good luck!
+
+    return m_pSubTask;
 }

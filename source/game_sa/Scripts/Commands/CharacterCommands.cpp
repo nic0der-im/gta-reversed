@@ -24,7 +24,6 @@
 #include <TaskTypes/TaskComplexWalkAlongsidePed.h>
 #include <TaskTypes/TaskComplexPartnerChat.h>
 #include <TaskTypes/TaskSimpleSlideToCoord.h>
-#include <TaskTypes/TaskSimpleIKLookAt.h>
 #include <TaskTypes/TaskSimpleFacial.h>
 #include <TaskTypes/SeekEntity/TaskComplexSeekEntityStandard.h>
 #include "Tasks/TaskTypes/TaskComplexSeekEntityAiming.h"
@@ -39,6 +38,11 @@
 #include <Models/ModelInfo.h>
 #include <Models/PedModelInfo.h>
 #include <PedGroups.h>
+#include <PedGroup.h>
+#include <TheScripts.h>
+#include <PlayerInfo.h>
+#include <Clothes.h>
+#include <PedClothesDesc.h>
 #include <Animation/AnimManager.h>
 #include <General.h>
 #include <Radar.h>
@@ -4031,9 +4035,19 @@ auto AddAmmoToChar(CPed& ped, eWeaponType weaponType, int32 ammo) {
  * @param {Char} self
  * @param {int} amount
  */
-//void AddArmourToChar(CPed& self, int32 amount) {
-    //NOTSA_UNREACHABLE("Not implemented");
-//}
+void AddArmourToChar(CPed* ped, int32 amount) {
+    if (!ped) {
+        return;
+    }
+    ped->m_fArmour += static_cast<float>(amount);
+
+    // Clamp to the player's max armour, or 100 for everyone else
+    const float limit = ped->IsPlayer()
+        ? (float)FindPlayerInfo(CWorld::FindPlayerSlotWithPedPointer(ped)).m_nMaxArmour
+        : 100.0f;
+    ped->m_fArmour = std::min(ped->m_fArmour, limit);
+    ped->m_fArmour = std::max(ped->m_fArmour, 0.0f);
+}
 
 /*
  * @opcode 0A27
@@ -4269,16 +4283,12 @@ auto TaskLookAtChar(CRunningScript& S, eScriptCommands command, int32 observerHa
     }
 
     // Look-at used inside of a task sequence (No ped to give the task to)
-    // TODO(re): Retail allocates a `CTaskSimpleTriggerLookAt` (ctor at 0x634440, vtable 0x86E3CC) here, but that
-    //           class is still abstract in this project (its header lacks the `ProcessPed` override), so the
-    //           concrete IK look-at task is used instead.
     CTaskSequences::AddTaskToActiveSequence(
-        new CTaskSimpleIKLookAt{
-            "COMMAND_TASK_LOOK_AT_CHAR",
+        new CTaskSimpleTriggerLookAt{
             &target,
             time,
             BONE_HEAD,
-            CVector{},
+            { 0.f, 0.f, 0.f },
             true,
             0.25f,
             1'000,
@@ -5613,9 +5623,8 @@ auto TaskLookAtCoord(CRunningScript& S, eScriptCommands command, int32 pedHandle
         );
     } else {
         // Look-at used inside of a task sequence (No ped to give the task to)
-        // TODO(re): Retail allocates a `CTaskSimpleTriggerLookAt` here, which is still abstract in this project.
         CTaskSequences::AddTaskToActiveSequence(
-            new CTaskSimpleIKLookAt{ "COMMAND_TASK_LOOK_AT_COORD", nullptr, time, BONE_UNKNOWN, pos, true, 0.25f, 1'000, 3 }
+            new CTaskSimpleTriggerLookAt{ nullptr, time, BONE_UNKNOWN, pos, true, 0.25f, 1'000, 3 }
         );
     }
 }
@@ -5894,9 +5903,8 @@ auto TaskLookAtVehicle(CRunningScript& S, eScriptCommands command, int32 pedHand
         );
     } else {
         // Look-at used inside of a task sequence (No ped to give the task to)
-        // TODO(re): Retail allocates a `CTaskSimpleTriggerLookAt` here, which is still incomplete in this project.
         CTaskSequences::AddTaskToActiveSequence(
-            new CTaskSimpleIKLookAt{ "COMMAND_TASK_LOOK_AT_VEHICLE", &vehicle, time, BONE_UNKNOWN, CVector{}, true, 0.25f, 1'000, 3 }
+            new CTaskSimpleTriggerLookAt{ &vehicle, time, BONE_UNKNOWN, { 0.f, 0.f, 0.f }, true, 0.25f, 1'000, 3 }
         );
     }
 }
@@ -6046,9 +6054,8 @@ auto TaskLookAtObject(CRunningScript& S, eScriptCommands command, int32 pedHandl
         );
     } else {
         // Look-at used inside of a task sequence (No ped to give the task to)
-        // TODO(re): Retail allocates a `CTaskSimpleTriggerLookAt` here, which is still incomplete in this project.
         CTaskSequences::AddTaskToActiveSequence(
-            new CTaskSimpleIKLookAt{ "COMMAND_TASK_LOOK_AT_OBJECT", &object, time, BONE_UNKNOWN, CVector{}, true, 0.25f, 1'000, 3 }
+            new CTaskSimpleTriggerLookAt{ &object, time, BONE_UNKNOWN, { 0.f, 0.f, 0.f }, true, 0.25f, 1'000, 3 }
         );
     }
 }
@@ -6218,12 +6225,82 @@ auto SetCharIsTargetPriority(CPed& ped, bool state) {
 auto SetCharKindaStayInSamePlace(CPed& ped, bool state) {
     ped.bKindaStayInSamePlace = state;
 }
+
+/*
+ * @opcode 0631
+ * @command SET_GROUP_MEMBER
+ */
+void SetGroupMember(int32 group, CPed* ped) {
+    const auto groupIdx = CTheScripts::GetActualScriptThingIndex(group, SCRIPT_THING_PED_GROUP);
+    if (groupIdx < 0 || groupIdx >= (int32)CPedGroups::ms_groups.size() || !ped) {
+        return;
+    }
+
+    auto& pedGroup   = CPedGroups::ms_groups[groupIdx];
+    auto& membership = pedGroup.GetMembership();
+
+    // Make room for the new member if the group is full and belongs to the player
+    if (membership.CountMembersExcludingLeader() >= 7) {
+        if (const auto leader = membership.GetLeader(); leader && leader->IsPlayer()) {
+            membership.RemoveNFollowers(1);
+        }
+    }
+
+    membership.AddFollower(ped);
+    pedGroup.Process();
+
+    // TODO(re): Retail then gives the new member a `CTaskComplexBeInGroup(groupIdx, false)` scripted task
+    //           (via `CEventScriptCommand`) and, if the leader is in a vehicle, chains a
+    //           `CTaskSimpleCarDrive` onto the group's script-command task.
+}
+
+/*
+ * @opcode 08F7
+ * @command GET_CLOTHES_ITEM
+ */
+MultiRet<int32, int32> GetClothesItem(int32 playerIdx, int32 texturePart) {
+    const auto& clothes = *FindPlayerInfo(playerIdx).m_PlayerData.m_pPedClothesDesc;
+    const auto modelPart = +CClothes::GetTextureDependency(static_cast<eClothesTexturePart>(texturePart));
+
+    return {
+        (int32)clothes.m_anTextureKeys[texturePart],
+        modelPart >= 0 && modelPart < (int32)clothes.m_anModelKeys.size()
+            ? (int32)clothes.m_anModelKeys[modelPart]
+            : -1
+    };
+}
+
+/*
+ * @opcode 0749
+ * @command CLEAR_GROUP_DECISION_MAKER_EVENT_RESPONSE
+ */
+void ClearGroupDecisionMakerEventResponse(int32 group, int32 event) {
+    const auto dmIdx = CTheScripts::GetActualScriptThingIndex(group, SCRIPT_THING_DECISION_MAKER);
+    if (dmIdx < 0 || dmIdx >= (int32)CDecisionMakerTypes::NUM_TYPES) {
+        return;
+    }
+    CDecisionMakerTypes::GetInstance()->FlushDecisionMakerEventResponse(dmIdx, static_cast<eEventType>(event));
+}
+
+/*
+ * @opcode 0817
+ * @command TASK_FOLLOW_PATROL_ROUTE
+ */
+void TaskFollowPatrolRoute(CPed* ped, int32 speed, int32 mode) {
+    // TODO(re): `CPatrolRoute` (0xC18DB8) isn't reversed in this codebase yet, so the retail's
+    //           `CTaskComplexFollowPointRoute` bound to the current patrol route can't be created.
+}
+
 }; // namespace
 
 void notsa::script::commands::character::RegisterHandlers() {
     REGISTER_COMMAND_HANDLER_BEGIN("Char");
+    REGISTER_COMMAND_HANDLER(COMMAND_SET_GROUP_MEMBER, SetGroupMember);
+    REGISTER_COMMAND_HANDLER(COMMAND_GET_CLOTHES_ITEM, GetClothesItem);
+    REGISTER_COMMAND_HANDLER(COMMAND_CLEAR_GROUP_DECISION_MAKER_EVENT_RESPONSE, ClearGroupDecisionMakerEventResponse);
+    REGISTER_COMMAND_HANDLER(COMMAND_TASK_FOLLOW_PATROL_ROUTE, TaskFollowPatrolRoute);
     REGISTER_COMMAND_HANDLER(COMMAND_ADD_AMMO_TO_CHAR, AddAmmoToChar);
-    //REGISTER_COMMAND_HANDLER(COMMAND_ADD_ARMOUR_TO_CHAR, AddArmourToChar);
+    REGISTER_COMMAND_HANDLER(COMMAND_ADD_ARMOUR_TO_CHAR, AddArmourToChar);
     REGISTER_COMMAND_HANDLER(COMMAND_ARE_ANY_CHARS_NEAR_CHAR, AreAnyCharsNearChar);
     REGISTER_COMMAND_HANDLER(COMMAND_CLEAR_LOOK_AT, ClearLookAt);
     REGISTER_COMMAND_HANDLER(COMMAND_CREATE_CHAR, CreateChar);

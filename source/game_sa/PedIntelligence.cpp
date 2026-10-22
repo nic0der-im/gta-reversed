@@ -97,6 +97,7 @@ void CPedIntelligence::InjectHooks()
     RH_ScopedInstall(ProcessFirst, 0x6073A0);
     RH_ScopedInstall(Process, 0x608260);
     RH_ScopedInstall(GetActivePrimaryTask, 0x4B85B0);
+    RH_ScopedInstall(IncrementAngerAtPlayer, 0x421050);
 }
 
 // 0x607140
