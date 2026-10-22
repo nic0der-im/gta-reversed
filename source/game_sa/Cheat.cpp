@@ -126,6 +126,28 @@ const Cheat cheats[] = {
         { 0x0, nullptr, "", 0x2bdd2fa1, CHEAT_ALL_TAXIS_NITRO },
 };
 
+#ifdef NOTSA_NATIVE
+//! The executable keeps both cheat tables in its `.data` as file bytes, which the native build has
+//! no copy of, and rewrites the function pointers from `cheats[]` after installing the hooks.
+//! The native tables are therefore built from `cheats[]` itself: every cheat the project has a
+//! function for gets it, and the entries the executable leaves null stay null.
+std::array<void (*)(), TOTAL_CHEATS> CCheat::m_aCheatFunctionsX = [] {
+    std::array<void (*)(), TOTAL_CHEATS> table{};
+    for (const auto& cheat : cheats) {
+        table[(size_t)cheat.type] = cheat.method;
+    }
+    return table;
+}();
+
+std::array<int32, TOTAL_CHEATS> CCheat::m_aCheatHashKeysX = [] {
+    std::array<int32, TOTAL_CHEATS> table{};
+    for (const auto& cheat : cheats) {
+        table[(size_t)cheat.type] = static_cast<int32>(cheat.hash);
+    }
+    return table;
+}();
+#endif
+
 // 0x438480
 void CCheat::AddToCheatString(char LastPressedKey) {
     if (CCutsceneMgr::ms_running) {

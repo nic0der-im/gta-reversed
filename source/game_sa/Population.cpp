@@ -41,6 +41,242 @@
 #define POP_LOG_DEBUG(...)
 #endif
 
+//! Model ids of the objects spawned by `CreateBeachProp` (towels are 1-4, props are 6-10)
+static auto& ms_nBeachPropModel1  = StaticRef<uint16>(0x8CD638); // TODO(re): original names unknown
+static auto& ms_nBeachPropModel2  = StaticRef<uint16>(0x8CD67C);
+static auto& ms_nBeachPropModel3  = StaticRef<uint16>(0x8CD680);
+static auto& ms_nBeachPropModel4  = StaticRef<uint16>(0x8CD684);
+static auto& ms_nBeachPropModel6  = StaticRef<uint16>(0x8CD688);
+static auto& ms_nBeachPropModel7  = StaticRef<uint16>(0x8CD68C);
+static auto& ms_nBeachPropModel8  = StaticRef<uint16>(0x8CD690);
+static auto& ms_nBeachPropModel9  = StaticRef<uint16>(0x8CD694);
+static auto& ms_nBeachPropModel10 = StaticRef<uint16>(0x8CD698);
+
+// 0x610DB0
+//! A random number of gang members to spawn (`1` to `8`, OG includes `5 * 2 / 5` style truncation)
+static int32 GetRandomGangMemberCount() {
+    return 1 + (int32)((float)(rand() & 0xFFFF) * (1.0f / 32768.0f) * 4.0f);
+}
+
+// 0x62F2D0
+//! Is the given weather type a "sunny" one?
+static bool IsSunnyWeatherType(int32 weatherType) {
+    return weatherType == 0
+        || weatherType == 2
+        || weatherType == 13
+        || weatherType == 6
+        || weatherType == 11
+        || weatherType == 17;
+}
+
+// 0x632140
+//! Is it warm and sunny enough for people to lie on the beach?
+static bool IsSunbathingWeather() {
+    if (CClock::ms_nGameClockHours < 10 || CClock::ms_nGameClockHours > 17) {
+        return false;
+    }
+
+    const auto weather = (int32)CWeather::NewWeatherType;
+    switch (weather) {
+    case 1: case 3: case 14: case 5: case 10: case 18:
+        return true;
+    default:
+        return IsSunnyWeatherType(weather);
+    }
+}
+
+// 0x44DA30
+//! Jitter a position laterally within the (smallest) width of the two nodes it lies between
+static void JitterPosBetweenNodes(CPathFind& pathFind, CNodeAddress a, CNodeAddress b, uint32 rnd, float* x, float* y) {
+    if (a.m_wAreaId == (uint16)-1 || b.m_wAreaId == (uint16)-1) {
+        return;
+    }
+
+    const CPathNode* nodeA = pathFind.m_pPathNodes[a.m_wAreaId];
+    const CPathNode* nodeB = pathFind.m_pPathNodes[b.m_wAreaId];
+    if (!nodeA || !nodeB) {
+        return;
+    }
+
+    nodeA = &nodeA[a.m_wNodeId];
+    nodeB = &nodeB[b.m_wNodeId];
+
+    const uint8 width = std::min(nodeA->m_nPathWidth, nodeB->m_nPathWidth);
+
+    *x += (float)(int32)((((int32)rnd & 0xF) - 7) * (uint32)width) * 0.00775f;
+    *y += (float)(int32)(((((int32)rnd >> 4) & 0xF) - 7) * (uint32)width) * 0.00775f;
+}
+
+// 0x44E790
+//! Find a random position on a path, between two connected nodes, around `(x, y)`
+static bool FindSpawnPosBetweenNodes(
+    float x, float y, float minD, float maxD, float minDClose, float maxDClose,
+    CVector* outPos, CNodeAddress* outA, CNodeAddress* outB, float* outT,
+    bool allowDeadEnds, RwMatrix* cullMatrix
+) {
+    auto& pathFind = ThePaths;
+
+    const float maxDSq = (maxD + 30.0f) * (maxD + 30.0f);
+    const int32 rnd    = (int32)((float)(rand() & 0xFFFF) * (1.0f / 32768.0f) * 15.0f);
+    const auto  region = pathFind.FindRegionForCoors(CVector2D{ x, y });
+
+    for (int32 attempt = 0; attempt < 300; attempt++) {
+        if (!pathFind.m_pPathNodes[region] || !pathFind.m_anNumPedNodes[region]) {
+            return false;
+        }
+
+        const auto* nodeA = &pathFind.m_pPathNodes[region][(rand() % pathFind.m_anNumPedNodes[region]) + pathFind.m_anNumVehicleNodes[region]];
+
+        const CVector posA = nodeA->GetPosition();
+
+        const float distSq = sq(posA.x - x) + sq(posA.y - y);
+        if (distSq >= maxDSq) {
+            continue;
+        }
+        if (rnd >= (int32)nodeA->m_nSpawnProbability) {
+            continue;
+        }
+
+        for (auto l = 0u; l < nodeA->m_nNumLinks; l++) {
+            const auto linkIdx = (int32)nodeA->m_wBaseLinkId + (int32)l;
+
+            if (pathFind.m_pPathIntersections[region][linkIdx].m_bRoadCross) {
+                continue;
+            }
+
+            const CNodeAddress addrB = pathFind.m_pNodeLinks[region][linkIdx];
+            if (addrB.m_wAreaId >= 0x40) {
+                continue;
+            }
+
+            const auto* nodeBBase = pathFind.m_pPathNodes[addrB.m_wAreaId];
+            if (!nodeBBase) {
+                continue;
+            }
+            const auto* nodeB = &nodeBBase[addrB.m_wNodeId];
+
+            if (!((!nodeA->m_onDeadEnd && !nodeB->m_onDeadEnd) || allowDeadEnds)) {
+                continue;
+            }
+            if (rnd >= (int32)nodeB->m_nSpawnProbability) {
+                continue;
+            }
+
+            const CVector posB = nodeB->GetPosition();
+
+            if (std::sqrt(distSq) >= maxD
+                && std::sqrt((posA.x - x) * (posB.x - x) + (posA.y - y) * (posB.y - y)) >= maxD
+            ) {
+                continue;
+            }
+
+            for (int32 i = 0; i < 5; i++) {
+                const float t = (float)(rand() & 0xFF) * (1.0f / 256.0f);
+                *outT = t;
+
+                CVector pos = lerp(posA, posB, t);
+                const float dist = std::sqrt(sq(pos.x - x) + sq(pos.y - y));
+
+                const bool visible = cullMatrix
+                    ? TheCamera.IsSphereVisible(pos, 2.0f, cullMatrix)
+                    : TheCamera.IsSphereVisible(pos, 2.0f);
+
+                if (visible) {
+                    if (!(minD < dist && dist < maxD)) {
+                        continue;
+                    }
+                } else {
+                    if (!(minDClose < dist && dist < maxDClose) || !(rand() & 1)) {
+                        continue;
+                    }
+                }
+
+                *outA   = nodeA->GetAddress();
+                *outB   = nodeB->GetAddress();
+                *outPos = pos;
+
+                bool groundHit{};
+                const float groundZ = CWorld::FindGroundZFor3DCoord(pos + CVector{ 0.0f, 0.0f, 2.0f }, &groundHit, nullptr);
+                if (groundHit) {
+                    if (std::abs(groundZ - pos.z) <= 3.0f) {
+                        outPos->z = groundZ;
+                        return true;
+                    }
+                    return false;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+// 0x6EABA0
+//! Spawn a beach prop (towel, umbrella, ...) of the given type at `pos`
+static CObject* CreateBeachProp(CVector* pos, int32 type) {
+    if (CObject::nNoTempObjects > 149) {
+        return nullptr;
+    }
+
+    bool useAlphaFlag{};
+    switch (type) {
+    case 5: // Any towel
+        switch (rand() & 7) {
+        case 1: case 7: type = 2; break;
+        case 3: case 5: type = 4; break;
+        default:        type = 3; break;
+        }
+        break;
+    case 11: // Any prop
+        switch (rand() & 7) {
+        case 1: case 7: type = 8;  break;
+        case 2: case 6: type = 9;  break;
+        case 3: case 5: type = 10; break;
+        default:        type = 7;  break;
+        }
+        if (CObject::nNoTempObjects > 144) {
+            return nullptr;
+        }
+        break;
+    }
+
+    uint16 modelId{};
+    switch (type) {
+    case 1:  modelId = ms_nBeachPropModel1;  useAlphaFlag = false; break;
+    case 2:  modelId = ms_nBeachPropModel2;  useAlphaFlag = false; break;
+    case 3:  modelId = ms_nBeachPropModel3;  useAlphaFlag = false; break;
+    case 4:  modelId = ms_nBeachPropModel4;  useAlphaFlag = false; break;
+    case 6:  modelId = ms_nBeachPropModel6;  useAlphaFlag = true;  break;
+    case 7:  modelId = ms_nBeachPropModel7;  useAlphaFlag = true;  break;
+    case 8:  modelId = ms_nBeachPropModel8;  useAlphaFlag = true;  break;
+    case 9:  modelId = ms_nBeachPropModel9;  useAlphaFlag = true;  break;
+    case 10: modelId = ms_nBeachPropModel10; useAlphaFlag = true;  break;
+    default: modelId = ms_nBeachPropModel1;  useAlphaFlag = false; break;
+    }
+
+    CObject* const obj = new CObject{ (int32)modelId, true };
+    if (!obj) {
+        return nullptr;
+    }
+
+    obj->SetPosn(*pos);
+    if (obj->GetRwObject()) {
+        obj->UpdateRwMatrix();
+    }
+
+    obj->m_nObjectType  = OBJECT_TEMPORARY;
+    obj->m_nRemovalTime = CTimer::GetTimeInMS() + 43'200'000; // 12 hours
+    // TODO(re): OG also calls the virtual at vtable+0x10 with `useAlphaFlag` here; that slot couldn't
+    // be identified in this build's class hierarchy, so the flag isn't applied.
+    (void)useAlphaFlag;
+
+    CObject::nNoTempObjects++;
+
+    CWorld::Add(obj);
+    return obj;
+}
+
+
 void CPopulation::InjectHooks() {
     RH_ScopedClass(CPopulation);
     RH_ScopedCategoryGlobal();
@@ -1650,7 +1886,7 @@ bool CPopulation::AddToPopulation(float minDist, float maxDist, float minDistClo
             pedType = (ePedType)m_AllRandomPedsThisType;
         }
 
-        numPeds = IsPedTypeGang(pedType) ? plugin::CallAndReturn<int32, 0x610DB0>() : 1;
+        numPeds = IsPedTypeGang(pedType) ? GetRandomGangMemberCount() : 1;
     } else if (forceCop) {
         pedType = PED_TYPE_COP;
         model   = (eModelID)COP_TYPE_CITYCOP; // For cops this is the cop type, not a model id (See `ChoosePolicePedOccupation`)
@@ -1671,8 +1907,8 @@ bool CPopulation::AddToPopulation(float minDist, float maxDist, float minDistClo
     CVector     spawnPos;
     CNodeAddress nodeA, nodeB;
     float       unusedRandFactor{};
-    if (!plugin::CallMethodAndReturn<bool, 0x44E790, CPathFind*, float, float, float, float, float, float, CVector*, CNodeAddress*, CNodeAddress*, float*, bool, bool>(
-            &ThePaths, playerPos.x, playerPos.y, minD, maxD, minDistClose, maxDistClose, &spawnPos, &nodeA, &nodeB, &unusedRandFactor, isWantedCop, false
+    if (!FindSpawnPosBetweenNodes(
+            playerPos.x, playerPos.y, minD, maxD, minDistClose, maxDistClose, &spawnPos, &nodeA, &nodeB, &unusedRandFactor, isWantedCop, nullptr
         )
     ) {
         return belowTarget;
@@ -1688,9 +1924,7 @@ bool CPopulation::AddToPopulation(float minDist, float maxDist, float minDistClo
     }
 
     // Jitter the position within the width of the path
-    plugin::CallMethod<0x44DA30, CPathFind*, CNodeAddress, CNodeAddress, int32, float*, float*>(
-        &ThePaths, nodeA, nodeB, rand(), &spawnPos.x, &spawnPos.y
-    );
+    JitterPosBetweenNodes(ThePaths, nodeA, nodeB, rand(), &spawnPos.x, &spawnPos.y);
 
     if (IsPedTypeGang(pedType)) {
         PlaceGangMembers(pedType, numPeds, spawnPos);
@@ -1884,7 +2118,7 @@ bool CPopulation::AddToPopulation(float minDist, float maxDist, float minDistClo
             if (!(g_surfaceInfos.IsBeach(surface) || surface == SURFACE_CONCRETE_BEACH || surface == SURFACE_PARKGRASS || CCheat::m_aCheatsActive[CHEAT_BEACH_PARTY])) {
                 return eSunbatheResult::DefaultTasks;
             }
-            if (!plugin::CallAndReturn<bool, 0x632140>() && !CCheat::m_aCheatsActive[CHEAT_BEACH_PARTY]) {
+            if (!IsSunbathingWeather() && !CCheat::m_aCheatsActive[CHEAT_BEACH_PARTY]) {
                 return eSunbatheResult::DefaultTasks;
             }
 
@@ -1921,7 +2155,7 @@ bool CPopulation::AddToPopulation(float minDist, float maxDist, float minDistClo
             CObject* towel{};
             if (onSand) {
                 CVector towelPos{pedPos.x, pedPos.y, groundColPoint.m_vecPoint.z + 0.04f};
-                towel = plugin::CallAndReturn<CObject*, 0x6EABA0, CVector*, int32>(&towelPos, 11);
+                towel = CreateBeachProp(&towelPos, 11);
                 if (towel) {
                     towel->SetHeading(heading);
 
@@ -1938,7 +2172,7 @@ bool CPopulation::AddToPopulation(float minDist, float maxDist, float minDistClo
                         CVector propPos = towelPos;
                         propPos += towelMat.GetRight()   * CGeneral::GetRandomNumberInRange(-0.5f, 0.5f);
                         propPos += towelMat.GetForward() * CGeneral::GetRandomNumberInRange(-1.f, 1.f);
-                        plugin::CallAndReturn<CObject*, 0x6EABA0, CVector*, int32>(&propPos, 6);
+                        CreateBeachProp(&propPos, 6);
                     }
                 }
             }

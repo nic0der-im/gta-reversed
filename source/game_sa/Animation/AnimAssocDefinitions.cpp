@@ -6,7 +6,7 @@
 
 //             animsCount,   anims
 #define awc(a) std::size(a), a
-std::array<AnimAssocDefinition, NUM_ANIM_ASSOC_GROUPS> CAnimManager::ms_aAnimAssocDefinitionsX{{ // 0x8AA5A8
+std::array<AnimAssocDefinition, ANIM_TOTAL_GROUPS> CAnimManager::ms_aAnimAssocDefinitionsX{{ // 0x8AA5A8
     { "default",            "ped",           MODEL_MALE01,  awc(aStdAnimations),                aStdAnimDescs          },
     { "door",               "ped",           MODEL_INVALID, awc(aDoorAnimations),               aDoorDescs             },
     { "bikes",              "bikes",         MODEL_MALE01,  awc(aBikesAnimations),              aBikesDescs            },

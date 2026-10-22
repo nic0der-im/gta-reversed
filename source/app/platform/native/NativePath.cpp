@@ -43,6 +43,12 @@ std::string notsa::native::NormalizePath(std::string_view path) {
     }
 
     std::string normalized{path};
+    // The game's line readers turn CR/LF/commas into spaces and only trim the front,
+    // so paths routinely arrive with trailing blanks. Windows' file APIs ignore them;
+    // POSIX does not.
+    while (!normalized.empty() && (normalized.back() == ' ' || normalized.back() == '\t')) {
+        normalized.pop_back();
+    }
     std::replace(normalized.begin(), normalized.end(), '\\', '/');
 
     std::error_code ec;

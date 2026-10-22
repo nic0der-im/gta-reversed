@@ -242,6 +242,28 @@ missing - both produce the same table), and emits
 replays the table through `ExeGlobals`; the startup log line is
 `ExeData: applied 1513 rows (18200 bytes), 5 manual, 54 skipped, 96 constructors not applied, 3 unhandled`.
 
+### File-backed `.data` with no initializer entry
+
+Only the initializer table is replayed, so a table the executable carries as raw `.data` bytes and
+never initializes is all-zero in the native build. When such a table holds pointers (and its 32-bit
+layout is therefore unusable anyway), the C++ `...X` replacement declared next to the `StaticRef`
+has to be used directly instead of the executable address:
+
+```cpp
+#ifdef NOTSA_NATIVE
+    static inline auto& ms_aAnimAssocDefinitions = ms_aAnimAssocDefinitionsX;
+#else
+    static inline auto& ms_aAnimAssocDefinitions = StaticRef<AnimAssocDefinition[...]>(0x8AA5A8);
+#endif
+```
+
+Size the replacement for the native element layout and for what the game appends at runtime
+(`CAnimManager::ms_aAnimAssocDefinitionsX` needs `ANIM_TOTAL_GROUPS` entries, not
+`NUM_ANIM_ASSOC_GROUPS`: `ANIMGRP.DAT` adds `ANIM_GROUP_MAN`..`ANIM_GROUP_SKATE`). Do not keep the
+executable address with a widened array - the native stride would run into the next globals
+(`CutsceneMgr::ms_useCutsceneShadows` at `0x8AC158` and `AEAmbienceTrackManager` at `0x8AC15C`
+for the animation definitions).
+
 ### How an entry is decoded
 
 Each body runs in a small concrete interpreter (registers incl. 8/16-bit halves, stack, flags,

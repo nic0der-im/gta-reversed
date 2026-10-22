@@ -17,10 +17,17 @@ enum eTrafficLightsDirection {
 
 class CTrafficLights {
 private:
+#ifdef NOTSA_NATIVE
+    //! File-backed defaults of the executable's `.data`; the native build defines them itself.
+    static inline std::array<uint8, 3> aTrafficLightColoursR = { 0, 255, 255 };
+    static inline std::array<uint8, 3> aTrafficLightColoursG = { 255, 128, 0 };
+    static inline float fLightMult = 0.0015686274f;
+#else
     static inline auto& aTrafficLightColoursR = StaticRef<std::array<uint8, 3>>(0x8A6214);
     static inline auto& aTrafficLightColoursG = StaticRef<std::array<uint8, 3>>(0x8A6218);
-    static inline auto& aTrafficLightColoursB = StaticRef<std::array<uint8, 3>>(0xA9AD94);
     static inline auto& fLightMult = StaticRef<float>(0x8A621C);
+#endif
+    static inline auto& aTrafficLightColoursB = StaticRef<std::array<uint8, 3>>(0xA9AD94);
 
     static inline auto& vecTrafficLights5_1 = StaticRef<CVector>(0xA9ADD4);
     static inline auto& vecTrafficLights5_2 = StaticRef<CVector>(0xA9ADC8);

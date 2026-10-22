@@ -63,7 +63,11 @@ public:
     };
 
 public:
+#ifdef NOTSA_NATIVE
+    static inline int8 ms_useCutsceneShadows = 1; // File-backed default in the executable's `.data`
+#else
     static inline auto& ms_useCutsceneShadows = StaticRef<int8>(0x8AC158);
+#endif
     static inline auto& numPlayerWeaponsToRestore = StaticRef<int32>(0xB5EB58);
 
     static inline auto& playerWeaponsToRestore_Ammo = StaticRef<std::array<int32, 13>>(0xB5EB5C); // TODO: Where does the 13 number come from? 

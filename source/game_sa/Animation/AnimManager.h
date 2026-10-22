@@ -21,8 +21,15 @@ constexpr auto NUM_ANIM_BLOCKS = 180;
 
 class CAnimManager {
 private:
-    static std::array<AnimAssocDefinition, NUM_ANIM_ASSOC_GROUPS> ms_aAnimAssocDefinitionsX; // replacement
+    //! Holds the `NUM_ANIM_ASSOC_GROUPS` built-in groups followed by the ones `ANIMGRP.DAT` appends (ANIM_GROUP_MAN .. ANIM_GROUP_SKATE)
+    static std::array<AnimAssocDefinition, ANIM_TOTAL_GROUPS> ms_aAnimAssocDefinitionsX; // replacement
+#ifdef NOTSA_NATIVE
+    //! The executable's `.data` holds these definitions, but the native build has no file bytes for
+    //! them (see `ExeGlobals.h`), so it uses the replacement table directly.
+    static inline auto& ms_aAnimAssocDefinitions = ms_aAnimAssocDefinitionsX;
+#else
     static inline auto& ms_aAnimAssocDefinitions = StaticRef<AnimAssocDefinition[NUM_ANIM_ASSOC_GROUPS]>(0x8AA5A8); // std::array - see SurfaceInfos_c
+#endif
     static inline auto& ms_numAnimAssocDefinitions = StaticRef<uint32>(0xB4EA28);
 
     static inline auto& ms_aAnimAssocGroups = StaticRef<CAnimBlendAssocGroup*>(0xB4EA34);
@@ -108,7 +115,7 @@ public:
 
     static auto GetAnimBlocks() { return ms_aAnimBlocks | rng::views::take(ms_numAnimBlocks); }
     static auto GetAssocGroups() { return std::span{ms_aAnimAssocGroups, ms_numAnimAssocDefinitions}; }
-    static auto GetAssocGroupDefs() { return std::span{ms_aAnimAssocDefinitions, ms_numAnimAssocDefinitions}; }
+    static auto GetAssocGroupDefs() { return std::span{std::data(ms_aAnimAssocDefinitions), (size_t)ms_numAnimAssocDefinitions}; }
 
     static void StreamAnimBlock(const char* blck, bool shouldBeLoaded, bool& isLoaded);
 private:

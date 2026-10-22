@@ -177,7 +177,11 @@ public:
     };
 
     static inline auto& Mode = StaticRef<eReplayMode>(0xA43088);
+#ifdef NOTSA_NATIVE
+    static inline bool bReplayEnabled = true; // File-backed default in the executable's `.data`
+#else
     static inline auto& bReplayEnabled = StaticRef<bool>(0x8A6160);
+#endif
     static inline auto& bPlayingBackFromFile = StaticRef<bool>(0x97FAE1);
     static inline auto& bAllowLookAroundCam = StaticRef<bool>(0x97FAE0);
     static inline auto& bDoLoadSceneWhenDone = StaticRef<bool>(0x97FACC);

@@ -13,11 +13,23 @@
 
 auto& vehicleTxd = StaticRef<RwTexDictionary*>(0xB4E688);
 auto& carFrame = StaticRef<RwFrame*>(0xB4E6B8);
-auto& gLightSurfProps = StaticRef<RwSurfaceProperties>(0x8A645C);
 auto& gRestoreEntries = StaticRef<tRestoreEntry[NUM_RESTORE_ENTRIES]>(0xB4DBE8);
 auto& gpWhiteTexture = StaticRef<RwTexture*>(0xB4E3EC);
+#ifdef NOTSA_NATIVE
+//! File-backed defaults of the executable's `.data`; the native build defines them itself.
+namespace {
+RwSurfaceProperties gLightSurfPropsX = { 16.0f, 0.0f, 0.0f }; // 0x8A645C
+float fEnvMapDefaultCoeffX = 0.25f;                            // 0x8A7780
+float fRearDoubleWheelOffsetFactorX = 1.15f;                   // 0x8A7784
+}
+RwSurfaceProperties& gLightSurfProps = gLightSurfPropsX;
+float& fEnvMapDefaultCoeff = fEnvMapDefaultCoeffX;
+float& fRearDoubleWheelOffsetFactor = fRearDoubleWheelOffsetFactorX;
+#else
+auto& gLightSurfProps = StaticRef<RwSurfaceProperties>(0x8A645C);
 auto& fEnvMapDefaultCoeff = StaticRef<float>(0x8A7780);
 auto& fRearDoubleWheelOffsetFactor = StaticRef<float>(0x8A7784);
+#endif
 
 void CVehicleModelInfo::InjectHooks()
 {

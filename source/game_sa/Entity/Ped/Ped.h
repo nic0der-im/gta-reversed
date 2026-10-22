@@ -452,7 +452,7 @@ public:
     bool PositionPedOutOfCollision(int32 exitDoor, CVehicle* vehicle, bool findClosestNode);
     bool PositionAnyPedOutOfCollision();
     bool OurPedCanSeeThisEntity(CEntity* entity, bool isSpotted);
-    void SortPeds(CPed** pedList, int32 arg1, int32 arg2);
+    void SortPeds(CPed** pedList, int32 left, int32 right);
     void ClearLookFlag();
     float WorkOutHeadingForMovingFirstPerson(float heading);
     void UpdatePosition();

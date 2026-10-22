@@ -4,6 +4,8 @@
 #include "AEAudioHardware.h"
 #include "AEAudioUtility.h"
 
+#include "AECollisionAudioEntity.CollisionLookup.h"
+
 void CAEPedAudioEntity::InjectHooks() {
     RH_ScopedClass(CAEPedAudioEntity);
     RH_ScopedCategory("Audio/Entities");
@@ -23,13 +25,13 @@ void CAEPedAudioEntity::InjectHooks() {
     RH_ScopedInstall(HandleFootstepEvent, 0x4E13A0);
     RH_ScopedInstall(HandleSkateEvent, 0x4E17E0);
     RH_ScopedInstall(HandleLandingEvent, 0x4E18E0);
-    RH_ScopedInstall(HandlePedSwing, 0x4E1A40, { .Reversed = false });
-    RH_ScopedInstall(HandlePedHit, 0x4E1CC0, { .Reversed = false });
-    RH_ScopedInstall(HandlePedJacked, 0x4E2350, { .Reversed = false });
+    RH_ScopedInstall(HandlePedSwing, 0x4E1A40);
+    RH_ScopedInstall(HandlePedHit, 0x4E1CC0);
+    RH_ScopedInstall(HandlePedJacked, 0x4E2350);
     RH_ScopedInstall(HandleSwimSplash, 0x4E26A0);
     RH_ScopedInstall(HandleSwimWake, 0x4E2790);
     RH_ScopedInstall(PlayShirtFlap, 0x4E2A90);
-    RH_ScopedInstall(Service, 0x4E2EE0, { .Reversed = false });
+    RH_ScopedInstall(Service, 0x4E2EE0);
 }
 
 // 0x5DE8D0
@@ -497,17 +499,507 @@ void CAEPedAudioEntity::HandleLandingEvent(eAudioEvents event) {
 
 // 0x4E1A40
 void CAEPedAudioEntity::HandlePedSwing(eAudioEvents event, int32 a3, uint32 volume) {
-    plugin::CallMethod<0x4E1A40, CAEPedAudioEntity*, int32, int32, uint32>(this, event, a3, volume);
+    // NOTE: `volume` is really the sound's duration in milliseconds
+
+    if (!AEAudioHardware.EnsureSoundBankIsLoaded(SND_BANK_GENRL_WEAPONS, SND_BANK_SLOT_WEAPON_GEN, true)) {
+        return;
+    }
+
+    const auto& weapon     = m_pPed->GetActiveWeapon();
+    const auto  baseVolume = GetDefaultVolume(event);
+
+    eSoundID soundId      = (eSoundID)-1;
+    float    volumeOffset = 0.f;
+    float    speed        = 1.f;
+
+    switch (weapon.m_Type) {
+    case WEAPON_UNARMED:
+    case WEAPON_BRASSKNUCKLE:
+    case WEAPON_CHAINSAW:
+    case WEAPON_FLOWERS:
+    case WEAPON_GRENADE:
+    case WEAPON_TEARGAS:
+    case WEAPON_MOLOTOV:
+    case WEAPON_PISTOL:
+    case WEAPON_PISTOL_SILENCED:
+    case WEAPON_DESERT_EAGLE:
+    case WEAPON_SHOTGUN:
+    case WEAPON_SAWNOFF_SHOTGUN:
+    case WEAPON_SPAS12_SHOTGUN:
+    case WEAPON_MICRO_UZI:
+    case WEAPON_MP5:
+    case WEAPON_AK47:
+    case WEAPON_M4:
+    case WEAPON_TEC9:
+    case WEAPON_COUNTRYRIFLE:
+    case WEAPON_SNIPERRIFLE:
+    case WEAPON_FLAMETHROWER:
+    case WEAPON_MINIGUN:
+    case WEAPON_REMOTE_SATCHEL_CHARGE:
+    case WEAPON_DETONATOR:
+    case WEAPON_SPRAYCAN:
+    case WEAPON_EXTINGUISHER:
+    case WEAPON_CAMERA:
+    case WEAPON_NIGHTVISION:
+    case WEAPON_INFRARED:
+        soundId      = SND_GENRL_WEAPONS_WEAPON_SWIPE_FIST;
+        volumeOffset = -6.f;
+        speed        = 0.84f;
+        break;
+    case WEAPON_GOLFCLUB:
+    case WEAPON_CANE:
+        soundId = SND_GENRL_WEAPONS_CANE_SWISH;
+        break;
+    case WEAPON_NIGHTSTICK:
+    case WEAPON_POOL_CUE:
+        soundId = SND_GENRL_WEAPONS_WEAPON_SWIPE;
+        speed   = 0.84f;
+        break;
+    case WEAPON_KNIFE:
+    case WEAPON_KATANA:
+        soundId      = SND_GENRL_WEAPONS_WEAPON_SWIPE_METAL;
+        volumeOffset = -3.f;
+        break;
+    case WEAPON_BASEBALLBAT:
+    case WEAPON_SHOVEL:
+        soundId = SND_GENRL_WEAPONS_WEAPON_SWIPE;
+        speed   = 0.67f;
+        break;
+    case WEAPON_DILDO1:
+    case WEAPON_DILDO2:
+    case WEAPON_VIBE1:
+    case WEAPON_VIBE2:
+        soundId      = SND_GENRL_WEAPONS_WEAPON_SWIPE;
+        volumeOffset = -6.f;
+        speed        = 0.84f;
+        break;
+    default: // Rocket launchers & co. have no swing sound
+        break;
+    }
+
+    // The previously played event overrides the weapon's sound
+    switch (a3) {
+    case AE_PED_HIT_GROUND_KICK:
+    case AE_PED_HIT_HIGH_UNARMED:
+    case AE_PED_HIT_LOW_UNARMED:
+        soundId      = SND_GENRL_WEAPONS_WEAPON_SWIPE_FIST;
+        volumeOffset = -6.f;
+        speed        = 0.84f;
+        break;
+    case AE_PED_HIT_MARTIAL_PUNCH:
+    case AE_PED_HIT_MARTIAL_KICK:
+        soundId      = SND_GENRL_WEAPONS_WEAPON_SWIPE_FIST;
+        volumeOffset = -2.f;
+        speed        = 0.84f;
+        break;
+    default:
+        if (soundId < 0) {
+            return;
+        }
+        break;
+    }
+
+    m_tempSound.Initialise(
+        SND_BANK_SLOT_WEAPON_GEN,
+        soundId,
+        this,
+        m_pPed->GetPosition(),
+        baseVolume + volumeOffset,
+        1.f,   // rollOff
+        speed,
+        1.f,   // doppler
+        0,     // frameDelay
+        SOUND_LIFESPAN_TIED_TO_PHYSICAL_ENTITY,
+        0.04f, // speedVariance
+        0      // playTime
+    );
+    m_tempSound.RegisterWithPhysicalEntity(m_pPed);
+
+    if (volume) { // Keep the current sound position until the event is over
+        m_tempSound.m_Speed          = 0.f;
+        m_tempSound.m_SpeedVariance  = 0.f;
+        m_tempSound.m_ClientVariable = (float)(CTimer::GetTimeInMS() + volume);
+        m_tempSound.m_Event          = event;
+        m_tempSound.SetFlags(SOUND_REQUEST_UPDATES, true);
+    }
+
+    AESoundManager.RequestNewSound(&m_tempSound);
+}
+
+//! @notsa
+//! @brief Volume offset (in dB) applied to a collision sound played on the given surface.
+//! TODO(re): 0x4DA510 - This is an unnamed helper that lives in `AECollisionAudioEntity.cpp` (Its only caller is `HandlePedHit`).
+//!           Inlined here so this file doesn't have to call unreversed code - Should be moved there once that file is reversed.
+//!
+//! The original computes `20 * log10(paramD * 0.01)` (As `20 * log2(x) * log10(2)`, without clamping).
+static float GetSurfaceVolumeOffsetDb(eSurfaceType surface) {
+    return 20.f * std::log10f((float)gCollisionLookup[surface].ParamD * 0.01f);
 }
 
 // 0x4E1CC0
 void CAEPedAudioEntity::HandlePedHit(eAudioEvents event, CPhysical* physical, uint8 surfaceId, float volume, uint32 maxVol) {
-    plugin::CallMethod<0x4E1CC0, CAEPedAudioEntity*, int32, CPhysical*, uint8, float, uint32>(this, event, physical, surfaceId, volume, maxVol);
+    // NOTE: `maxVol` is really the sound's duration in milliseconds
+
+    const auto& weapon     = m_pPed->GetActiveWeapon();
+    const auto  baseVolume = GetDefaultVolume(event) + volume;
+
+    float    offsetA   = 0.f;    // Volume offset of the weapon's sound ("A")
+    float    offsetB   = -6.f;   // Volume offset of the event's sound ("B")
+    auto     bankSlotB = SND_BANK_SLOT_WEAPON_GEN;
+    float    varianceA = 0.0588f;
+    eSoundID soundIdA  = (eSoundID)-1;
+    eSoundID soundIdB  = (eSoundID)-1;
+    bool     playA     = true;   // Cleared by the paths that only play sound "B"
+
+    if (!AEAudioHardware.EnsureSoundBankIsLoaded(SND_BANK_GENRL_WEAPONS, SND_BANK_SLOT_WEAPON_GEN, true)) {
+        return;
+    }
+
+    // 1. Sound "A" - Based on the weapon used
+    switch (weapon.m_Type) {
+    case WEAPON_UNARMED:
+    case WEAPON_NIGHTVISION:
+    case WEAPON_INFRARED:
+        soundIdA = SND_GENRL_WEAPONS_KNUCKLE;
+        break;
+    case WEAPON_BRASSKNUCKLE:
+    case WEAPON_GRENADE:
+    case WEAPON_TEARGAS:
+    case WEAPON_MOLOTOV:
+    case WEAPON_PISTOL:
+    case WEAPON_PISTOL_SILENCED:
+    case WEAPON_DESERT_EAGLE:
+    case WEAPON_SHOTGUN:
+    case WEAPON_SAWNOFF_SHOTGUN:
+    case WEAPON_SPAS12_SHOTGUN:
+    case WEAPON_MICRO_UZI:
+    case WEAPON_MP5:
+    case WEAPON_AK47:
+    case WEAPON_M4:
+    case WEAPON_TEC9:
+    case WEAPON_COUNTRYRIFLE:
+    case WEAPON_SNIPERRIFLE:
+    case WEAPON_FLAMETHROWER:
+    case WEAPON_MINIGUN:
+    case WEAPON_REMOTE_SATCHEL_CHARGE:
+    case WEAPON_DETONATOR:
+    case WEAPON_SPRAYCAN:
+    case WEAPON_EXTINGUISHER:
+    case WEAPON_CAMERA:
+        soundIdA = SND_GENRL_WEAPONS_BRASS_KNUCKLES;
+        break;
+    case WEAPON_GOLFCLUB:
+        soundIdA = SND_GENRL_WEAPONS_CLUB_STRIKE;
+        break;
+    case WEAPON_NIGHTSTICK:
+        soundIdA = SND_GENRL_WEAPONS_BAT_STRIKE;
+        break;
+    case WEAPON_KNIFE:
+        soundIdA = SND_GENRL_WEAPONS_KNIFE;
+        varianceA = 0.03f;
+        break;
+    case WEAPON_BASEBALLBAT:
+        soundIdA = SND_GENRL_WEAPONS_BASEBALL_BAT;
+        break;
+    case WEAPON_SHOVEL:
+        soundIdA = SND_GENRL_WEAPONS_SHOVEL;
+        break;
+    case WEAPON_POOL_CUE:
+        soundIdA = SND_GENRL_WEAPONS_POOLCUE;
+        break;
+    case WEAPON_KATANA:
+        soundIdA = SND_GENRL_WEAPONS_KATANA_SWORD;
+        break;
+    case WEAPON_DILDO1:
+    case WEAPON_DILDO2:
+    case WEAPON_VIBE1:
+    case WEAPON_VIBE2:
+        soundIdA = SND_GENRL_WEAPONS_DILDO;
+        break;
+    case WEAPON_FLOWERS:
+        soundIdA  = SND_GENRL_WEAPONS_FLOWER_STRIKE;
+        varianceA = 0.07f;
+        break;
+    case WEAPON_CANE:
+        soundIdA = SND_GENRL_WEAPONS_CANE_STRIKE;
+        break;
+    default: // Chainsaw, explosives & co. have no impact sound
+        break;
+    }
+
+    // 2. Sound "B" - Based on the event (And the target, if it's a ped)
+    const auto RandomBoxFaceSound = [] {
+        return CAEAudioUtility::GetRandomNumberInRange<eSoundID>(SND_GENRL_WEAPONS_BOX_FACE1, SND_GENRL_WEAPONS_BOX_FACE4);
+    };
+    const auto RandomBodyPunchSound = [] {
+        return CAEAudioUtility::GetRandomNumberInRange<eSoundID>(SND_GENRL_WEAPONS_BODY_PUNCH1, SND_GENRL_WEAPONS_BODY_PUNCH4);
+    };
+    const auto RandomBulletHitSound = [] {
+        return CAEAudioUtility::GetRandomNumberInRange<eSoundID>(SND_GENRL_BULLET_HITS_BULPED1L, SND_GENRL_BULLET_HITS_BULPED3L);
+    };
+    const auto RandomMartialStrikeSound = [] {
+        return CAEAudioUtility::GetRandomNumberInRange<eSoundID>(SND_GENRL_WEAPONS_MARTIAL_STRIKE1, SND_GENRL_WEAPONS_MARTIAL_STRIKE4);
+    };
+
+    const auto ReportCollision = [&] {
+        AudioEngine.ReportCollision(
+            m_pPed,
+            physical,
+            SURFACE_PED,
+            (eSurfaceType)surfaceId,
+            m_pPed->GetPosition(),
+            nullptr,
+            1.f,   // Impact
+            1.f,   // Impact
+            true,  // Play only one shot collision sound
+            false
+        );
+    };
+
+    if (!physical || !physical->GetIsTypePed()) {
+        switch (event) {
+        case AE_PED_HIT_HIGH:
+        case AE_PED_HIT_LOW:
+        case AE_PED_HIT_GROUND:
+            offsetA = GetSurfaceVolumeOffsetDb((eSurfaceType)surfaceId);
+            ReportCollision();
+            break;
+        case AE_PED_HIT_GROUND_KICK:
+        case AE_PED_HIT_MARTIAL_KICK:
+            ReportCollision();
+            return; // No sound is played
+        case AE_PED_HIT_HIGH_UNARMED:
+        case AE_PED_HIT_LOW_UNARMED:
+        case AE_PED_HIT_MARTIAL_PUNCH:
+            soundIdA = SND_GENRL_WEAPONS_KNUCKLE;
+            offsetA  = GetSurfaceVolumeOffsetDb((eSurfaceType)surfaceId);
+            ReportCollision();
+            break;
+        default:
+            break;
+        }
+    } else {
+        switch (event) {
+        case AE_PED_HIT_HIGH:
+        case AE_PED_HIT_LOW:
+            switch (weapon.m_Type) {
+            case WEAPON_BRASSKNUCKLE:
+                offsetA  = 1.f;
+                soundIdB = event == AE_PED_HIT_HIGH ? RandomBoxFaceSound() : RandomBodyPunchSound();
+                break;
+            case WEAPON_GOLFCLUB:
+            case WEAPON_NIGHTSTICK:
+            case WEAPON_SHOVEL:
+            case WEAPON_POOL_CUE:
+            case WEAPON_DILDO1:
+            case WEAPON_DILDO2:
+            case WEAPON_VIBE1:
+            case WEAPON_VIBE2:
+            default: // Unarmed, the cane, and everything else outside of the original's jump table
+                offsetA  = -15.f;
+                soundIdB = event == AE_PED_HIT_HIGH ? RandomBoxFaceSound() : RandomBodyPunchSound();
+                break;
+            case WEAPON_KNIFE:
+            case WEAPON_KATANA:
+                soundIdB = SND_GENRL_WEAPONS_STAB;
+                offsetB  = -9.f;
+                playA    = false;
+                break;
+            case WEAPON_BASEBALLBAT:
+                offsetA  = -10.f;
+                soundIdB = event == AE_PED_HIT_HIGH ? RandomBoxFaceSound() : RandomBodyPunchSound();
+                break;
+            case WEAPON_CHAINSAW:
+                if (!AEAudioHardware.IsSoundBankLoaded(SND_BANK_GENRL_BULLET_HITS, SND_BANK_SLOT_BULLET_HITS)) {
+                    return;
+                }
+                bankSlotB = SND_BANK_SLOT_BULLET_HITS;
+                soundIdB  = RandomBulletHitSound();
+                playA     = false;
+                break;
+            case WEAPON_FLOWERS: // No "B" sound
+                break;
+            }
+            break;
+        case AE_PED_HIT_GROUND:
+            switch (weapon.m_Type) {
+            case WEAPON_KNIFE:
+            case WEAPON_KATANA:
+                soundIdB = SND_GENRL_WEAPONS_STAB;
+                offsetB  = -9.f;
+                playA    = false;
+                break;
+            case WEAPON_BASEBALLBAT:
+                soundIdB = SND_GENRL_WEAPONS_STOMP1;
+                offsetA  = -10.f;
+                break;
+            case WEAPON_SHOVEL:
+            case WEAPON_POOL_CUE:
+            case WEAPON_DILDO1:
+            case WEAPON_DILDO2:
+            case WEAPON_VIBE1:
+            case WEAPON_VIBE2:
+                soundIdB = SND_GENRL_WEAPONS_STOMP1;
+                offsetA  = -15.f;
+                break;
+            case WEAPON_CHAINSAW:
+                if (!AEAudioHardware.IsSoundBankLoaded(SND_BANK_GENRL_BULLET_HITS, SND_BANK_SLOT_BULLET_HITS)) {
+                    return;
+                }
+                bankSlotB = SND_BANK_SLOT_BULLET_HITS;
+                soundIdB  = RandomBulletHitSound();
+                playA     = false;
+                break;
+            case WEAPON_FLOWERS:
+                break;
+            default: // Unarmed, blunt and everything else above the cane
+                soundIdB = SND_GENRL_WEAPONS_STOMP1;
+                offsetA  = -15.f;
+                break;
+            }
+            break;
+        case AE_PED_HIT_GROUND_KICK:
+            soundIdB = SND_GENRL_WEAPONS_STOMP1;
+            playA    = false;
+            break;
+        case AE_PED_HIT_HIGH_UNARMED:
+        case AE_PED_HIT_MARTIAL_PUNCH:
+            soundIdA = SND_GENRL_WEAPONS_KNUCKLE;
+            soundIdB = RandomBoxFaceSound();
+            break;
+        case AE_PED_HIT_LOW_UNARMED:
+            soundIdA = SND_GENRL_WEAPONS_KNUCKLE;
+            soundIdB = RandomBodyPunchSound();
+            break;
+        case AE_PED_HIT_MARTIAL_KICK:
+            soundIdB = RandomMartialStrikeSound();
+            playA    = false;
+            break;
+        default:
+            break;
+        }
+    }
+
+    const auto PlaySound = [&](eSoundBankSlot slot, eSoundID soundId, float volume, float speedVariance) {
+        m_tempSound.Initialise(
+            slot,
+            soundId,
+            this,
+            m_pPed->GetPosition(),
+            volume,
+            1.f, // rollOff
+            1.f, // speed
+            1.f, // doppler
+            0,   // frameDelay
+            SOUND_LIFESPAN_TIED_TO_PHYSICAL_ENTITY,
+            speedVariance,
+            0    // playTime
+        );
+        m_tempSound.RegisterWithPhysicalEntity(m_pPed);
+
+        if (maxVol) { // Keep the current sound position until the event is over
+            m_tempSound.m_Speed          = 0.f;
+            m_tempSound.m_SpeedVariance  = 0.f;
+            m_tempSound.m_ClientVariable = (float)(CTimer::GetTimeInMS() + maxVol);
+            m_tempSound.m_Event          = event;
+            m_tempSound.SetFlags(SOUND_REQUEST_UPDATES, true);
+        }
+
+        AESoundManager.RequestNewSound(&m_tempSound);
+    };
+
+    if (playA && soundIdA >= 0) {
+        PlaySound(SND_BANK_SLOT_WEAPON_GEN, soundIdA, baseVolume + offsetA, varianceA);
+    }
+    if (soundIdB >= 0) {
+        PlaySound(bankSlotB, soundIdB, baseVolume + offsetB, 0.0588f);
+    }
 }
 
 // 0x4E2350
 void CAEPedAudioEntity::HandlePedJacked(eAudioEvents event) {
-    plugin::CallMethod<0x4E2350, CAEPedAudioEntity*, int32>(this, event);
+    if (!AEAudioHardware.EnsureSoundBankIsLoaded(SND_BANK_GENRL_WEAPONS, SND_BANK_SLOT_WEAPON_GEN, true)) {
+        return;
+    }
+
+    const auto volume = GetDefaultVolume(event);
+
+    uint32 endTimeShort = CTimer::GetTimeInMS();
+    uint32 endTimeLong  = endTimeShort;
+
+    eSoundID soundId1   = (eSoundID)-1;
+    eSoundID soundId2   = (eSoundID)-1;
+    bool     playFirst  = false;
+
+    if ((uint32)(event - AE_PED_JACKED_CAR_PUNCH) <= AE_PED_JACKED_DOZER - AE_PED_JACKED_CAR_PUNCH) {
+        switch (event) {
+        case AE_PED_JACKED_CAR_PUNCH:
+            soundId1 = SND_GENRL_WEAPONS_KNUCKLE;
+            soundId2 = CAEAudioUtility::GetRandomNumberInRange<eSoundID>(SND_GENRL_WEAPONS_BOX_FACE1, SND_GENRL_WEAPONS_BOX_FACE4);
+            endTimeShort += 500;
+            endTimeLong  += 2133;
+            playFirst    = true;
+            break;
+        case AE_PED_JACKED_CAR_HEAD_BANG:
+            soundId1 = SND_GENRL_WEAPONS_DILDO;
+            soundId2 = CAEAudioUtility::GetRandomNumberInRange<eSoundID>(SND_GENRL_WEAPONS_BODY_PUNCH1, SND_GENRL_WEAPONS_BODY_PUNCH4);
+            endTimeShort += 933;
+            endTimeLong  += 2633;
+            playFirst    = true;
+            break;
+        case AE_PED_JACKED_CAR_KICK:
+            soundId2 = CAEAudioUtility::GetRandomNumberInRange<eSoundID>(SND_GENRL_WEAPONS_BOX_FACE1, SND_GENRL_WEAPONS_BOX_FACE4);
+            endTimeShort += 900;
+            endTimeLong  += 2800;
+            break;
+        case AE_PED_JACKED_BIKE:
+            soundId1 = SND_GENRL_WEAPONS_KNUCKLE;
+            soundId2 = CAEAudioUtility::GetRandomNumberInRange<eSoundID>(SND_GENRL_WEAPONS_BOX_FACE1, SND_GENRL_WEAPONS_BOX_FACE4);
+            endTimeShort += 33;
+            endTimeLong  += 366;
+            playFirst    = true;
+            break;
+        case AE_PED_JACKED_DOZER:
+            soundId2 = CAEAudioUtility::GetRandomNumberInRange<eSoundID>(SND_GENRL_WEAPONS_BODY_PUNCH1, SND_GENRL_WEAPONS_BODY_PUNCH4);
+            endTimeShort += 266;
+            endTimeLong  += 833;
+            break;
+        }
+    }
+
+    const auto PlaySound = [&](eSoundBankSlot slot, eSoundID soundId, uint32 endTime) {
+        m_tempSound.Initialise(
+            slot,
+            soundId,
+            this,
+            m_pPed->GetPosition(),
+            volume,
+            2.f, // rollOff
+            0.f, // speed
+            1.f, // doppler
+            0,   // frameDelay
+            SOUND_LIFESPAN_TIED_TO_PHYSICAL_ENTITY | SOUND_REQUEST_UPDATES,
+            0.f, // speedVariance
+            0    // playTime
+        );
+        m_tempSound.RegisterWithPhysicalEntity(m_pPed);
+        m_tempSound.m_Event          = event;
+        m_tempSound.m_ClientVariable = (float)endTime;
+        AESoundManager.RequestNewSound(&m_tempSound);
+    };
+
+    if (playFirst) {
+        PlaySound(SND_BANK_SLOT_WEAPON_GEN, soundId1, endTimeShort);
+    }
+    if (soundId2 >= 0) {
+        PlaySound(SND_BANK_SLOT_WEAPON_GEN, soundId2, endTimeShort);
+    }
+
+    // The (generic) impact sound, played for every event
+    if (!AEAudioHardware.EnsureSoundBankIsLoaded(SND_BANK_FEET_GENERIC, SND_BANK_SLOT_FOOTSTEPS_GENERIC)) {
+        return;
+    }
+    PlaySound(SND_BANK_SLOT_FOOTSTEPS_GENERIC, (eSoundID)0, endTimeLong); // TODO(re): Name the sound ID (Unknown, it's the first one in the bank)
 }
 
 // 0x4E26A0
@@ -565,5 +1057,80 @@ void CAEPedAudioEntity::PlayShirtFlap(float volume, float speed) {
 
 // 0x4E2EE0
 void CAEPedAudioEntity::Service() {
-    plugin::CallMethod<0x4E2EE0, CAEPedAudioEntity*>(this);
+    float volume         = -100.f; // dB
+    float speedFac       = 1.f;    // Multiplier passed to `PlayShirtFlap`
+    float animSkyDive    = 0.f;    // "FALL_SkyDive_accel" blend amount
+    float animParaDecel  = 0.f;    // "Para_decel" blend amount
+    bool  onFoot         = true;
+    bool  usingParachute = false;
+
+    if (!m_pPed->IsPlayer()) {
+        return;
+    }
+
+    if ((m_pPed->m_pAttachedTo && m_pPed->m_pAttachedTo->GetIsTypeVehicle()) || m_pPed->bInVehicle) {
+        onFoot = false;
+    }
+
+    // In a bike (Or an open top automobile) while driving
+    if (m_pPed->m_nPedState == PEDSTATE_DRIVING) {
+        if (CVehicle* veh = m_pPed->m_pVehicle) {
+            if (veh->IsSubBike() || (veh->IsSubAutomobile() && veh->IsOpenTopCar())) {
+                const float speed = veh->m_vecMoveSpeed.Magnitude();
+                if (speed != 0.f) {
+                    const float baseVolume = veh->m_vehicleAudio.m_AuSettings.IsBMX() ? -17.f : -10.f;
+                    speedFac = std::clamp(speed, 0.f, 1.f);
+                    volume   = CAEAudioUtility::AudioLog10(speedFac) * 20.f + baseVolume;
+                    speedFac = 0.4f * speedFac + 0.8f;
+                }
+            }
+        }
+    }
+
+    if (m_pPed->GetIntelligence()) {
+        usingParachute = m_pPed->GetIntelligence()->GetUsingParachute();
+    }
+
+    // On foot
+    if (onFoot) {
+        float speedRatio = m_pPed->m_vecMoveSpeed.Magnitude() / 0.7f;
+        float baseVolume;
+        if (!usingParachute) {
+            baseVolume = -16.f;
+            speedRatio = speedRatio >= 0.5f ? (speedRatio - 0.5f) / 0.5f : 0.f;
+        } else {
+            baseVolume = -7.f;
+            if (const auto anim = RpAnimBlendClumpGetAssociation(m_pPed->GetRpClump(), "FALL_SkyDive_accel")) {
+                animSkyDive = std::clamp(anim->m_BlendAmount, 0.f, 1.f);
+            }
+            if (const auto anim = RpAnimBlendClumpGetAssociation(m_pPed->GetRpClump(), "Para_decel")) {
+                animParaDecel = std::clamp(anim->m_BlendAmount, 0.f, 1.f);
+            }
+        }
+        speedRatio = std::clamp(speedRatio, 0.f, 1.f);
+        volume     = CAEAudioUtility::AudioLog10(speedRatio) * 20.f + baseVolume;
+        speedFac   = 0.8f * speedRatio + 0.8f;
+    }
+
+    // Smoothly move `field_158` towards the target volume (At most `+5`/`-2` dB per call)
+    const float flapSpeedBase = 0.5f * animSkyDive;
+    const float targetVolume  = -6.f * animParaDecel + 4.f * animSkyDive + volume;
+    if (targetVolume <= field_158) {
+        if (targetVolume != field_158) {
+            field_158 = std::max(targetVolume, field_158 - 2.f);
+        }
+    } else {
+        field_158 = std::min(targetVolume, field_158 + 5.f);
+    }
+
+    // Snap below -20dB (Bypasses the rate limit above)
+    if (targetVolume < -20.f && field_158 < -20.f) {
+        field_158 = targetVolume;
+    }
+
+    if (field_158 > -100.f) {
+        PlayShirtFlap(field_158, (flapSpeedBase + 1.f) * speedFac);
+    } else {
+        m_sTwinLoopSoundEntity.StopSoundAndForget();
+    }
 }

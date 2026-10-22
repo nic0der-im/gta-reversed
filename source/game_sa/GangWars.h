@@ -49,7 +49,11 @@ constexpr union {
 
 class CGangWars {
 public:
+#ifdef NOTSA_NATIVE
+    static inline int32 ZoneInfoForTraining = -1; // File-backed default in the executable's `.data`
+#else
     static inline auto& ZoneInfoForTraining = StaticRef<int32>(0x8A5F40); // -1
+#endif
     static inline auto& pDriveByCar = StaticRef<CVehicle*>(0x96AB28);
     static inline auto& GangRatingStrength = StaticRef<std::array<int32, 3>>(0x96AB2C);
     static inline auto& GangRatings = StaticRef<std::array<int32, 3>>(0x96AB38);

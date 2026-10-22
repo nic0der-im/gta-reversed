@@ -4,9 +4,6 @@
 
 class NOTSA_EXPORT_VTABLE CTaskComplexPartnerDeal : public CTaskComplexPartner {
 public:
-    int32 field_70;
-
-public:
     static constexpr auto Type = TASK_COMPLEX_PARTNER_DEAL;
 
     CTaskComplexPartnerDeal(const char* commandName, CPed* partner, bool leadSpeaker, float distanceMultiplier, CVector point);

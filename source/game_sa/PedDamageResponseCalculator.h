@@ -14,7 +14,11 @@ public:
     eWeaponType    m_weaponType;
     bool           m_bSpeak;     // refers to a CPed::Say call (the dying scream?)
 
+#ifdef NOTSA_NATIVE
+    static inline float ms_damageFactor = 5555.549805f; // File-backed default in the executable's `.data`
+#else
     static inline auto& ms_damageFactor = StaticRef<float>(0x8A6260);
+#endif
 
 public:
     CPedDamageResponseCalculator(const CEntity* entity, float fDamage, eWeaponType weaponType, ePedPieceTypes bodyPart, bool bSpeak);

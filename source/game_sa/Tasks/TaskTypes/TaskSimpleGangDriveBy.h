@@ -64,6 +64,8 @@ public:
     CTask* Clone() const override;
     bool MakeAbortable(CPed* ped, eAbortPriority priority = ABORT_PRIORITY_URGENT, const CEvent* event = nullptr) override;
     bool ProcessPed(CPed* ped) override;
+
+    void FireGun(CPed* shooter);
 };
 VALIDATE_SIZE(CTaskSimpleGangDriveBy, 0x44);
 

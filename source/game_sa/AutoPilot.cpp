@@ -1,6 +1,7 @@
 #include "StdInc.h"
 
 #include "AutoPilot.h"
+#include "Curves.h"
 
 // 0x6D5E20
 CAutoPilot::CAutoPilot() : m_aPathFindNodesInfo() {
@@ -43,13 +44,49 @@ CAutoPilot::CAutoPilot() : m_aPathFindNodesInfo() {
     m_fMaxTrafficSpeed = 0.0F;
 }
 
+// 0x41B980
 void CAutoPilot::ModifySpeed(float target) {
-    plugin::CallMethod<0x41B980, CAutoPilot*, float>(this, target);
+    // `!(target > 0.01f)` rather than `target <= 0.01f`: the original's `FCOM`/`TEST AH,0x41` also
+    // clamps when the comparison is unordered (NaN).
+    if (!(target > 0.01f)) {
+        target = 0.01f;
+    }
+
+    // Scaled time elapsed under the *previous* speed scale factor
+    const float scaledTime = (float)(CTimer::GetTimeInMS() - (uint32)field_C) / (float)m_nSpeedScaleFactor;
+    m_speed = target;
+
+    if (!ThePaths.m_pPathNodes[m_nCurrentPathNodeInfo.m_wAreaId] || !ThePaths.m_pPathNodes[m_nNextPathNodeInfo.m_wAreaId]) {
+        return;
+    }
+
+    const CCarPathLink& curr = ThePaths.GetCarPathLink(m_nCurrentPathNodeInfo);
+    const CCarPathLink& next = ThePaths.GetCarPathLink(m_nNextPathNodeInfo);
+
+    const float currLaneOffset = (curr.OneWayLaneOffset() + (float)m_nCurrentLane) * 5.4f;
+    const float nextLaneOffset = (next.OneWayLaneOffset() + (float)m_nNextLane) * 5.4f;
+
+    const float currDirX = (float)curr.m_dir.x * (float)_smthCurr;
+    const float currDirY = (float)curr.m_dir.y * (float)_smthCurr;
+    const float nextDirX = (float)next.m_dir.x * (float)_smthNext;
+    const float nextDirY = (float)next.m_dir.y * (float)_smthNext;
+
+    const float speedScale = CCurves::CalcSpeedScaleFactor(
+        CVector{(float)curr.m_posn.x + currLaneOffset * currDirX, (float)curr.m_posn.y - currLaneOffset * currDirY, 0.0f},
+        CVector{(float)next.m_posn.x + nextLaneOffset * nextDirX, (float)next.m_posn.y - nextLaneOffset * nextDirY, 0.0f},
+        currDirX, currDirY, nextDirX, nextDirY
+    );
+
+    m_nSpeedScaleFactor = (uint32)(1000.0f / m_speed * speedScale);
+    field_C             = (int32)((float)CTimer::GetTimeInMS() - (float)m_nSpeedScaleFactor * scaledTime);
 }
 
 // 0x41B950
 void CAutoPilot::RemoveOnePathNode() {
-    plugin::CallMethod<0x41B950, CAutoPilot*>(this);
+    --m_nPathFindNodesCount;
+    for (int32 i = 0; i < (int16)m_nPathFindNodesCount; i++) {
+        m_aPathFindNodesInfo[i] = m_aPathFindNodesInfo[i + 1];
+    }
 }
 
 void CAutoPilot::SetCarMission(eCarMission carMission, uint32 timeOffsetMs) {

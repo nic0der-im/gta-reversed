@@ -31,6 +31,10 @@ constexpr size_t NUM_RHINO_SUSP_LINES       = NUM_AUTOMOBILE_SUSP_LINES + NUM_RH
 constexpr size_t MAX_NUM_SUSP_LINES         = std::max(NUM_AUTOMOBILE_SUSP_LINES, NUM_RHINO_SUSP_LINES); // 12
 auto& aAutomobileColPoints = StaticRef<std::array<CColPoint, MAX_NUM_SUSP_LINES>>(0xC1BFF8);
 
+// Debug flag - when set, `CAutomobile::Render` draws each wheel's atomic on its own
+// (Instead of the whole vehicle). Never set by any code in the game.
+static auto& bRenderWheelsIndividually = StaticRef<bool>(0x96914B);
+
 static constexpr CVector PACKER_COL_PIVOT = CVector(0.0f, 0.0f, 2.0f);
 static constexpr float CAR_BALANCE_MULT = 0.08f;
 
@@ -5544,7 +5548,172 @@ CObject* CAutomobile::RemoveBonnetInPedCollision() {
 
 // 0x6AA290
 void CAutomobile::UpdateWheelMatrix(int32 nodeIndex, int32 flags) {
-    plugin::CallMethod<0x6AA290, CAutomobile*, int32, int32>(this, nodeIndex, flags); // TODO: Reverse
+    const auto frame = m_aCarNodes[nodeIndex];
+    if (!frame) {
+        return;
+    }
+
+    const auto mi = GetVehicleModelInfo();
+
+    float     angle{};          // Steering angle (In radians)
+    float     dirSign = 1.0f;   // +1 for the right side's wheels, -1 for the left side's
+    bool      isSteered{};
+    bool      isRear{};
+    eCarWheel wheel = CAR_WHEEL_FRONT_LEFT;
+
+    switch ((eCarNodes)nodeIndex) {
+    case CAR_WHEEL_RF:
+        wheel     = CAR_WHEEL_FRONT_RIGHT;
+        dirSign   = 1.0f;
+        isSteered = true;
+        angle     = handlingFlags.bSteerRearwheels ? 0.0f : m_fSteerAngle;
+        break;
+    case CAR_WHEEL_RM:
+    case CAR_WHEEL_RB:
+        wheel   = CAR_WHEEL_REAR_RIGHT;
+        dirSign = 1.0f;
+        isRear  = true;
+        if (!handlingFlags.bSteerRearwheels) {
+            angle = handlingFlags.bHbRearwheelSteer ? m_f2ndSteerAngle : 0.0f;
+        } else {
+            angle = -m_fSteerAngle;
+        }
+        break;
+    case CAR_WHEEL_LF:
+        dirSign   = -1.0f;
+        isSteered = true;
+        angle     = handlingFlags.bSteerRearwheels ? PI : m_fSteerAngle;
+        break;
+    case CAR_WHEEL_LM:
+    case CAR_WHEEL_LB:
+        wheel   = CAR_WHEEL_REAR_LEFT;
+        dirSign = -1.0f;
+        isRear  = true;
+        if (!handlingFlags.bSteerRearwheels) {
+            angle = handlingFlags.bHbRearwheelSteer ? m_f2ndSteerAngle : PI;
+        } else {
+            angle = -m_fSteerAngle;
+        }
+        break;
+    default:
+        return;
+    }
+
+    // Fixup the angle's sign/magnitude
+    if (angle == 0.0f || (flags & 2)) {
+        angle = dirSign >= 0.0f ? 0.0f : PI;
+    } else if (dirSign >= 0.0f) {
+        if (isRear ? angle < 0.0f : angle > 0.0f) {
+            angle *= 0.6f;
+        }
+    } else {
+        if (isRear ? angle > 0.0f : angle < 0.0f) {
+            angle *= 0.6f;
+        }
+        angle += PI;
+    }
+
+    CMatrix mat;
+    mat.Attach(RwFrameGetMatrix(frame), false);
+
+    const CVector matPos = mat.GetPosition(); // Used for the matrix translation accumulation below
+
+    float wheelPos = m_wheelPosition[wheel];
+    float radius   = m_fWheelScale;
+    float scale    = 1.0f;
+
+    if (mi->m_nWheelModelIndex == -1) {
+        if (isRear) {
+            radius *= mi->m_fWheelSizeRear / mi->m_fWheelSizeFront;
+        }
+        scale = mi->m_fWheelSizeFront / (m_fWheelScale * 0.7f);
+    } else {
+        radius = isRear ? mi->m_fWheelSizeRear : mi->m_fWheelSizeFront;
+    }
+
+    // SANDKING/DUMPER-like models get their rear wheels repositioned
+    if (m_nModelIndex == 0x214 && (nodeIndex == CAR_WHEEL_LM || nodeIndex == CAR_WHEEL_RM)) {
+        radius    = 1.7f / mi->m_fWheelSizeFront;
+        wheelPos += (1.7f - mi->m_fWheelSizeRear) * 0.45f;
+        if (dirSign < 0.0f) {
+            angle -= PI;
+        }
+        angle *= 0.5f;
+        if (dirSign < 0.0f) {
+            angle += PI;
+        }
+    } else if (m_nModelIndex == 0x201 && nodeIndex == CAR_WHEEL_LF) {
+        angle = 0.0f;
+    }
+
+    // Wheel size modifiers (From handling flags)
+    if (m_nVehicleSubType == VEHICLE_TYPE_MTRUCK || m_nVehicleSubType == VEHICLE_TYPE_QUAD) {
+        scale = 1.0f;
+    } else if (isRear && (handlingFlags.bWheelRNarrow2 || handlingFlags.bWheelRNarrow || handlingFlags.bWheelRWide || handlingFlags.bWheelRWide2)) {
+        if (handlingFlags.bWheelRNarrow2) {
+            scale *= 0.65f;
+        } else if (handlingFlags.bWheelRNarrow) {
+            scale *= 0.8f;
+        } else if (handlingFlags.bWheelRWide) {
+            scale *= 1.1f;
+        } else {
+            scale *= 1.25f;
+        }
+    } else if (isSteered && (handlingFlags.bWheelFNarrow2 || handlingFlags.bWheelFNarrow || handlingFlags.bWheelFWide || handlingFlags.bWheelFWide2)) {
+        if (handlingFlags.bWheelFNarrow2) {
+            scale *= 0.65f;
+        } else if (handlingFlags.bWheelFNarrow) {
+            scale *= 0.8f;
+        } else if (handlingFlags.bWheelFWide) {
+            scale *= 1.1f;
+        } else {
+            scale *= 1.25f;
+        }
+    }
+    if (m_nModelIndex == 0x23B) {
+        scale *= 3.0f;
+    }
+
+    mat.SetScale(scale * radius, radius, radius);
+
+    // Rotation around the wheel's axle
+    if (m_nVehicleSubType == VEHICLE_TYPE_HELI) {
+        mat.Rotate({ 0.0f, 0.0f, angle });
+    } else {
+        const float spin = dirSign * m_wheelRotation[wheel];
+        if (m_damageManager.GetWheelStatus(wheel) == WHEEL_STATUS_BURST) {
+            angle += std::sin(spin) * 0.3f;
+        }
+        mat.Rotate({ spin, 0.0f, angle });
+    }
+
+    // Wheel tilt (Camber/Toe)
+    const auto& handling = *m_pHandlingData;
+    const bool  isReverseAxle = (isSteered && handling.m_bAxleFReverse) || (isRear && handling.m_bAxleRReverse);
+    if (autoFlags.bIsMonsterTruck
+        || handlingFlags.bHydraulicInst
+        || (isSteered && handling.m_bAxleFSolid)
+        || (isRear && handling.m_bAxleRSolid)
+    ) {
+        const auto  otherWheel = (int32)wheel < 2 ? (int32)wheel + 2 : (int32)wheel - 2;
+        mat.RotateX(std::atan2((wheelPos - m_wheelPosition[otherWheel]) * dirSign * -1.0f, std::fabs(matPos.y) * 2.0f));
+    } else if (
+        !(flags & 1)
+        && !(isSteered && handling.m_bAxleFNotlit)
+        && !(isRear && handling.m_bAxleRNotlit)
+    ) {
+        // TODO(re): The particle-emitting branch (`DAT_00969152` / model `0x21B`) in-between these two
+        // isn't ported - it needs `0x40FE90`/`0x40FE30` and the FxPrtMult setup (See `.local/re/0x6AA290.md`)
+        const float tilt = (wheelPos + m_fFrontHeightAboveRoad) - mi->GetWheelSize(isSteered) * 0.5f;
+        const float a    = std::asin(std::clamp(tilt * -dirSign, -1.0f, 1.0f));
+        mat.RotateX(isReverseAxle ? -a : a);
+    }
+
+    mat.GetPosition().x += matPos.x;
+    mat.GetPosition().y += matPos.y;
+    mat.GetPosition().z += wheelPos;
+
+    mat.UpdateRW();
 }
 
 // 0x6ADEF0
@@ -6412,7 +6581,50 @@ void CAutomobile::FireTruckControl(CFire* fire) {
 
 // 0x44D520
 bool CAutomobile::HasCarStoppedBecauseOfLight() {
-    return plugin::CallMethodAndReturn<bool, 0x44D520, CAutomobile*>(this); // TODO: Reverse
+    const auto status = GetStatus();
+    if (status != STATUS_SIMPLE && status != STATUS_PHYSICS) {
+        return false;
+    }
+
+    // The three route nodes of the auto-pilot (See `CAutoPilot`)
+    const auto& cur   = m_autoPilot.m_currentAddress;
+    const auto& next  = m_autoPilot.m_startingRouteNode;
+    const auto& third = m_autoPilot.m_endingRouteNode;
+
+    if (!ThePaths.m_pPathNodes[cur.m_wAreaId] || !ThePaths.m_pPathNodes[next.m_wAreaId]) {
+        return false;
+    }
+
+    //! Is any of the navi-links of the edge `from` -> `to` waiting at a traffic light?
+    const auto IsLightRedOnEdge = [](const CNodeAddress& from, const CNodeAddress& to) {
+        const CPathNode* const node = &ThePaths.m_pPathNodes[from.m_wAreaId][from.m_wNodeId];
+        for (int32 i = 0; i < (int32)node->m_nNumLinks; i++) {
+            if (ThePaths.m_pNodeLinks[from.m_wAreaId][node->m_wBaseLinkId + i] != to) {
+                continue;
+            }
+            const CCarPathLinkAddress naviAddr = ThePaths.m_pNaviLinks[from.m_wAreaId][node->m_wBaseLinkId + i];
+            const auto naviArea = naviAddr.m_wAreaId;
+            if (!ThePaths.m_pPathNodes[naviArea] || !ThePaths.m_pNaviNodes[naviArea]) {
+                continue;
+            }
+            if (ThePaths.m_pNaviNodes[naviArea][naviAddr.m_wCarPathLinkId].m_nTrafficLightState != 0) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    if (IsLightRedOnEdge(cur, next)) {
+        return true;
+    }
+
+    if (third.m_wAreaId != 0xFFFF && ThePaths.m_pPathNodes[third.m_wAreaId]) {
+        if (IsLightRedOnEdge(third, cur)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /*!
@@ -6434,12 +6646,116 @@ CBouncingPanel* CAutomobile::CheckIfExistsGetFree(eCarNodes nodeIdx) {
 
 // 0x6AAB50
 void CAutomobile::PreRender() {
-    plugin::CallMethod<0x6AAB50, CAutomobile*>(this);
+    CVehicle::PreRender();
+
+    // TODO(re): The original first re-aligns the wheel positions of vehicles with the
+    // "track" flag (`vehicleFlags` byte 3 bit 0) and then feeds every wheel into
+    // `AddSingleWheelParticles` (m_WheelStates, skidmark ents, wheel collision point).
+    // Neither is implemented yet - see `.local/re/0x6AAB50.md`.
+
+    // Forward speed (In the same units the original uses, see the constants below)
+    const auto forwardSpeed = DotProduct(m_vecMoveSpeed, GetForward()) / 0.0055f;
+
+    if (!CCullZones::CamNoRain()
+        && !CCullZones::PlayerNoRain()
+        && std::abs(forwardSpeed) < 20.0f
+        && CWeather::Rain > 0.02f
+        && CGame::currArea == 0
+    ) {
+        AddWaterSplashParticles();
+    }
+
+    if (!vehicleFlags.bIsDrowning
+        && !vehicleFlags.bDisableParticles
+        && forwardSpeed < 130.0f
+        && !(m_pHandlingData->m_bForceDoorCheck) // 0xCC bit 0x1000
+    ) {
+        // TODO(re): The original also requires a bit of the vehicle audio entity (`this+0x10A & 0x10`)
+        AddExhaustParticles();
+    }
+
+    AddDamagedVehicleParticles();
+
+    // TODO(re): Model specific extra lights/coronas (police, taxis, ambulance etc.)
+    // The model -> light-layout table at `0x6ACC15` was never dumped, so this block can't be ported.
+    // See `.local/re/0x6AAB50.md`.
+
+    if (m_nModelIndex != MODEL_RCBANDIT && m_nModelIndex != 0xFFFE && m_nModelIndex != MODEL_RHINO
+        && !vehicleFlags.bIsRCVehicle
+        && GetVehicleAppearance() != VEHICLE_APPEARANCE_HELI
+    ) {
+        const auto lightFlags = (m_nModelIndex == 0x214 || m_nModelIndex == 0x1D7)
+            ? (eVehicleLightsFlags)0
+            : (eVehicleLightsFlags)3;
+        DoVehicleLights(GetMatrix(), lightFlags);
+    }
+
+    // TODO(re): `CShadows::StoreShadowForVehicle` (unless this is the player's vehicle looked at in first person)
+
+    if (m_nModelIndex == MODEL_RHINO) {
+        SetComponentRotation(m_aCarNodes[CAR_MISC_A], AXIS_Z, (float)m_wMiscComponentAngle, true);
+    }
+
+    // TODO(re): The original then rotates the head-light beams (using `m_fRawSteerAngle`) and
+    // draws the model's extra light beams.
 }
 
 // 0x6A2B10
 void CAutomobile::Render() {
-    plugin::CallMethod<0x6A2B10, CAutomobile*>(this);
+    m_nTimeTillWeNeedThisCar = CTimer::GetTimeInMS() + 3000;
+
+    // TODO(re): The original wraps the whole body in a render-state push/pop pair done through
+    // `RwEngineInstance` function pointers at `+0x20`/`+0x24` (called as `(30, {1})` and `(30, 1)`).
+    // librw has no equivalent of those engine callbacks.
+
+    if (bRenderWheelsIndividually) {
+        // Renders only the wheels' atomics, through their render callbacks
+        const auto RenderNode = [](RwFrame* frame) {
+            if (!frame) {
+                return;
+            }
+            if (auto* const atomic = reinterpret_cast<RpAtomic*>(GetFirstObject(frame))) {
+                RpAtomicRenderMacro(atomic);
+            }
+        };
+
+        RenderNode(m_aCarNodes[CAR_WHEEL_RB]);
+        RenderNode(m_aCarNodes[CAR_WHEEL_LB]);
+        RenderNode(m_aCarNodes[CAR_WHEEL_RF]);
+        RenderNode(m_aCarNodes[CAR_WHEEL_LF]);
+
+        if (m_aCarNodes[CAR_WHEEL_RM]) {
+            RenderNode(m_aCarNodes[CAR_WHEEL_RM]);
+        }
+        if (m_aCarNodes[CAR_WHEEL_LM]) {
+            RenderNode(m_aCarNodes[CAR_WHEEL_LM]);
+        }
+    } else {
+        CVehicle::Render();
+    }
+
+    // TODO(re): `m_nModelIndex == MODEL_RHINO` additionally blends the wheel hub nodes between the
+    // start/end of their collision lines (`m_doors[...]` values) and renders them, see `.local/re/0x6A2B10.md`.
+    // Only known from brute-force disassembly, and no repo type models those per-door values yet.
+
+    if (m_nModelIndex == MODEL_RCBANDIT || m_nModelIndex == 0xFFFE || m_nModelIndex == MODEL_RHINO) {
+        return;
+    }
+
+    if (vehicleFlags.bIsRCVehicle) { // `*(int8*)(this + 0x42C) < 0`
+        return;
+    }
+
+    if (GetVehicleAppearance() == VEHICLE_APPEARANCE_HELI) {
+        return;
+    }
+
+    if (m_renderLights.m_bRightFront) {
+        CVehicle::DoHeadLightBeam((eVehicleLightId)0, GetMatrix(), true);
+    }
+    if (m_renderLights.m_bLeftFront) {
+        CVehicle::DoHeadLightBeam((eVehicleLightId)0, GetMatrix(), false);
+    }
 }
 
 // 0x6A9CA0

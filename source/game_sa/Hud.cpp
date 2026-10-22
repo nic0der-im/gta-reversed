@@ -15,6 +15,20 @@
 #include "EntryExitManager.h"
 #include "TaskSimpleUseGun.h"
 #include "eHud.h"
+#include "UserDisplay.h"
+#include "OnscreenTimer.h"
+#include "Wanted.h"
+#include "PedIntelligence.h"
+#include "PedGroups.h"
+#include "PlayerPedData.h"
+#include "AudioEngine.h"
+#include "HudColours.h"
+
+// HUD globals that have no name in the original code
+static auto& s_bSubtitlesWereDrawnLastFrame = StaticRef<bool>(0xBAB214);
+static auto& s_nBigMessageFlags             = StaticRef<uint32>(0xBAB21C);
+static auto& s_fBigMessageYPos              = StaticRef<float>(0xBAB218);
+static auto& s_bWantedStarsVisible          = StaticRef<bool>(0xBAB228);
 
 void CHud::InjectHooks() {
     RH_ScopedClass(CHud);
@@ -38,22 +52,22 @@ void CHud::InjectHooks() {
     RH_ScopedInstall(DrawAfterFade, 0x58D490);
     RH_ScopedInstall(DrawAreaName, 0x58AA50);
     RH_ScopedInstall(DrawBustedWastedMessage, 0x58CA50);
-    RH_ScopedInstall(DrawCrossHairs, 0x58E020, { .Reversed = false }); // -
+    RH_ScopedInstall(DrawCrossHairs, 0x58E020);
     RH_ScopedInstall(DrawFadeState, 0x58D580);
-    RH_ScopedInstall(DrawHelpText, 0x58B6E0, { .Reversed = false });
-    RH_ScopedInstall(DrawMissionTimers, 0x58B180, { .Reversed = false });
+    RH_ScopedInstall(DrawHelpText, 0x58B6E0);
+    RH_ScopedInstall(DrawMissionTimers, 0x58B180);
     RH_ScopedInstall(DrawMissionTitle, 0x58D240);
     RH_ScopedInstall(DrawOddJobMessage, 0x58CC80);
     RH_ScopedInstall(DrawRadar, 0x58A330);
     RH_ScopedInstall(DrawScriptText, 0x58C080);
-    RH_ScopedInstall(DrawSubtitles, 0x58C250, { .Reversed = false });
-    RH_ScopedInstall(DrawSuccessFailedMessage, 0x58C6A0, { .Reversed = false });
+    RH_ScopedInstall(DrawSubtitles, 0x58C250);
+    RH_ScopedInstall(DrawSuccessFailedMessage, 0x58C6A0);
     RH_ScopedInstall(DrawVehicleName, 0x58AEA0);
-    RH_ScopedInstall(DrawVitalStats, 0x589650, { .Reversed = false });
+    RH_ScopedInstall(DrawVitalStats, 0x589650);
     RH_ScopedInstall(DrawAmmo, 0x5893B0);
-    RH_ScopedInstall(DrawPlayerInfo, 0x58EAF0, { .Reversed = false });
+    RH_ScopedInstall(DrawPlayerInfo, 0x58EAF0);
     RH_ScopedInstall(DrawTripSkip, 0x58A160);
-    RH_ScopedInstall(DrawWanted, 0x58D9A0, { .Reversed = false });
+    RH_ScopedInstall(DrawWanted, 0x58D9A0);
     RH_ScopedInstall(DrawWeaponIcon, 0x58D7D0);
     RH_ScopedInstall(RenderArmorBar, 0x5890A0);
     RH_ScopedInstall(RenderBreathBar, 0x589190);
@@ -593,10 +607,6 @@ void CHud::ResetWastedText() {
 
 // 0x58E020
 void CHud::DrawCrossHairs() {
-    return plugin::Call<0x58E020>();
-
-    plugin::Call<0x58E020>(); // for test purposes
-
     struct RestoreRenderState {
         ~RestoreRenderState() {
             RwRenderStateSet(rwRENDERSTATESRCBLEND,     RWRSTATE(rwBLENDSRCALPHA));
@@ -932,12 +942,321 @@ float CHud::DrawFadeState(DRAW_FADE_STATE fadingElement, int32 forceFadingIn) {
 
 // 0x58B6E0
 void CHud::DrawHelpText() {
-    plugin::Call<0x58B6E0>();
+    if (!m_pHelpMessage[0]) {
+        m_nHelpMessageState = 0;
+        return;
+    }
+
+    // New/queued message
+    if (!CMessages::StringCompare(m_pHelpMessage, m_pLastHelpMessage, 400)) {
+        switch (m_nHelpMessageState) {
+        case 0:
+            m_nHelpMessageState     = 2;
+            m_nHelpMessageTimer     = 0;
+            m_nHelpMessageFadeTimer = 0;
+            CMessages::StringCopy(m_pHelpMessageToPrint, m_pHelpMessage, 400);
+            CFont::SetOrientation(eFontAlignment::ALIGN_LEFT);
+            CFont::SetJustify(false);
+            CFont::SetWrapx(SCREEN_STRETCH_X(200.0f) + SCREEN_STRETCH_X(34.0f) - SCREEN_STRETCH_X(4.0f));
+            CFont::SetFontStyle(FONT_SUBTITLES);
+            CFont::SetBackground(true, true);
+            CFont::SetDropShadowPosition(0);
+            m_fHelpMessageTime = (float)(CFont::GetNumberLines(SCREEN_STRETCH_X(34.0f), SCREEN_SCALE_Y(28.0f), m_pHelpMessageToPrint) + 3);
+            CFont::SetWrapx(SCREEN_WIDTH);
+            AudioEngine.ReportFrontendAudioEvent(AE_FRONTEND_DISPLAY_INFO, 0.0f, 1.0f);
+            break;
+        case 1:
+        case 2:
+        case 3:
+        case 4:
+            m_nHelpMessageState = 4;
+            m_nHelpMessageTimer = 5;
+            break;
+        default:
+            break;
+        }
+        CMessages::StringCopy(m_pLastHelpMessage, m_pHelpMessage, 400);
+    }
+
+    float alpha = 200.0f;
+    if (!m_nHelpMessageState) {
+        return;
+    }
+
+    // Fade state machine
+    const auto fadeStep = (int32)CTimer::GetTimeStepInMS() * 2;
+    switch (m_nHelpMessageState) {
+    case 1: // Shown
+        m_nHelpMessageFadeTimer = 600;
+        if (!m_bHelpMessagePermanent
+            && (m_fHelpMessageTime * 1000.0f < (float)m_nHelpMessageTimer
+                || (m_bHelpMessageQuick && (float)m_nHelpMessageTimer > 3000.0f))
+        ) {
+            m_nHelpMessageState     = 3;
+            m_nHelpMessageFadeTimer = 600;
+        }
+        break;
+    case 2: // Fading in
+        if (!TheCamera.m_bWideScreenOn) {
+            m_nHelpMessageFadeTimer += fadeStep;
+            if ((int32)m_nHelpMessageFadeTimer > 0) {
+                m_nHelpMessageFadeTimer = 0;
+                m_nHelpMessageState     = 1;
+            }
+            alpha = (float)(int32)m_nHelpMessageFadeTimer * 0.001f * 200.0f;
+        }
+        break;
+    case 3: // Fading out
+        m_nHelpMessageFadeTimer -= fadeStep;
+        if ((int32)m_nHelpMessageFadeTimer < 0 || TheCamera.m_bWideScreenOn) {
+            m_nHelpMessageFadeTimer = 0;
+            m_nHelpMessageState     = 0;
+        }
+        alpha = (float)(int32)m_nHelpMessageFadeTimer * 0.001f * 200.0f;
+        break;
+    case 4: // Quick fade out (message changed)
+        m_nHelpMessageFadeTimer -= fadeStep;
+        if ((int32)m_nHelpMessageFadeTimer < 0) {
+            m_nHelpMessageFadeTimer = 0;
+            m_nHelpMessageState     = 2;
+            CMessages::StringCopy(m_pHelpMessageToPrint, m_pLastHelpMessage, 400);
+        }
+        alpha = (float)(int32)m_nHelpMessageFadeTimer * 0.001f * 200.0f;
+        break;
+    default:
+        break;
+    }
+
+    if (CCutsceneMgr::IsRunning()) {
+        return;
+    }
+
+    m_nHelpMessageTimer += (uint32)CTimer::GetTimeStepInMS();
+    CFont::SetAlphaFade(alpha);
+    CFont::SetProportional(true);
+    CFont::SetScaleForCurrentLanguage(SCREEN_STRETCH_X(0.52f), SCREEN_SCALE_Y(1.1f));
+
+    if (m_nHelpMessageStatId == 0) {
+        // Plain message
+        if (m_BigMessage[STYLE_MIDDLE][0] || m_BigMessage[STYLE_MIDDLE_SMALLER_HIGHER][0] || CGarages::MessageIDString[0]) {
+            CFont::SetAlphaFade(255.0f);
+            return;
+        }
+
+        CFont::SetOrientation(eFontAlignment::ALIGN_LEFT);
+        CFont::SetJustify(false);
+        CFont::SetWrapx(
+            m_fHelpMessageBoxWidth == 200.0f
+                ? SCREEN_STRETCH_X(34.0f) + SCREEN_STRETCH_X(200.0f) - SCREEN_STRETCH_X(4.0f)
+                : (m_fHelpMessageBoxWidth - 4.0f) * SCREEN_STRETCH_X(1.0f) + SCREEN_STRETCH_X(34.0f)
+        );
+        CFont::SetFontStyle(FONT_SUBTITLES);
+        CFont::SetBackground(true, true);
+        CFont::SetDropShadowPosition(0);
+        CFont::SetBackgroundColor(CRGBA(0, 0, 0, (uint8)alpha));
+        CFont::SetColor(HudColour.GetRGB(HUD_COLOUR_LIGHT_GRAY));
+
+        // In widescreen mode (unless the "widescreen" preference is on) the message is moved a bit lower
+        const auto extraYOffset = (TheCamera.m_bWideScreenOn && !FrontEndMenuManager.m_bWidescreenOn) ? 56.0f : 0.0f;
+        CFont::PrintString(
+            SCREEN_STRETCH_X(34.0f),
+            SCREEN_SCALE_Y((150.0f + extraYOffset - PagerXOffset) * 0.6f + 28.0f),
+            m_pHelpMessageToPrint
+        );
+    } else {
+        // Stat update message (with a progress bar)
+        if (TheCamera.m_bWideScreenOn) {
+            CFont::SetAlphaFade(255.0f);
+            return;
+        }
+
+        const uint16 statId = m_nHelpMessageStatId;
+        sprintf_s(gString,
+            statId < 10  ? "STAT00%d" :
+            statId < 100 ? "STAT0%d"  :
+                           "STAT%d",
+            (int32)statId
+        );
+
+        CFont::SetOrientation(eFontAlignment::ALIGN_LEFT);
+        CFont::SetJustify(false);
+        CFont::SetWrapx(SCREEN_WIDTH);
+        CFont::SetFontStyle(FONT_SUBTITLES);
+        CFont::SetBackground(true, true);
+        CFont::SetDropShadowPosition(0);
+        CFont::SetBackgroundColor(CRGBA(0, 0, 0, (uint8)alpha));
+        CFont::SetColor(HudColour.GetRGB(HUD_COLOUR_LIGHT_GRAY));
+
+        const GxtChar* const statText = TheText.Get(gString);
+        const float textWidth = CFont::GetStringWidth(statText, true, false);
+        const float msgX      = SCREEN_STRETCH_X(10.0f) + SCREEN_STRETCH_X(34.0f) + textWidth;
+        CFont::SetWrapx(SCREEN_STRETCH_X(75.0f) + msgX);
+
+        const float msgY = SCREEN_SCALE_Y((150.0f - PagerXOffset) * 0.6f + 28.0f);
+        CFont::PrintString(SCREEN_STRETCH_X(34.0f), msgY, statText);
+
+        GxtChar signGxt[2];
+        AsciiToGxtChar("+", signGxt);
+
+        // Special case: gang member count
+        const float statValue = statId == 0x150
+            ? (float)CPedGroups::ms_groups[FindPlayerPed()->GetPlayerData()->m_nPlayerGroup].GetMembership().CountMembersExcludingLeader()
+            : CStats::GetStatValue((eStats)statId);
+
+        const bool  bIsIncrease = (char)m_pHelpMessageToPrint[0] == (char)signGxt[0];
+        const auto  alpha8      = (uint8)alpha;
+
+        CSprite2d::DrawBarChart(
+            msgX,
+            (155.0f - PagerXOffset) * 0.6f + SCREEN_SCALE_Y(28.0f),
+            (uint16)(int32)SCREEN_STRETCH_X(62.0f),
+            (uint8)(int32)SCREEN_SCALE_Y(12.0f),
+            std::max(statValue / (float)m_nHelpMessageMaxStatValue * 100.0f, 2.0f),
+            (int8)std::max(m_fHelpMessageStatUpdateValue / (float)m_nHelpMessageMaxStatValue * 100.0f, 3.0f),
+            0,
+            false,
+            HudColour.GetRGBA(bIsIncrease ? HUD_COLOUR_GREEN : HUD_COLOUR_RED, alpha8),
+            HudColour.GetRGBA(HUD_COLOUR_LIGHT_GRAY, alpha8)
+        );
+
+        CFont::PrintString(msgX + SCREEN_STRETCH_X(65.0f), msgY, m_pHelpMessageToPrint);
+    }
+
+    CFont::SetWrapx(SCREEN_WIDTH);
+    CFont::SetAlphaFade(255.0f);
 }
 
 // 0x58B180
 void CHud::DrawMissionTimers() {
-    plugin::Call<0x58B180>();
+    if ((!m_BigMessage[STYLE_MIDDLE_SMALLER_HIGHER][0] && !bScriptForceDisplayWithCounters) || CGarages::MessageIDString[0]) {
+        return;
+    }
+
+    auto& onscnTimer = CUserDisplay::OnscnTimer;
+
+    float mainTimerY = GetYPosBasedOnHealth(CWorld::PlayerInFocus, SCREEN_SCALE_Y(148.0f), 12);
+    mainTimerY = GetYPosBasedOnHealth(1, mainTimerY, 12);
+
+    float countersY = GetYPosBasedOnHealth(CWorld::PlayerInFocus, SCREEN_SCALE_Y(148.0f) + SCREEN_SCALE_Y(20.0f), 12);
+    countersY = GetYPosBasedOnHealth(1, countersY, 12);
+
+    if (CWorld::Players[1].m_pPed) {
+        mainTimerY += SCREEN_SCALE_Y(72.0f);
+        countersY += SCREEN_SCALE_Y(72.0f);
+    }
+
+    CFont::SetProportional(true);
+    CFont::SetBackground(false, false);
+    CFont::SetScale(SCREEN_STRETCH_X(0.5f), SCREEN_SCALE_Y(1.0f));
+    CFont::SetOrientation(eFontAlignment::ALIGN_RIGHT);
+    CFont::SetRightJustifyWrap(0.0f);
+    CFont::SetFontStyle(FONT_MENU);
+    CFont::SetWrapx(SCREEN_STRETCH_X(640.0f));
+    CFont::SetEdge(2);
+    CFont::SetDropColor({ 0, 0, 0, 255 });
+
+    const bool clockEnabled = onscnTimer.m_Clock.m_bEnabled;
+    if (CWorld::Players[1].m_pPed && !clockEnabled) {
+        TimerMainCounterWasDisplayed = false;
+    }
+
+    for (int32 i = 0; i < (int32)COnscreenTimer::NUM_COUNTERS; i++) {
+        if (!onscnTimer.m_aCounters[i].m_bEnabled) {
+            TimerCounterWasDisplayed[i] = 0;
+        }
+    }
+
+    if (onscnTimer.m_bDisplay != 1) {
+        return;
+    }
+
+    if (clockEnabled) {
+        if (!TimerMainCounterWasDisplayed) {
+            TimerMainCounterHideState = 1;
+        }
+        TimerMainCounterWasDisplayed = true;
+
+        if (TimerMainCounterHideState != 0) {
+            if (++TimerMainCounterHideState > 50) {
+                TimerMainCounterHideState = 0;
+            }
+        }
+
+        CFont::SetColor(HudColour.GetRGB(HUD_COLOUR_LIGHT_GRAY));
+        if ((CTimer::GetFrameCounter() & 4) || TimerMainCounterHideState == 0) {
+            GxtChar text[200];
+            AsciiToGxtChar(onscnTimer.m_Clock.m_szDisplayedText, text);
+            CFont::PrintString(SCREEN_WIDTH - SCREEN_STRETCH_X(32.0f), mainTimerY, text);
+            if (onscnTimer.m_Clock.m_szDescriptionTextKey[0]) {
+                CFont::PrintString(
+                    (SCREEN_WIDTH - SCREEN_STRETCH_X(32.0f)) - SCREEN_STRETCH_X(90.0f),
+                    mainTimerY,
+                    TheText.Get(onscnTimer.m_Clock.m_szDescriptionTextKey)
+                );
+            }
+        }
+    } else {
+        float y = GetYPosBasedOnHealth(CWorld::PlayerInFocus, SCREEN_SCALE_Y(148.0f), 12);
+        if (CWorld::Players[0].m_nMaxHealth < 101) {
+            y -= SCREEN_SCALE_Y(12.0f);
+        }
+        if (CWorld::Players[1].m_pPed) {
+            y += SCREEN_SCALE_Y(72.0f);
+        }
+        countersY = y;
+    }
+
+    for (int32 i = 0; i < (int32)COnscreenTimer::NUM_COUNTERS; i++) {
+        auto& counter = onscnTimer.m_aCounters[i];
+        if (!counter.m_bEnabled) {
+            continue;
+        }
+
+        if (!TimerCounterWasDisplayed[i] && counter.m_bFlashWhenFirstDisplayed) {
+            TimerCounterHideState[i] = 1;
+        }
+        const auto hideState = TimerCounterHideState[i];
+        TimerCounterWasDisplayed[i] = 1;
+        if (hideState != 0) {
+            TimerCounterHideState[i] = hideState + 1;
+            if (TimerCounterHideState[i] > 50) {
+                TimerCounterHideState[i] = 0;
+            }
+        }
+
+        if ((CTimer::GetFrameCounter() & 4) || TimerCounterHideState[i] == 0) {
+            CFont::SetColor(HudColour.GetRGB(counter.m_nColourId));
+
+            const float y = countersY + SCREEN_SCALE_Y(20.0f * (float)i * SCREEN_SCALE_Y(1.0f));
+            if (counter.m_nType == eOnscreenCounter::LINE) {
+                const auto value = (float)(int16)std::atoi(counter.m_szDisplayedText);
+                CSprite2d::DrawBarChart(
+                    (SCREEN_WIDTH - SCREEN_STRETCH_X(32.0f)) - SCREEN_STRETCH_X(61.0f),
+                    y + SCREEN_SCALE_Y(6.0f),
+                    (uint16)(int32)SCREEN_STRETCH_X(61.0f),
+                    (uint8)(int32)SCREEN_SCALE_Y(9.0f),
+                    value * 0.01f * 100.0f,
+                    0,
+                    0,
+                    true,
+                    HudColour.GetRGB(counter.m_nColourId),
+                    CRGBA(0, 0, 0, 0)
+                );
+            } else {
+                GxtChar text[200];
+                AsciiToGxtChar(counter.m_szDisplayedText, text);
+                CFont::PrintString(SCREEN_WIDTH - SCREEN_STRETCH_X(32.0f), y, text);
+            }
+
+            if (counter.m_szDescriptionTextKey[0]) {
+                CFont::PrintString(
+                    (SCREEN_WIDTH - SCREEN_STRETCH_X(32.0f)) - SCREEN_STRETCH_X(90.0f),
+                    y,
+                    TheText.Get(counter.m_szDescriptionTextKey)
+                );
+            }
+        }
+    }
 }
 
 // 0x58D240
@@ -1238,12 +1557,143 @@ void CHud::DrawScriptText(bool isBeforeFade) {
 
 // 0x58C250
 void CHud::DrawSubtitles() {
-    plugin::Call<0x58C250>();
+    if (!m_Message[0]) {
+        return;
+    }
+
+    if (m_BigMessage[STYLE_WHITE_MIDDLE][0] && !CGameLogic::IsCoopGameGoingOn()) {
+        return;
+    }
+
+    // Subtitles take priority over the zone/vehicle names
+    if (m_VehicleState) {
+        m_VehicleState = NAME_DONT_SHOW;
+    }
+    if (m_ZoneState) {
+        m_ZoneState = NAME_DONT_SHOW;
+    }
+
+    CFont::SetBackground(false, false);
+    CFont::SetBackgroundColor({ 0, 0, 0, 128 });
+    CFont::SetOrientation(eFontAlignment::ALIGN_CENTER);
+    CFont::SetProportional(true);
+    CFont::SetDropShadowPosition(0);
+    CFont::SetFontStyle(FONT_SUBTITLES);
+    CFont::SetColor({ 225, 225, 225, 255 });
+    CFont::SetDropShadowPosition(2);
+    CFont::SetDropColor({ 0, 0, 0, 255 });
+
+    float x, y;
+    if (!TheCamera.m_bWideScreenOn) {
+        if (s_bSubtitlesWereDrawnLastFrame) {
+            m_Message[0] = '\0';
+        }
+        s_bSubtitlesWereDrawnLastFrame = false;
+
+        CFont::SetScaleForCurrentLanguage(SCREEN_STRETCH_X(0.58f), SCREEN_SCALE_Y(1.22f));
+
+        const float centreSize = (SCREEN_WIDTH - SCREEN_STRETCH_X(20.0f) - SCREEN_STRETCH_X(8.0f)) - (SCREEN_STRETCH_X(140.0f) + SCREEN_STRETCH_X(8.0f));
+
+        if (!CTheScripts::bUseMessageFormatting) {
+            if (!bDrawingVitalStats) {
+                CFont::SetCentreSize(centreSize);
+                x = (SCREEN_STRETCH_X(140.0f) + SCREEN_STRETCH_X(8.0f)) + centreSize * 0.5f;
+            } else {
+                CFont::SetScaleForCurrentLanguage(SCREEN_STRETCH_X(0.58f) * 0.8f, SCREEN_SCALE_Y(1.22f));
+                CFont::SetCentreSize(centreSize * 0.8f);
+                x = SCREEN_STRETCH_X(40.0f) + centreSize * 0.5f + (SCREEN_STRETCH_X(140.0f) + SCREEN_STRETCH_X(8.0f));
+            }
+            y = (SCREEN_HEIGHT - SCREEN_SCALE_Y(105.0f)) - 2.0f * SCREEN_SCALE_Y(1.0f);
+        } else {
+            CFont::SetCentreSize(SCREEN_STRETCH_X((float)CTheScripts::MessageWidth));
+            y = (SCREEN_HEIGHT - SCREEN_SCALE_Y(105.0f)) - 2.0f * SCREEN_SCALE_Y(1.0f);
+            x = SCREEN_STRETCH_X((float)CTheScripts::MessageCentre);
+        }
+    } else {
+        s_bSubtitlesWereDrawnLastFrame = true;
+
+        if (!FrontEndMenuManager.m_bShowSubtitles && CCutsceneMgr::IsRunning()) {
+            CFont::SetDropShadowPosition(0);
+            return;
+        }
+
+        CFont::SetCentreSize(SCREEN_WIDTH - SCREEN_STRETCH_X(60.0f));
+        CFont::SetScale(SCREEN_STRETCH_X(0.58f), SCREEN_SCALE_Y(1.2f));
+        y = SCREEN_HEIGHT - SCREEN_SCALE_Y(80.0f);
+        x = SCREEN_WIDTH / 2.0f;
+    }
+
+    CFont::PrintString(x, y, m_Message);
+    CFont::SetDropShadowPosition(0);
 }
 
 // 0x58C6A0
 void CHud::DrawSuccessFailedMessage() {
-    plugin::Call<0x58C6A0>();
+    if (!(s_nBigMessageFlags & 1)) {
+        s_nBigMessageFlags |= 1;
+        s_fBigMessageYPos = (float)(RsGlobal.maximumHeight / 2) - SCREEN_SCALE_Y(10.0f);
+    }
+
+    auto& message      = m_BigMessage[STYLE_MIDDLE];
+    auto& messageX     = BigMessageX[STYLE_MIDDLE];
+    auto& messageAlpha = BigMessageAlpha[STYLE_MIDDLE];
+    auto& messageInUse = BigMessageInUse[STYLE_MIDDLE];
+
+    if (!message[0]) {
+        messageX = 0.0f;
+        return;
+    }
+
+    if (messageX != 0.0f) {
+        CFont::SetBackground(false, false);
+        CFont::SetScale(SCREEN_STRETCH_X(1.3f), SCREEN_SCALE_Y(1.8f));
+        CFont::SetProportional(true);
+        CFont::SetJustify(false);
+        CFont::SetOrientation(eFontAlignment::ALIGN_CENTER);
+        CFont::SetCentreSize(SCREEN_STRETCH_X(590.0f));
+        CFont::SetFontStyle(FONT_PRICEDOWN);
+        CFont::SetEdge(2);
+        CFont::SetDropColor({ 0, 0, 0, (uint8)messageAlpha });
+        CFont::SetColor(HudColour.GetRGBA(HUD_COLOUR_GOLD, (uint8)messageAlpha));
+
+        const float alphaStep = (float)(int32)CTimer::GetTimeStepInMS() * 0.3f;
+
+        if ((float)(RsGlobal.maximumWidth - 20) > messageInUse) {
+            // Slide in
+            messageInUse += alphaStep;
+            messageAlpha += alphaStep;
+            messageAlpha = std::min(messageAlpha, 255.0f);
+        } else {
+            // Fade out
+            messageX += CTimer::GetTimeStep();
+            if (messageX >= 120.0f) {
+                messageX = 120.0f;
+                messageAlpha -= alphaStep;
+            }
+            if (messageAlpha <= 0.0f) {
+                messageAlpha = 0.0f;
+                message[0] = '\0';
+            }
+        }
+
+        CFont::PrintString((float)(RsGlobal.maximumWidth / 2), s_fBigMessageYPos, message);
+        return;
+    }
+
+    messageInUse = -60.0f;
+    messageX     = 1.0f;
+    messageAlpha = 0.0f;
+
+    const float y = (float)(RsGlobal.maximumHeight / 2) - SCREEN_SCALE_Y(10.0f);
+    if (m_BigMessage[STYLE_MIDDLE_SMALLER][0] || m_BigMessage[STYLE_WHITE_MIDDLE_SMALLER][0]) {
+        s_fBigMessageYPos = y + SCREEN_SCALE_Y(25.0f);
+    } else if (m_BigMessage[STYLE_WHITE_MIDDLE][0]) {
+        s_fBigMessageYPos = y;
+    } else if (CFont::GetNumberLines((float)(RsGlobal.maximumWidth / 2), y, message) > 1) {
+        s_fBigMessageYPos = y - SCREEN_SCALE_Y(15.0f);
+    } else {
+        s_fBigMessageYPos = y;
+    }
 }
 
 // 0x58AEA0
@@ -1346,7 +1796,115 @@ void CHud::DrawVehicleName() {
 
 // 0x589650
 void CHud::DrawVitalStats() {
-    plugin::Call<0x589650>();
+    if (CReplay::Mode == MODE_PLAYBACK) {
+        return;
+    }
+    if (TheCamera.m_bWideScreenOn) {
+        return;
+    }
+
+    CPlayerPed* const player = FindPlayerPed();
+
+    eWeaponType weaponType = player->GetActiveWeapon().m_Type;
+    if (weaponType == WEAPON_TEC9) {
+        weaponType = WEAPON_MICRO_UZI;
+    }
+
+    CFont::SetBackground(false, false);
+    CFont::SetColor({ 225, 225, 225, 255 });
+    CFont::SetWrapx(SCREEN_STRETCH_X(640.0f));
+    CFont::SetRightJustifyWrap(0.0f);
+    CFont::SetProportional(true);
+
+    // The window is a bit taller when a weapon skill (or the swim) row is displayed
+    const bool  bSwimming    = player->GetIntelligence()->GetTaskSwim() != nullptr;
+    const bool  bSkillWeapon = (int32)weaponType >= (int32)WEAPON_PISTOL && (int32)weaponType <= (int32)WEAPON_TEC9;
+    const float windowTop    = SCREEN_HEIGHT - SCREEN_SCALE_Y(140.0f);
+
+    CRect window;
+    window.left   = 40.0f;
+    window.bottom = (bSwimming || bSkillWeapon)
+                  ? windowTop
+                  : windowTop + SCREEN_SCALE_Y(15.0f);
+    window.right  = SCREEN_STRETCH_X(170.0f) + 40.0f;
+    window.top    = windowTop + SCREEN_SCALE_Y(127.0f);
+    FrontEndMenuManager.DrawWindow(window, "FEH_STA", 0, CRGBA(0, 0, 0, 190), false, true);
+
+    const auto labelX = (float)(int32)(SCREEN_STRETCH_X(10.0f) + 40.0f);
+    const auto barX   = (float)(int32)(SCREEN_STRETCH_X(90.0f) + 40.0f);
+    const auto barY   = (int32)SCREEN_SCALE_Y(5.0f);
+    const auto barW   = (int32)SCREEN_STRETCH_X(70.0f);
+    const auto barH   = (int32)SCREEN_SCALE_Y(10.0f);
+
+    float rowY = windowTop + SCREEN_SCALE_Y(15.0f);
+
+    CFont::SetFontStyle(FONT_SUBTITLES);
+    CFont::SetOrientation(eFontAlignment::ALIGN_LEFT);
+    CFont::SetScale(SCREEN_STRETCH_X(0.35f), SCREEN_SCALE_Y(0.9f));
+    CFont::SetColor({ 225, 225, 225, 255 });
+    CFont::SetEdge(0);
+
+    const auto DrawBar = [&](float progress) {
+        CSprite2d::DrawBarChart(
+            barX,
+            (float)((int32)rowY + barY),
+            (uint16)barW,
+            (uint8)barH,
+            progress,
+            0,
+            0,
+            true,
+            CRGBA(200, 200, 200, 255),
+            CRGBA(0, 0, 0, 0)
+        );
+    };
+
+    // Respect
+    CFont::PrintString(labelX, (float)(int32)rowY, TheText.Get("STAT068"));
+    DrawBar(CStats::GetStatValue(STAT_TOTAL_RESPECT) * 0.001f * 100.0f);
+    rowY += SCREEN_SCALE_Y(15.0f);
+
+    if (bSwimming) {
+        CFont::PrintString(labelX, (float)(int32)rowY, TheText.Get("STAT225"));
+        DrawBar(CStats::GetStatValue(STAT_LUNG_CAPACITY) * 0.001f * 100.0f);
+        rowY += SCREEN_SCALE_Y(15.0f);
+    } else if (bSkillWeapon) {
+        CFont::PrintString(labelX, (float)(int32)rowY, TheText.Get("CURWSKL"));
+
+        const auto  skillStat = CWeaponInfo::GetSkillStatIndex(weaponType);
+        const auto  skillIdx  = (int32)skillStat - (int32)STAT_PISTOL_SKILL;
+        const float timeLimit = CStats::StatReactionValue[STAT_TIMELIMIT_PISTOL_SKILL + skillIdx];
+        const float increment = CStats::StatReactionValue[STAT_INC_PISTOL_SKILL + skillIdx];
+        const float limit     = timeLimit * increment;
+        const float statValue = CStats::GetStatValue(skillStat);
+
+        // The skill bar grows non-linearly (sqrt), so it gets faster the higher the skill
+        const float fraction = statValue <= 999.0f
+            ? std::sqrt((increment * 0.1f + statValue) / limit) * limit * 0.001f
+            : 1.0f;
+
+        DrawBar(fraction * 100.0f);
+        rowY += SCREEN_SCALE_Y(15.0f);
+    }
+
+    const auto DrawStatRow = [&](const char* gxt, eStats stat) {
+        CFont::PrintString(labelX, (float)(int32)rowY, TheText.Get(gxt));
+        DrawBar(CStats::GetStatValue(stat) * 0.001f * 100.0f);
+        rowY += SCREEN_SCALE_Y(15.0f);
+    };
+    DrawStatRow("STAT022", STAT_STAMINA);
+    DrawStatRow("STAT023", STAT_MUSCLE);
+    DrawStatRow("STAT021", STAT_FAT);
+    DrawStatRow("STAT025", STAT_SEX_APPEAL);
+
+    CFont::SetFontStyle(FONT_PRICEDOWN);
+    CFont::SetOrientation(eFontAlignment::ALIGN_CENTER);
+    CFont::SetScale(SCREEN_STRETCH_X(0.7f), SCREEN_SCALE_Y(0.7f));
+    CFont::SetEdge(1);
+    CFont::SetColor({ 200, 200, 200, 255 });
+    CFont::SetDropColor({ 0, 0, 0, 255 });
+    sprintf_s(gString, "DAY_%d", CClock::CurrentDay);
+    CFont::PrintString(SCREEN_STRETCH_X(160.0f) + 40.0f, (float)(int32)rowY, TheText.Get(gString));
 }
 
 // 0x588A50
@@ -1458,7 +2016,176 @@ void CHud::DrawAmmo(CPed* ped, int32 x, int32 y, float alpha) {
 
 // 0x58EAF0
 void CHud::DrawPlayerInfo() {
-    return plugin::Call<0x58EAF0>();
+    CPlayerPed* const player   = FindPlayerPed();
+    const auto        playerId = CWorld::PlayerInFocus;
+
+    if (bDrawClock == 1) {
+        DrawClock();
+    }
+
+    // "Flash on change" state machine shared by the elements below (inlined in the original)
+    const auto UpdateFade = [](
+        uint32& state, uint32& fadeTimer, uint32& timer,
+        uint32 lastValue, uint32 value
+    ) -> float {
+        const auto dt = (int32)CTimer::GetTimeStepInMS();
+
+        if (lastValue == value) {
+            if (!state || state == 5) {
+                return 255.0f;
+            }
+        } else {
+            switch (state) {
+            case NAME_DONT_SHOW:
+                fadeTimer = 0;
+                [[fallthrough]];
+            case NAME_SHOW:
+            case NAME_FADE_OUT:
+                state = NAME_FADE_IN;
+                timer = 5;
+                break;
+            case 5:
+                return 255.0f;
+            default:
+                break;
+            }
+        }
+
+        float alpha = 255.0f;
+        switch (state) {
+        case NAME_SHOW:
+            fadeTimer = 1000;
+            if ((float)(int32)timer > 10000.0f) {
+                state     = NAME_FADE_OUT;
+                fadeTimer = 3000;
+            }
+            break;
+        case NAME_FADE_IN:
+            fadeTimer += dt;
+            if ((float)(int32)fadeTimer > 1000.0f) {
+                fadeTimer = 1000;
+                state     = NAME_SHOW;
+            }
+            alpha = (float)(int32)fadeTimer * 0.001f * 255.0f;
+            break;
+        case NAME_FADE_OUT:
+            fadeTimer -= dt;
+            if ((float)(int32)fadeTimer < 0.0f) {
+                fadeTimer = 0;
+                state     = NAME_DONT_SHOW;
+            }
+            alpha = (float)(int32)fadeTimer * 0.001f * 255.0f;
+            break;
+        default:
+            break;
+        }
+        timer += dt;
+
+        return std::clamp(alpha, 0.0f, 255.0f);
+    };
+
+    // Health, armour and breath
+    {
+        const auto lastTimeEnergyLost = CWorld::Players[playerId].m_nLastTimeEnergyLost;
+        UpdateFade(m_EnergyLostState, m_EnergyLostFadeTimer, m_EnergyLostTimer, m_LastTimeEnergyLost, lastTimeEnergyLost);
+        m_LastTimeEnergyLost = lastTimeEnergyLost;
+
+        if (m_EnergyLostState != 0) {
+            const auto healthX = (int32)(SCREEN_WIDTH - SCREEN_STRETCH_X(141.0f));
+            RenderHealthBar(playerId, healthX, (int32)GetYPosBasedOnHealth(playerId, SCREEN_SCALE_Y(77.0f), 10));
+            if (CWorld::Players[1].m_pPed) {
+                float y = GetYPosBasedOnHealth(playerId, SCREEN_SCALE_Y(194.0f), 12);
+                y = GetYPosBasedOnHealth(1, y, 12);
+                RenderHealthBar(1, healthX, (int32)y);
+            }
+
+            const auto armorX = (int32)(SCREEN_WIDTH - SCREEN_STRETCH_X(94.0f));
+            RenderArmorBar(playerId, armorX, (int32)GetYPosBasedOnHealth(playerId, SCREEN_SCALE_Y(48.0f), 3));
+            if (CWorld::Players[1].m_pPed) {
+                float y = GetYPosBasedOnHealth(playerId, SCREEN_SCALE_Y(164.0f), 12);
+                y = GetYPosBasedOnHealth(1, y, 12);
+                RenderArmorBar(1, armorX, (int32)y);
+            }
+
+            // The breath bar is only shown while swimming, in a drowning vehicle, or shortly after running out of air
+            const auto IsOutOfBreath = [](CPed* ped, bool checkLowBreathTime) {
+                if (ped->GetIntelligence()->GetTaskSwim()) {
+                    return true;
+                }
+                if (ped->bInVehicle && ped->m_pVehicle
+                    && ped->m_pVehicle->physicalFlags.bSubmergedInWater
+                    && ped->m_pVehicle->vehicleFlags.bIsDrowning
+                ) {
+                    return true;
+                }
+                return ped->GetPlayerData()->m_fBreath < CStats::GetFatAndMuscleModifier(STAT_MOD_AIR_IN_LUNG)
+                    && (!checkLowBreathTime || CTimer::GetTimeInMS() < m_LastBreathTime + 500u);
+            };
+
+            const bool bDrawBreath = IsOutOfBreath(player, true);
+            if (bDrawBreath) {
+                m_LastBreathTime = CTimer::GetTimeInMS();
+            }
+
+            const bool bDrawBreath2 = CWorld::Players[1].m_pPed && IsOutOfBreath(CWorld::Players[1].m_pPed, false);
+            if (bDrawBreath2) {
+                m_LastBreathTime = CTimer::GetTimeInMS();
+            }
+
+            const auto breathX = (int32)(SCREEN_WIDTH - SCREEN_STRETCH_X(94.0f));
+            if (bDrawBreath) {
+                RenderBreathBar(playerId, breathX, (int32)GetYPosBasedOnHealth(playerId, SCREEN_SCALE_Y(62.0f), 6));
+            }
+            if (bDrawBreath2 && CWorld::Players[1].m_pPed) {
+                float y = GetYPosBasedOnHealth(playerId, SCREEN_SCALE_Y(179.0f), 12);
+                y = GetYPosBasedOnHealth(1, y, 12);
+                RenderBreathBar(1, breathX, (int32)y);
+            }
+        }
+    }
+
+    // Money
+    {
+        const auto displayMoney = (uint32)CWorld::Players[playerId].m_nDisplayMoney;
+        const float alpha = UpdateFade(m_DisplayScoreState, m_DisplayScoreFadeTimer, m_DisplayScoreTimer, m_LastDisplayScore, displayMoney);
+        m_LastDisplayScore = displayMoney;
+
+        if (m_DisplayScoreState != 0) {
+            DrawMoney(CWorld::Players[playerId], (uint8)alpha);
+        }
+    }
+
+    // Weapon icon and ammo
+    {
+        const auto weaponType = (uint32)player->GetActiveWeapon().m_Type;
+        const float alpha = UpdateFade(m_WeaponState, m_WeaponFadeTimer, m_WeaponTimer, m_LastWeapon, weaponType);
+        m_LastWeapon = weaponType;
+
+        if (m_WeaponState != 0) {
+            const auto magic = SCREEN_WIDTH * 0.17343046f;
+            DrawWeaponIcon(player, (int32)(SCREEN_WIDTH - (SCREEN_STRETCH_X(32.0f) + magic)), (int32)SCREEN_SCALE_Y(20.0f), alpha);
+            if (CWorld::Players[1].m_pPed) {
+                DrawWeaponIcon(
+                    CWorld::Players[1].m_pPed,
+                    (int32)(SCREEN_WIDTH - (SCREEN_STRETCH_X(32.0f) + 111.0f)),
+                    (int32)GetYPosBasedOnHealth(playerId, SCREEN_SCALE_Y(138.0f), 12),
+                    alpha
+                );
+            }
+
+            const auto ammoX = (int32)(SCREEN_WIDTH - (magic + SCREEN_STRETCH_X(32.0f)) + SCREEN_STRETCH_X(47.0f / 2.0f));
+            const auto ammoY = SCREEN_STRETCH_Y(43.0f);
+            DrawAmmo(player, ammoX, (int32)(ammoY + SCREEN_STRETCH_Y(20.0f)), alpha);
+            if (CWorld::Players[1].m_pPed) {
+                DrawAmmo(
+                    CWorld::Players[1].m_pPed,
+                    ammoX,
+                    (int32)GetYPosBasedOnHealth(playerId, ammoY + SCREEN_STRETCH_Y(138.0f), 12),
+                    alpha
+                );
+            }
+        }
+    }
 }
 
 inline void CHud::DrawClock() {
@@ -1556,7 +2283,142 @@ void CHud::DrawTripSkip() {
 
 // 0x58D9A0
 void CHud::DrawWanted() {
-    return plugin::Call<0x58D9A0>();
+    CWanted* const wanted = FindPlayerWanted();
+    const int32 wantedLevel       = (int32)wanted->m_WantedLevel;
+    const int32 wantedBeforeParole = (int32)wanted->m_WantedLevelBeforeParole;
+
+    uint32 state     = m_WantedState;
+    uint32 fadeTimer = m_WantedFadeTimer;
+    uint32 timer     = m_WantedTimer;
+    float  alpha     = 255.0f;
+
+    const auto fadeStep = (uint32)CTimer::GetTimeStepInMS();
+
+    const auto ApplyFadeState = [&] {
+        switch (state) {
+        case 1:
+            fadeTimer = 1000;
+            if ((float)timer > 10000.0f) {
+                state     = 3;
+                fadeTimer = 3000;
+            }
+            break;
+        case 2:
+            fadeTimer += fadeStep;
+            if ((float)fadeTimer > 1000.0f) {
+                fadeTimer = 1000;
+                state     = 1;
+            }
+            break;
+        case 3:
+            fadeTimer -= fadeStep;
+            if ((float)(int32)fadeTimer < 0.0f) {
+                fadeTimer = 0;
+                state     = 0;
+            }
+            break;
+        default:
+            break;
+        }
+        timer += fadeStep;
+        alpha = (float)fadeTimer * 0.001f * 255.0f;
+    };
+
+    if (m_LastWanted == (uint32)wantedLevel) {
+        // Same as last frame - update the state machine
+        if (state != 0 && state != 5) {
+            ApplyFadeState();
+        }
+        s_bWantedStarsVisible = true;
+    } else {
+        // The wanted level changed - restart the fade
+        switch (state) {
+        case 0:
+            fadeTimer = 0;
+            [[fallthrough]];
+        case 1:
+        case 3:
+            state = 2;
+            timer = 5;
+            break;
+        default:
+            break;
+        }
+        if (state != 5) {
+            ApplyFadeState();
+        }
+        m_LastWanted          = (uint32)wantedLevel;
+        s_bWantedStarsVisible = false;
+    }
+
+    m_WantedState     = state;
+    m_WantedFadeTimer = fadeTimer;
+    m_WantedTimer     = timer;
+
+    alpha = std::clamp(alpha, 0.0f, 255.0f);
+
+    if (!state) {
+        return;
+    }
+
+    CFont::SetBackground(false, false);
+    CFont::SetScale(SCREEN_STRETCH_X(0.605f), SCREEN_SCALE_Y(1.21f));
+    CFont::SetOrientation(eFontAlignment::ALIGN_RIGHT);
+    CFont::SetProportional(true);
+    CFont::SetFontStyle(FONT_GOTHIC);
+
+    GxtChar starGxt[2];
+    AsciiToGxtChar("]", starGxt);
+
+    float x = SCREEN_WIDTH - SCREEN_STRETCH_X(29.0f);
+
+    if ((wantedLevel > 0 && s_bWantedStarsVisible) || wantedBeforeParole > 0) {
+        const auto alpha8 = (uint8)alpha;
+
+        for (int32 i = 0; i < 6; i++) {
+            CFont::SetEdge(1);
+            CFont::SetDropColor({ 0, 0, 0, alpha8 });
+            CFont::SetScale(SCREEN_STRETCH_X(0.605f), SCREEN_SCALE_Y(1.21f));
+
+            if (i < wantedLevel
+                && (CTimer::GetTimeInMS() > wanted->m_LastTimeWantedLevelChanged + 2000u
+                    || (CTimer::GetFrameCounter() & 4))
+            ) {
+                CFont::SetColor(HudColour.GetRGBA(HUD_COLOUR_GOLD, alpha8));
+                float y = SCREEN_SCALE_Y(114.0f);
+                if (CWorld::Players[CWorld::PlayerInFocus].m_nMaxHealth < 101) {
+                    y -= SCREEN_SCALE_Y(12.0f);
+                }
+                CFont::PrintString(x, y, starGxt);
+            } else if (i < wantedBeforeParole && (CTimer::GetFrameCounter() & 4)) {
+                const CRGBA gold = HudColour.GetRGB(HUD_COLOUR_GOLD);
+                CFont::SetColor(CRGBA(
+                    (uint8)((float)gold.r * 0.8f),
+                    (uint8)((float)gold.g * 0.8f),
+                    (uint8)((float)gold.b * 0.8f),
+                    alpha8
+                ));
+                CFont::PrintString(
+                    x,
+                    GetYPosBasedOnHealth(CWorld::PlayerInFocus, SCREEN_SCALE_Y(114.0f), 12),
+                    starGxt
+                );
+            } else if (i >= wantedLevel) {
+                CFont::SetEdge(0);
+                CFont::SetColor({ 0, 0, 0, (uint8)(alpha * 0.7f) });
+                CFont::SetScale(SCREEN_STRETCH_X(0.605f) * 1.2f, SCREEN_SCALE_Y(1.21f) * 1.2f);
+                CFont::PrintString(
+                    x,
+                    GetYPosBasedOnHealth(CWorld::PlayerInFocus, SCREEN_SCALE_Y(114.0f), 12) - 2.0f * SCREEN_SCALE_Y(1.0f),
+                    starGxt
+                );
+            }
+
+            x -= SCREEN_STRETCH_X(18.0f);
+        }
+
+        CFont::SetEdge(0);
+    }
 }
 
 // 0x58D7D0

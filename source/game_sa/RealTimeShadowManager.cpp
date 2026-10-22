@@ -14,7 +14,7 @@ void CRealTimeShadowManager::InjectHooks() {
     RH_ScopedInstall(Init, 0x7067C0);
     RH_ScopedInstall(ReInit, 0x706870);
     RH_ScopedInstall(ReturnRealTimeShadow, 0x705B30);
-    RH_ScopedInstall(GetRealTimeShadow, 0x706970, { .Reversed = false });
+    RH_ScopedInstall(GetRealTimeShadow, 0x706970);
     RH_ScopedInstall(Update, 0x706AB0);
     RH_ScopedInstall(DoShadowThisFrame, 0x706BA0);
     RH_ScopedInstall(Exit, 0x706A60);
@@ -156,24 +156,59 @@ void CRealTimeShadowManager::Update() {
     }
 }
 
+// Retail returns `nullptr` whenever no shadow could be assigned (See `GetRealTimeShadow`), but the API
+// here returns a reference. As the only caller (`DoShadowThisFrame`) discards the return value, a shared
+// instance is returned instead in those cases.
+static CRealTimeShadow& GetNoShadowPlaceholder() {
+    static CRealTimeShadow s_noShadow;
+    return s_noShadow;
+}
+
+// 0x706970
 CRealTimeShadow& CRealTimeShadowManager::GetRealTimeShadow(CPhysical* physical) {
-    return plugin::CallMethodAndReturn<CRealTimeShadow&, 0x706970, CRealTimeShadowManager*, CPhysical*>(this, physical);
-    /*
-    * Unfinished
-    if (m_bInitialised) {
-        return;
+    // The player ped always uses the first shadow slot
+    bool useFirstSlot = false;
+    if (physical->GetType() == ENTITY_TYPE_PED) {
+        useFirstSlot = physical->AsPed()->m_nPedType == PED_TYPE_PLAYER1;
     }
 
-    bool isFirstPlayer{};
-
-    if (!physical->GetIsTypePed() || physical->AsPed()->IsPlayer()) {
-        if (FindPlayerPed()->IsInVehicle()) { // Maybe wrong?
-            if (FindPlayerPed()->m_pVehicle->GetMoveSpeed().SquaredMagnitude() < sq(0.3f)) {
-                return;
+    // No shadows are assigned while the player is driving away in a vehicle
+    bool canAssign = true;
+    if (!useFirstSlot) {
+        const auto plyrPed = CWorld::Players[CWorld::PlayerInFocus].m_pPed;
+        if (plyrPed->bInVehicle) {
+            if (const auto plyrVeh = plyrPed->m_pVehicle) {
+                canAssign = plyrVeh->GetMoveSpeed().SquaredMagnitude() <= 0.09f;
             }
         }
     }
-    */
+
+    if (!m_bInitialised || !canAssign) {
+        return GetNoShadowPlaceholder();
+    }
+
+    CRealTimeShadow* shdw{};
+    if (useFirstSlot) {
+        shdw = m_apShadows[0];
+    } else {
+        // Use the last unused one
+        for (const auto& s : m_apShadows) {
+            if (!s->m_pOwner) {
+                shdw = s;
+            }
+        }
+    }
+
+    if (!shdw) {
+        return GetNoShadowPlaceholder();
+    }
+
+    shdw->SetupForThisEntity(physical);
+    physical->m_pShadowData = shdw;
+    shdw->m_bKeepAlive     = true;
+    shdw->m_nIntensity     = 0;
+
+    return *shdw;
 }
 
 // 0x706BA0

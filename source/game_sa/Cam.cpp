@@ -2545,8 +2545,7 @@ void CCam::Process_Cam_TwoPlayer_InCarAndShooting() {
     CTaskSimpleGangDriveBy driveBy{nullptr, nullptr, 100.0f, 100, eDrivebyStyle::AI_ALL_DIRN, shooter != vehicle->m_apPassengers[1]};
     driveBy.m_pWeaponInfo = &weapon.GetWeaponInfo(shooter);
     driveBy.m_nFakeShootDirn = (int8)(relativeHeading * StaticRef<float>(0x858FB8));
-    // CTaskSimpleGangDriveBy::FireGun is implemented in the original task code.
-    plugin::CallMethod<0x627CC0, CTaskSimpleGangDriveBy*, CPed*>(&driveBy, shooter);
+    driveBy.FireGun(shooter);
     CamShakeNoPos(&TheCamera, StaticRef<float>(0x8CCD18));
 }
 
@@ -4313,8 +4312,7 @@ void CCam::Process_FollowPed_SA(const CVector& target, float, float, float, bool
     if (auto* climb = intelligence->GetTaskClimb()) {
         climb->GetCameraStickModifier(ped, m_fVerticalAngle, m_fHorizontalAngle, vertical, horizontal);
     } else if (auto* task = ped->GetTaskManager().GetActiveTask(); task && task->GetTaskType() == TASK_COMPLEX_ENTER_CAR_AS_DRIVER) {
-        // CTaskComplexEnterCar::GetCameraStickModifier is not yet exposed by the task class.
-        plugin::CallMethod<0x63A380, CTask*, CPed*, float, float*, float*, float*, float*>(task, ped, distance, &m_fVerticalAngle, &m_fHorizontalAngle, &vertical, &horizontal);
+        static_cast<CTaskComplexEnterCar*>(task)->GetCameraStickModifier(ped, distance, m_fVerticalAngle, m_fHorizontalAngle, vertical, horizontal);
     }
     const auto damping = std::pow(settings[8], timeStep);
     m_fBetaSpeed = damping * m_fBetaSpeed + (1.0f - damping) * std::clamp(horizontal + headingVelocity, -settings[9], settings[9]);

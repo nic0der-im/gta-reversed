@@ -11,6 +11,8 @@ void CRealTimeShadow::InjectHooks() {
 
     RH_ScopedInstall(SetLightProperties, 0x705900);
     RH_ScopedInstall(GetShadowRwTexture, 0x7059F0);
+    RH_ScopedInstall(GetShadowCamera, 0x7059E0);
+    RH_ScopedInstall(SetupForThisEntity, 0x706520);
     RH_ScopedInstall(DrawBorderAroundTexture, 0x705A00);
     RH_ScopedInstall(Create, 0x706460);
     RH_ScopedInstall(Update, 0x706600);
@@ -44,6 +46,56 @@ RwFrame* CRealTimeShadow::SetLightProperties(float angle, float unused, bool doS
 // 0x7059F0
 RwTexture* CRealTimeShadow::GetShadowRwTexture() {
     return GetCurrentCamera().GetRwRenderTexture();
+}
+
+// 0x7059E0
+CShadowCamera* CRealTimeShadow::GetShadowCamera() {
+    return &m_camera;
+}
+
+// 0x706520
+bool CRealTimeShadow::SetupForThisEntity(CPhysical* owner) {
+    m_pOwner = owner;
+
+    auto* const rwObject = owner->GetRwObject();
+    if (!rwObject) {
+        return false;
+    }
+
+    m_nRwObjectType = rwObject->type;
+
+    if (m_nRwObjectType != rpATOMIC && m_nRwObjectType != rpCLUMP) {
+        Destroy();
+        return false;
+    }
+
+    if (m_nRwObjectType == rpATOMIC) {
+        const auto atomic = owner->GetRpAtomic();
+
+        if (atomic->interpolator.flags & rpINTERPOLATORDIRTYSPHERE) {
+            _rpAtomicResyncInterpolatedSphere(atomic);
+        }
+
+        m_boundingSphere.m_vecCenter = atomic->boundingSphere.center;
+        m_boundingSphere.m_fRadius   = atomic->boundingSphere.radius;
+    } else {
+        RpClumpGetBoundingSphere(owner->GetRpClump(), reinterpret_cast<RwSphere*>(&m_boundingSphere), true);
+    }
+
+    m_baseSphere.m_fRadius = m_boundingSphere.m_fRadius;
+
+    // Move `m_boundingSphere`'s center into the world (It's in object space)
+    RwV3dTransformPoints(
+        &m_baseSphere.m_vecCenter,
+        &m_boundingSphere.m_vecCenter,
+        1,
+        RwFrameGetMatrix(static_cast<RwFrame*>(rwObject->parent))
+    );
+
+    m_camera.SetFrustum(m_boundingSphere.m_fRadius * 1.1f);
+    m_camera.SetCenter(m_baseSphere.m_vecCenter);
+
+    return true;
 }
 
 // 0x705990

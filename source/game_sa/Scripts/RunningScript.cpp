@@ -27,6 +27,10 @@ static notsa::log_ptr logger;
 #include "reversiblehooks/ReversibleHook/ScriptCommandHook.h"
 
 #include "Commands/Commands.hpp"
+#include "Tasks/TaskTypes/TaskSimpleHoldEntity.h"
+#include "Tasks/TaskTypes/TaskSimpleRunNamedAnim.h"
+#include "Tasks/TaskTypes/TaskSimpleAffectSecondaryBehaviour.h"
+#include "Tasks/TaskTypes/TaskSimpleFinishBrain.h"
 #ifdef NOTSA_WITH_CLEO_SCRIPT_COMMANDS // TODO: Add premake/cmake option for this define
 #include "Commands/CLEO/Commands.hpp"
 #include "Commands/CLEO/Extensions/Commands.hpp"
@@ -40,6 +44,13 @@ static inline std::array<notsa::script::CommandHandlerFunction, (size_t)(COMMAND
 std::array<std::array<char, COMMANDS_CHAR_BUFFER_SIZE>, COMMANDS_CHAR_BUFFERS_COUNT> CRunningScript::ScriptArgCharBuffers        = {};
 uint8                                                                                CRunningScript::ScriptArgCharNextFreeBuffer = 0;
 
+//! Position the given ped is located at (A ped inside a vehicle is located by it's vehicle's position)
+static CVector GetScriptPedPosition(CPed* ped) {
+    return ped->IsInVehicle()
+        ? ped->m_pVehicle->GetPosition()
+        : ped->GetPosition();
+}
+
 void CRunningScript::InjectHooks() {
     logger = NOTSA_MAKE_LOGGER("script");
 
@@ -51,19 +62,19 @@ void CRunningScript::InjectHooks() {
     RH_ScopedInstall(Init, 0x4648E0);
     RH_ScopedInstall(GetCorrectPedModelIndexForEmergencyServiceType, 0x464F50);
 
-    RH_ScopedInstall(PlayAnimScriptCommand, 0x470150, { .Reversed = false });
-    RH_ScopedInstall(LocateCarCommand, 0x487A20, { .Reversed = false });
-    RH_ScopedInstall(LocateCharCommand, 0x486D80, { .Reversed = false });
-    RH_ScopedInstall(LocateObjectCommand, 0x487D10, { .Reversed = false });
-    RH_ScopedInstall(LocateCharCarCommand, 0x487420, { .Reversed = false });
-    RH_ScopedInstall(LocateCharCharCommand, 0x4870F0, { .Reversed = false });
-    RH_ScopedInstall(LocateCharObjectCommand, 0x487720, { .Reversed = false });
-    RH_ScopedInstall(CarInAreaCheckCommand, 0x488EC0, { .Reversed = false });
-    RH_ScopedInstall(CharInAreaCheckCommand, 0x488B50, { .Reversed = false });
-    RH_ScopedInstall(ObjectInAreaCheckCommand, 0x489150, { .Reversed = false });
-    RH_ScopedInstall(CharInAngledAreaCheckCommand, 0x487F60, { .Reversed = false });
-    RH_ScopedInstall(FlameInAngledAreaCheckCommand, 0x488780, { .Reversed = false });
-    RH_ScopedInstall(ObjectInAngledAreaCheckCommand, 0x4883F0, { .Reversed = false });
+    RH_ScopedInstall(PlayAnimScriptCommand, 0x470150);
+    RH_ScopedInstall(LocateCarCommand, 0x487A20);
+    RH_ScopedInstall(LocateCharCommand, 0x486D80);
+    RH_ScopedInstall(LocateObjectCommand, 0x487D10);
+    RH_ScopedInstall(LocateCharCarCommand, 0x487420);
+    RH_ScopedInstall(LocateCharCharCommand, 0x4870F0);
+    RH_ScopedInstall(LocateCharObjectCommand, 0x487720);
+    RH_ScopedInstall(CarInAreaCheckCommand, 0x488EC0);
+    RH_ScopedInstall(CharInAreaCheckCommand, 0x488B50);
+    RH_ScopedInstall(ObjectInAreaCheckCommand, 0x489150);
+    RH_ScopedInstall(CharInAngledAreaCheckCommand, 0x487F60);
+    RH_ScopedInstall(FlameInAngledAreaCheckCommand, 0x488780);
+    RH_ScopedInstall(ObjectInAngledAreaCheckCommand, 0x4883F0);
     RH_ScopedInstall(CollectParameters, 0x464080, { .StackArgumentsToPreserve = 1, .PreserveRegisters = true });
     RH_ScopedInstall(CollectNextParameterWithoutIncreasingPC, 0x464250, { .StackArgumentsToPreserve = 0, .PreserveRegisters = true });
     RH_ScopedInstall(StoreParameters, 0x464370, { .StackArgumentsToPreserve = 1, .PreserveRegisters = true });
@@ -79,10 +90,10 @@ void CRunningScript::InjectHooks() {
     RH_ScopedInstall(SetCharCoordinates, 0x464DC0);
     RH_ScopedInstall(AddScriptToList, 0x464C00, { .StackArgumentsToPreserve = 1, .PreserveRegisters = true });
     RH_ScopedInstall(RemoveScriptFromList, 0x464BD0, { .StackArgumentsToPreserve = 1, .PreserveRegisters = true });
-    RH_ScopedInstall(ShutdownThisScript, 0x465AA0, { .Reversed = false });
+    RH_ScopedInstall(ShutdownThisScript, 0x465AA0);
     RH_ScopedInstall(IsPedDead, 0x464D70);
     RH_ScopedInstall(ThisIsAValidRandomPed, 0x489490);
-    RH_ScopedInstall(ScriptTaskPickUpObject, 0x46AF50, { .Reversed = false });
+    RH_ScopedInstall(ScriptTaskPickUpObject, 0x46AF50);
     RH_ScopedInstall(UpdateCompareFlag, 0x4859D0, { .StackArgumentsToPreserve = 1, .PreserveRegisters = true });
     RH_ScopedInstall(UpdatePC, 0x464DA0, { .StackArgumentsToPreserve = 1, .PreserveRegisters = true });
     RH_ScopedInstall(ProcessOneCommand, 0x469EB0);
@@ -209,31 +220,43 @@ void CRunningScript::RemoveScriptFromList(CRunningScript** queueList) {
  * @addr 0x465AA0
  */
 void CRunningScript::ShutdownThisScript() {
-    return plugin::CallMethod<0x465AA0>(this);
-    /*
-    if (m_bIsExternal) {
-        const auto idx = CTheScripts::StreamedScripts.GetStreamedScriptWithThisStartAddress(m_pBaseIP);
-        CTheScripts::StreamedScripts.m_aScripts[idx].Status--;
+    m_IsActive = false;
+
+    if (m_IsExternal) {
+        const auto idx = CTheScripts::StreamedScripts.GetStreamedScriptWithThisStartAddress(m_BaseIP);
+        CTheScripts::StreamedScripts.m_aScripts[idx].m_NumberOfUsers--;
     }
 
-    switch (m_nExternalType) {
+    // The entity this script is attached to is stored in the first local variable
+    // (Or in the mission's `LocalVariablesForCurrentMission`, if this is the mission script)
+    const int32 entityRef = (m_ThisMustBeTheOnlyMissionRunning
+        ? CTheScripts::LocalVariablesForCurrentMission[0]
+        : m_LocalVars[0]
+    ).iParam;
+
+    switch (m_ExternalType) {
     case 0:
     case 2:
     case 3:
     case 5: {
-        const auto pedRef = m_bIsMission
-            ? CTheScripts::LocalVariablesForCurrentMission.front().iParam
-            : m_aLocalVars[0].iParam;
-        if (const auto ped = GetPedPool()->GetAtRef(pedRef)) {
-            ped->bHasAScriptBrain = false;
-            if (m_nExternalType == 5) {
-                CScriptedBrainTaskStore::SetTask(ped, new CTaskSimpleFinishBrain{});
-            }
+        CPed* ped = GetPedPool()->GetAtRef(entityRef);
+        if (!ped) {
+            break;
+        }
+        ped->bHasAScriptBrain = false;
+        if (m_ExternalType == 5) {
+            CScriptedBrainTaskStore::SetTask(ped, new CTaskSimpleFinishBrain{});
+        }
+        break;
+    }
+    case 1:
+    case 4: {
+        if (CObject* object = GetObjectPool()->GetAtRef(entityRef)) {
+            object->objectFlags.b0x100000_0x200000 = 1; // b0x100000 (Waiting)
         }
         break;
     }
     }
-    */
 }
 
 // 0x465C20
@@ -280,69 +303,788 @@ void CRunningScript::GivePedScriptedTask(CPed* ped, CTask* task, int32 opcode) {
     GivePedScriptedTask(GetPedPool()->GetRef(ped), task, opcode); // Must do it like this, otherwise unhooking of the original `GivePedScriptedTask` will do nothing
 }
 
-// 0x470150
+/*!
+ * @addr 0x470150
+ * @brief Starts a `TASK_PLAY_ANIM*`-family task on a ped (The amount of parameters collected depends on the opcode)
+ */
 void CRunningScript::PlayAnimScriptCommand(int32 commandId) {
-    plugin::CallMethod<0x470150, CRunningScript*, int32>(this, commandId);
+    CollectParameters(1);
+    const int32 pedRef = ScriptParams[0].iParam;
+
+    char animName[24];
+    char animGroup[16];
+    ReadTextLabelFromScript(animName, 0x18);
+    ReadTextLabelFromScript(animGroup, 0x10);
+
+    bool dontInterrupt = true;
+    bool offsetPed     = false;
+    switch (commandId) {
+    case COMMAND_TASK_PLAY_ANIM_WITH_FLAGS: // 0x88A
+        CollectParameters(8);
+        dontInterrupt = ScriptParams[6].iParam != 0;
+        offsetPed     = ScriptParams[7].iParam != 0;
+        break;
+    case COMMAND_TASK_PLAY_ANIM: // 0x605
+        CollectParameters(6);
+        break;
+    case COMMAND_TASK_PLAY_ANIM_NON_INTERRUPTABLE: // 0x812
+        dontInterrupt = false;
+        CollectParameters(6);
+        break;
+    case COMMAND_TASK_PLAY_ANIM_SECONDARY: // 0xA1A
+        CollectParameters(6);
+        break;
+    }
+
+    // NOTE: For any other opcode no extra parameters are collected, so the values below are whatever was left in `ScriptParams`
+    const float blendDelta = ScriptParams[0].fParam;
+    const int32 endTime    = ScriptParams[5].iParam;
+
+    uint32 animFlags = ANIMATION_IS_PARTIAL; // 0x10
+    if (ScriptParams[1].iParam != 0 || (endTime > 0 && ScriptParams[4].iParam == 0)) {
+        animFlags = ANIMATION_IS_PARTIAL | ANIMATION_IS_LOOPED; // 0x12
+    }
+    if (ScriptParams[2].iParam != 0) {
+        animFlags |= ANIMATION_CAN_EXTRACT_VELOCITY; // 0x40
+    }
+    if (ScriptParams[3].iParam != 0) {
+        animFlags |= ANIMATION_CAN_EXTRACT_X_VELOCITY; // 0x80
+    }
+    if (ScriptParams[4].iParam == 0) {
+        animFlags |= ANIMATION_IS_FINISH_AUTO_REMOVE; // 0x08
+    }
+    if (commandId == COMMAND_TASK_PLAY_ANIM_SECONDARY) {
+        animFlags |= ANIMATION_DONT_ADD_TO_PARTIAL_BLEND; // 0x400
+    }
+
+    CTask* task = new CTaskSimpleRunNamedAnim(
+        animName,
+        animGroup,
+        animFlags,
+        blendDelta,
+        static_cast<uint32>(endTime < 1 ? -1 : endTime), // `-1` => No end time
+        !dontInterrupt,
+        CTaskSequences::ms_iActiveSequence >= 0, // Run in sequence (If one is active)
+        offsetPed,
+        false // Hold last frame
+    );
+
+    if (commandId == COMMAND_TASK_PLAY_ANIM_SECONDARY) {
+        task = new CTaskSimpleAffectSecondaryBehaviour(true, TASK_SECONDARY_PARTIAL_ANIM, task);
+    }
+
+    GivePedScriptedTask(pedRef, task, commandId);
 }
 
-// 0x487A20
+/*!
+ * @addr 0x487A20
+ * @brief Is a car within a box (Of size `rx, ry[, rz]`) around a point
+ */
 void CRunningScript::LocateCarCommand(int32 commandId) {
-    plugin::CallMethod<0x487A20, CRunningScript*, int32>(this, commandId);
+    const bool is3D = commandId >= COMMAND_LOCATE_CAR_3D && commandId <= COMMAND_LOCATE_STOPPED_CAR_3D;
+    CollectParameters(is3D ? 8 : 6);
+
+    CVehicle* veh = GetVehiclePool()->GetAtRef(ScriptParams[0].iParam);
+
+    // "Locate stopped car" variants require the car to be standing still
+    const bool isMoving = (commandId == COMMAND_LOCATE_STOPPED_CAR_2D || commandId == COMMAND_LOCATE_STOPPED_CAR_3D)
+        && veh->m_fMovingSpeed > std::min(CTimer::GetTimeStep(), CTimer::GetOldTimeStep()) * 0.01f;
+
+    const float x  = ScriptParams[1].fParam;
+    const float y  = ScriptParams[2].fParam;
+    const float z  = is3D ? ScriptParams[3].fParam : 0.f;
+    const float rx = ScriptParams[is3D ? 4 : 3].fParam;
+    const float ry = ScriptParams[is3D ? 5 : 4].fParam;
+    const float rz = is3D ? ScriptParams[6].fParam : 0.f;
+    const float highlight = ScriptParams[is3D ? 7 : 5].fParam;
+
+    bool result = false;
+    if (!isMoving) {
+        const CVector& pos = veh->GetPosition();
+        result =    x - rx <= pos.x && pos.x <= x + rx
+                 && y - ry <= pos.y && pos.y <= y + ry
+                 && (!is3D || (z - rz <= pos.z && pos.z <= z + rz));
+    }
+
+    UpdateCompareFlag(result);
+
+    if (highlight != 0.f) {
+        HighlightImportantArea(CVector2D{x - rx, y - ry}, CVector2D{x + rx, y + ry}, is3D ? z : MAP_Z_LOW_LIMIT);
+    }
+
+    if (CTheScripts::DbgFlag && !is3D) {
+        CTheScripts::DrawDebugSquare(x - rx, y - ry, x + rx, y + ry);
+    }
 }
 
-// 0x486D80
+/*!
+ * @addr 0x486D80
+ * @brief Is a char within a box (Of size `rx, ry[, rz]`) around a point
+ */
 void CRunningScript::LocateCharCommand(int32 commandId) {
-    plugin::CallMethod<0x486D80, CRunningScript*, int32>(this, commandId);
+    const bool is3D = commandId >= COMMAND_LOCATE_CHAR_ANY_MEANS_3D && commandId <= COMMAND_LOCATE_STOPPED_CHAR_IN_CAR_3D;
+    CollectParameters(is3D ? 8 : 6);
+
+    CPed* ped = GetPedPool()->GetAtRef(ScriptParams[0].iParam);
+    const CVector pos = GetScriptPedPosition(ped);
+
+    bool mustBeStopped = false;
+    switch (commandId) {
+    case COMMAND_LOCATE_STOPPED_CHAR_ANY_MEANS_2D:
+    case COMMAND_LOCATE_STOPPED_CHAR_ON_FOOT_2D:
+    case COMMAND_LOCATE_STOPPED_CHAR_IN_CAR_2D:
+    case COMMAND_LOCATE_STOPPED_CHAR_ANY_MEANS_3D:
+    case COMMAND_LOCATE_STOPPED_CHAR_ON_FOOT_3D:
+    case COMMAND_LOCATE_STOPPED_CHAR_IN_CAR_3D:
+        mustBeStopped = true;
+        break;
+    }
+
+    const float x  = ScriptParams[1].fParam;
+    const float y  = ScriptParams[2].fParam;
+    const float z  = is3D ? ScriptParams[3].fParam : 0.f;
+    const float rx = ScriptParams[is3D ? 4 : 3].fParam;
+    const float ry = ScriptParams[is3D ? 5 : 4].fParam;
+    const float rz = is3D ? ScriptParams[6].fParam : 0.f;
+    const float highlight = ScriptParams[is3D ? 7 : 5].fParam;
+
+    bool result = false;
+    if (!mustBeStopped || CTheScripts::IsPedStopped(ped)) {
+        if (   x - rx <= pos.x && pos.x <= x + rx
+            && y - ry <= pos.y && pos.y <= y + ry
+            && (!is3D || (z - rz <= pos.z && pos.z <= z + rz))) {
+            switch (commandId) {
+            // On foot
+            case COMMAND_LOCATE_CHAR_ON_FOOT_2D:
+            case COMMAND_LOCATE_STOPPED_CHAR_ON_FOOT_2D:
+            case COMMAND_LOCATE_CHAR_ON_FOOT_3D:
+            case COMMAND_LOCATE_STOPPED_CHAR_ON_FOOT_3D:
+                result = !ped->bInVehicle;
+                break;
+            // In a vehicle
+            case COMMAND_LOCATE_CHAR_IN_CAR_2D:
+            case COMMAND_LOCATE_STOPPED_CHAR_IN_CAR_2D:
+            case COMMAND_LOCATE_CHAR_IN_CAR_3D:
+            case COMMAND_LOCATE_STOPPED_CHAR_IN_CAR_3D:
+                result = ped->bInVehicle;
+                break;
+            // Any means
+            case COMMAND_LOCATE_CHAR_ANY_MEANS_2D:
+            case COMMAND_LOCATE_STOPPED_CHAR_ANY_MEANS_2D:
+            case COMMAND_LOCATE_CHAR_ANY_MEANS_3D:
+            case COMMAND_LOCATE_STOPPED_CHAR_ANY_MEANS_3D:
+                result = true;
+                break;
+            }
+        }
+    }
+
+    UpdateCompareFlag(result);
+
+    if (highlight != 0.f) {
+        HighlightImportantArea(CVector2D{x - rx, y - ry}, CVector2D{x + rx, y + ry}, is3D ? z : MAP_Z_LOW_LIMIT);
+    }
+
+    if (CTheScripts::DbgFlag && !is3D) {
+        CTheScripts::DrawDebugSquare(x - rx, y - ry, x + rx, y + ry);
+    }
 }
 
-// 0x487D10
+/*!
+ * @addr 0x487D10
+ * @brief Is an object within a box (Of size `rx, ry[, rz]`) around a point
+ */
 void CRunningScript::LocateObjectCommand(int32 commandId) {
-    plugin::CallMethod<0x487D10, CRunningScript*, int32>(this, commandId);
+    const bool is3D = commandId == COMMAND_IS_OBJECT_IN_AREA_3D; // This is the only opcode that passes 8 parameters
+    CollectParameters(is3D ? 8 : 6);
+
+    CObject* obj = GetObjectPool()->GetAtRef(ScriptParams[0].iParam);
+
+    const float x  = ScriptParams[1].fParam;
+    const float y  = ScriptParams[2].fParam;
+    const float z  = is3D ? ScriptParams[3].fParam : 0.f;
+    const float rx = ScriptParams[is3D ? 4 : 3].fParam;
+    const float ry = ScriptParams[is3D ? 5 : 4].fParam;
+    const float rz = is3D ? ScriptParams[6].fParam : 0.f;
+    const float highlight = ScriptParams[is3D ? 7 : 5].fParam;
+
+    const CVector& pos = obj->GetPosition();
+    const bool result =    x - rx <= pos.x && pos.x <= x + rx
+                        && y - ry <= pos.y && pos.y <= y + ry
+                        && (!is3D || (z - rz <= pos.z && pos.z <= z + rz));
+
+    UpdateCompareFlag(result);
+
+    if (highlight != 0.f) {
+        HighlightImportantArea(CVector2D{x - rx, y - ry}, CVector2D{x + rx, y + ry}, is3D ? z : MAP_Z_LOW_LIMIT);
+    }
+
+    if (CTheScripts::DbgFlag && !is3D) {
+        CTheScripts::DrawDebugSquare(x - rx, y - ry, x + rx, y + ry);
+    }
 }
 
-// 0x487420
+/*!
+ * @addr 0x487420
+ * @brief Is a char within a box (Of size `rx, ry[, rz]`) around a car
+ */
 void CRunningScript::LocateCharCarCommand(int32 commandId) {
-    plugin::CallMethod<0x487420, CRunningScript*, int32>(this, commandId);
+    const bool is3D = commandId >= COMMAND_LOCATE_CHAR_ANY_MEANS_CAR_3D && commandId <= COMMAND_LOCATE_CHAR_IN_CAR_CAR_3D;
+    CollectParameters(is3D ? 6 : 5);
+
+    CPed*     ped = GetPedPool()->GetAtRef(ScriptParams[0].iParam);
+    CVehicle* veh = GetVehiclePool()->GetAtRef(ScriptParams[1].iParam);
+
+    const CVector  pos    = GetScriptPedPosition(ped);
+    const CVector& vehPos = veh->GetPosition();
+
+    const float rx = ScriptParams[2].fParam;
+    const float ry = ScriptParams[3].fParam;
+    const float rz = is3D ? ScriptParams[4].fParam : 0.f;
+    const float highlight = ScriptParams[is3D ? 5 : 4].fParam;
+
+    bool result = false;
+    if (   vehPos.x - rx <= pos.x && pos.x <= vehPos.x + rx
+        && vehPos.y - ry <= pos.y && pos.y <= vehPos.y + ry
+        && (!is3D || (vehPos.z - rz <= pos.z && pos.z <= vehPos.z + rz))) {
+        switch (commandId) {
+        // On foot
+        case COMMAND_LOCATE_CHAR_ON_FOOT_CAR_2D:
+        case COMMAND_LOCATE_CHAR_ON_FOOT_CAR_3D:
+            result = !ped->bInVehicle;
+            break;
+        // In a vehicle
+        case COMMAND_LOCATE_CHAR_IN_CAR_CAR_2D:
+        case COMMAND_LOCATE_CHAR_IN_CAR_CAR_3D:
+            result = ped->bInVehicle;
+            break;
+        // Any means
+        case COMMAND_LOCATE_CHAR_ANY_MEANS_CAR_2D:
+        case COMMAND_LOCATE_CHAR_ANY_MEANS_CAR_3D:
+            result = true;
+            break;
+        }
+    }
+
+    UpdateCompareFlag(result);
+
+    if (highlight != 0.f) {
+        HighlightImportantArea(
+            CVector2D{vehPos.x - rx, vehPos.y - ry},
+            CVector2D{vehPos.x + rx, vehPos.y + ry},
+            is3D ? vehPos.z : MAP_Z_LOW_LIMIT
+        );
+    }
+
+    if (CTheScripts::DbgFlag && !is3D) {
+        CTheScripts::DrawDebugSquare(vehPos.x - rx, vehPos.y - ry, vehPos.x + rx, vehPos.y + ry);
+    }
 }
 
-// 0x4870F0
+/*!
+ * @addr 0x4870F0
+ * @brief Is a char within a box (Of size `rx, ry[, rz]`) around another char
+ */
 void CRunningScript::LocateCharCharCommand(int32 commandId) {
-    plugin::CallMethod<0x4870F0, CRunningScript*, int32>(this, commandId);
+    const bool is3D = commandId >= COMMAND_LOCATE_CHAR_ANY_MEANS_CHAR_3D && commandId <= COMMAND_LOCATE_CHAR_IN_CAR_CHAR_3D;
+    CollectParameters(is3D ? 6 : 5);
+
+    CPed* ped      = GetPedPool()->GetAtRef(ScriptParams[0].iParam);
+    CPed* otherPed = GetPedPool()->GetAtRef(ScriptParams[1].iParam);
+
+    const CVector pos      = GetScriptPedPosition(ped);
+    const CVector otherPos = GetScriptPedPosition(otherPed);
+
+    const float rx = ScriptParams[2].fParam;
+    const float ry = ScriptParams[3].fParam;
+    const float rz = is3D ? ScriptParams[4].fParam : 0.f;
+    const float highlight = ScriptParams[is3D ? 5 : 4].fParam;
+
+    bool result = false;
+    if (   otherPos.x - rx <= pos.x && pos.x <= otherPos.x + rx
+        && otherPos.y - ry <= pos.y && pos.y <= otherPos.y + ry
+        && (!is3D || (otherPos.z - rz <= pos.z && pos.z <= otherPos.z + rz))) {
+        switch (commandId) {
+        // On foot
+        case COMMAND_LOCATE_CHAR_ON_FOOT_CHAR_2D:
+        case COMMAND_LOCATE_CHAR_ON_FOOT_CHAR_3D:
+            result = !ped->bInVehicle;
+            break;
+        // In a vehicle
+        case COMMAND_LOCATE_CHAR_IN_CAR_CHAR_2D:
+        case COMMAND_LOCATE_CHAR_IN_CAR_CHAR_3D:
+            result = ped->bInVehicle;
+            break;
+        // Any means
+        case COMMAND_LOCATE_CHAR_ANY_MEANS_CHAR_2D:
+        case COMMAND_LOCATE_CHAR_ANY_MEANS_CHAR_3D:
+            result = true;
+            break;
+        }
+    }
+
+    UpdateCompareFlag(result);
+
+    if (highlight != 0.f) {
+        HighlightImportantArea(
+            CVector2D{otherPos.x - rx, otherPos.y - ry},
+            CVector2D{otherPos.x + rx, otherPos.y + ry},
+            is3D ? otherPos.z : MAP_Z_LOW_LIMIT
+        );
+    }
+
+    if (CTheScripts::DbgFlag && !is3D) {
+        CTheScripts::DrawDebugSquare(otherPos.x - rx, otherPos.y - ry, otherPos.x + rx, otherPos.y + ry);
+    }
 }
 
-// 0x487720
+/*!
+ * @addr 0x487720
+ * @brief Is a char within a box (Of size `rx, ry[, rz]`) around an object
+ */
 void CRunningScript::LocateCharObjectCommand(int32 commandId) {
-    plugin::CallMethod<0x487720, CRunningScript*, int32>(this, commandId);
+    const bool is3D = commandId >= COMMAND_LOCATE_CHAR_ANY_MEANS_OBJECT_3D && commandId <= COMMAND_LOCATE_CHAR_IN_CAR_OBJECT_3D;
+    CollectParameters(is3D ? 6 : 5);
+
+    CPed*    ped = GetPedPool()->GetAtRef(ScriptParams[0].iParam);
+    CObject* obj = GetObjectPool()->GetAtRef(ScriptParams[1].iParam);
+
+    const CVector  pos    = GetScriptPedPosition(ped);
+    const CVector& objPos = obj->GetPosition();
+
+    const float rx = ScriptParams[2].fParam;
+    const float ry = ScriptParams[3].fParam;
+    const float rz = is3D ? ScriptParams[4].fParam : 0.f;
+    const float highlight = ScriptParams[is3D ? 5 : 4].fParam;
+
+    bool result = false;
+    if (   objPos.x - rx <= pos.x && pos.x <= objPos.x + rx
+        && objPos.y - ry <= pos.y && pos.y <= objPos.y + ry
+        && (!is3D || (objPos.z - rz <= pos.z && pos.z <= objPos.z + rz))) {
+        switch (commandId) {
+        // On foot
+        case COMMAND_LOCATE_CHAR_ON_FOOT_OBJECT_2D:
+        case COMMAND_LOCATE_CHAR_ON_FOOT_OBJECT_3D:
+            result = !ped->bInVehicle;
+            break;
+        // In a vehicle
+        case COMMAND_LOCATE_CHAR_IN_CAR_OBJECT_2D:
+        case COMMAND_LOCATE_CHAR_IN_CAR_OBJECT_3D:
+            result = ped->bInVehicle;
+            break;
+        // Any means
+        case COMMAND_LOCATE_CHAR_ANY_MEANS_OBJECT_2D:
+        case COMMAND_LOCATE_CHAR_ANY_MEANS_OBJECT_3D:
+            result = true;
+            break;
+        }
+    }
+
+    UpdateCompareFlag(result);
+
+    if (highlight != 0.f) {
+        HighlightImportantArea(
+            CVector2D{objPos.x - rx, objPos.y - ry},
+            CVector2D{objPos.x + rx, objPos.y + ry},
+            is3D ? objPos.z : MAP_Z_LOW_LIMIT
+        );
+    }
+
+    if (CTheScripts::DbgFlag && !is3D) {
+        CTheScripts::DrawDebugSquare(objPos.x - rx, objPos.y - ry, objPos.x + rx, objPos.y + ry);
+    }
 }
 
-// 0x488EC0
+/*!
+ * @addr 0x488EC0
+ * @brief Is a car within an axis-aligned box (`x1, y1[, z1]` - `x2, y2[, z2]`)
+ */
 void CRunningScript::CarInAreaCheckCommand(int32 commandId) {
-    plugin::CallMethod<0x488EC0, CRunningScript*, int32>(this, commandId);
+    const bool is3D = commandId == COMMAND_IS_CAR_IN_AREA_3D || commandId == COMMAND_IS_CAR_STOPPED_IN_AREA_3D;
+    CollectParameters(is3D ? 8 : 6);
+
+    CVehicle* veh = GetVehiclePool()->GetAtRef(ScriptParams[0].iParam);
+
+    // "Is stopped car in area" variants require the car to be standing still
+    const bool isMoving = (commandId == COMMAND_IS_CAR_STOPPED_IN_AREA_2D || commandId == COMMAND_IS_CAR_STOPPED_IN_AREA_3D)
+        && !CTheScripts::IsVehicleStopped(veh);
+
+    float x1 = ScriptParams[1].fParam;
+    float y1 = ScriptParams[2].fParam;
+    float z1 = is3D ? ScriptParams[3].fParam : 0.f;
+    float x2 = ScriptParams[is3D ? 4 : 3].fParam;
+    float y2 = ScriptParams[is3D ? 5 : 4].fParam;
+    float z2 = is3D ? ScriptParams[6].fParam : 0.f;
+    const float highlight = ScriptParams[is3D ? 7 : 5].fParam;
+
+    // Normalize the box's corners
+    if (is3D && z2 < z1) {
+        std::swap(z1, z2);
+    }
+    if (x2 < x1) {
+        std::swap(x1, x2);
+    }
+    if (y2 < y1) {
+        std::swap(y1, y2);
+    }
+
+    bool result = false;
+    if (!isMoving) {
+        const CVector& pos = veh->GetPosition();
+        result =    x1 <= pos.x && pos.x <= x2
+                 && y1 <= pos.y && pos.y <= y2
+                 && (!is3D || (z1 <= pos.z && pos.z <= z2));
+    }
+
+    UpdateCompareFlag(result);
+
+    if (highlight != 0.f) {
+        HighlightImportantArea(CVector2D{x1, y1}, CVector2D{x2, y2}, is3D ? (z1 + z2) * 0.5f : MAP_Z_LOW_LIMIT);
+    }
+
+    if (CTheScripts::DbgFlag && !is3D) {
+        CTheScripts::DrawDebugSquare(x1, y1, x2, y2);
+    }
 }
 
-// 0x488B50
+/*!
+ * @addr 0x488B50
+ * @brief Is a char within an axis-aligned box (`x1, y1[, z1]` - `x2, y2[, z2]`)
+ */
 void CRunningScript::CharInAreaCheckCommand(int32 commandId) {
-    plugin::CallMethod<0x488B50, CRunningScript*, int32>(this, commandId);
+    const bool is3D = commandId == COMMAND_IS_CHAR_IN_AREA_3D
+        || (commandId >= COMMAND_IS_CHAR_IN_AREA_ON_FOOT_3D && commandId <= COMMAND_IS_CHAR_STOPPED_IN_AREA_IN_CAR_3D);
+    CollectParameters(is3D ? 8 : 6);
+
+    CPed* ped = GetPedPool()->GetAtRef(ScriptParams[0].iParam);
+    const CVector pos = GetScriptPedPosition(ped);
+
+    bool mustBeStopped = false;
+    switch (commandId) {
+    case COMMAND_IS_CHAR_STOPPED_IN_AREA_2D:
+    case COMMAND_IS_CHAR_STOPPED_IN_AREA_ON_FOOT_2D:
+    case COMMAND_IS_CHAR_STOPPED_IN_AREA_IN_CAR_2D:
+    case COMMAND_IS_CHAR_STOPPED_IN_AREA_3D:
+    case COMMAND_IS_CHAR_STOPPED_IN_AREA_ON_FOOT_3D:
+    case COMMAND_IS_CHAR_STOPPED_IN_AREA_IN_CAR_3D:
+        mustBeStopped = true;
+        break;
+    }
+
+    float x1 = ScriptParams[1].fParam;
+    float y1 = ScriptParams[2].fParam;
+    float z1 = is3D ? ScriptParams[3].fParam : 0.f;
+    float x2 = ScriptParams[is3D ? 4 : 3].fParam;
+    float y2 = ScriptParams[is3D ? 5 : 4].fParam;
+    float z2 = is3D ? ScriptParams[6].fParam : 0.f;
+    const float highlight = ScriptParams[is3D ? 7 : 5].fParam;
+
+    // Normalize the box's corners
+    if (is3D && z2 < z1) {
+        std::swap(z1, z2);
+    }
+    if (x2 < x1) {
+        std::swap(x1, x2);
+    }
+    if (y2 < y1) {
+        std::swap(y1, y2);
+    }
+
+    bool result = false;
+    if ((!mustBeStopped || CTheScripts::IsPedStopped(ped))
+     && x1 <= pos.x && pos.x <= x2
+     && y1 <= pos.y && pos.y <= y2
+     && (!is3D || (z1 <= pos.z && pos.z <= z2))) {
+        switch (commandId) {
+        // On foot
+        case COMMAND_IS_CHAR_IN_AREA_ON_FOOT_2D:
+        case COMMAND_IS_CHAR_STOPPED_IN_AREA_ON_FOOT_2D:
+        case COMMAND_IS_CHAR_IN_AREA_ON_FOOT_3D:
+        case COMMAND_IS_CHAR_STOPPED_IN_AREA_ON_FOOT_3D:
+            result = !ped->bInVehicle;
+            break;
+        // In a vehicle
+        case COMMAND_IS_CHAR_IN_AREA_IN_CAR_2D:
+        case COMMAND_IS_CHAR_STOPPED_IN_AREA_IN_CAR_2D:
+        case COMMAND_IS_CHAR_IN_AREA_IN_CAR_3D:
+        case COMMAND_IS_CHAR_STOPPED_IN_AREA_IN_CAR_3D:
+            result = ped->bInVehicle;
+            break;
+        // Any means
+        case COMMAND_IS_CHAR_IN_AREA_2D:
+        case COMMAND_IS_CHAR_IN_AREA_3D:
+        case COMMAND_IS_CHAR_STOPPED_IN_AREA_2D:
+        case COMMAND_IS_CHAR_STOPPED_IN_AREA_3D:
+            result = true;
+            break;
+        }
+    }
+
+    UpdateCompareFlag(result);
+
+    if (highlight != 0.f) {
+        HighlightImportantArea(CVector2D{x1, y1}, CVector2D{x2, y2}, is3D ? (z1 + z2) * 0.5f : MAP_Z_LOW_LIMIT);
+    }
+
+    if (CTheScripts::DbgFlag && !is3D) {
+        CTheScripts::DrawDebugSquare(x1, y1, x2, y2);
+    }
 }
 
-// 0x489150
+/*!
+ * @addr 0x489150
+ * @brief Is an object within an axis-aligned box (`x1, y1[, z1]` - `x2, y2[, z2]`)
+ */
 void CRunningScript::ObjectInAreaCheckCommand(int32 commandId) {
-    plugin::CallMethod<0x489150, CRunningScript*, int32>(this, commandId);
+    const bool is3D = commandId == COMMAND_IS_OBJECT_IN_AREA_3D;
+    CollectParameters(is3D ? 8 : 6);
+
+    CObject* obj = GetObjectPool()->GetAtRef(ScriptParams[0].iParam);
+
+    float x1 = ScriptParams[1].fParam;
+    float y1 = ScriptParams[2].fParam;
+    float z1 = is3D ? ScriptParams[3].fParam : 0.f;
+    float x2 = ScriptParams[is3D ? 4 : 3].fParam;
+    float y2 = ScriptParams[is3D ? 5 : 4].fParam;
+    float z2 = is3D ? ScriptParams[6].fParam : 0.f;
+    const float highlight = ScriptParams[is3D ? 7 : 5].fParam;
+
+    // Normalize the box's corners
+    if (is3D && z2 < z1) {
+        std::swap(z1, z2);
+    }
+    if (x2 < x1) {
+        std::swap(x1, x2);
+    }
+    if (y2 < y1) {
+        std::swap(y1, y2);
+    }
+
+    const CVector& pos = obj->GetPosition();
+    const bool result =    x1 <= pos.x && pos.x <= x2
+                        && y1 <= pos.y && pos.y <= y2
+                        && (!is3D || (z1 <= pos.z && pos.z <= z2));
+
+    UpdateCompareFlag(result);
+
+    if (highlight != 0.f) {
+        HighlightImportantArea(CVector2D{x1, y1}, CVector2D{x2, y2}, is3D ? (z1 + z2) * 0.5f : MAP_Z_LOW_LIMIT);
+    }
+
+    if (CTheScripts::DbgFlag && !is3D) {
+        CTheScripts::DrawDebugSquare(x1, y1, x2, y2);
+    }
 }
 
-// 0x487F60
+//! The (2D) area used by the "angled area" commands, which is a parallelogram going from `a` to `b`, extruded sideways by `width`
+namespace {
+struct ScriptAngledArea {
+    CVector2D A{};     //!< Start of the area's spine
+    CVector2D B{};     //!< End of the area's spine
+    CVector2D ASide{}; //!< `A` offset sideways by `width`
+    CVector2D BSide{}; //!< `B` offset sideways by `width`
+    CVector2D Side{};  //!< `ASide` relative to `A`
+    float     Z1{};    //!< Minimum Z (3D only)
+    float     Z2{};    //!< Maximum Z (3D only)
+
+    ScriptAngledArea(float ax, float ay, float bx, float by, float z1, float z2, float width) :
+        A{ ax, ay },
+        B{ bx, by },
+        Z1{ std::min(z1, z2) },
+        Z2{ std::max(z1, z2) }
+    {
+        // The area is centered on the spine, so it's offset sideways by the angle's perpendicular
+        float angle = CGeneral::GetRadianAngleBetweenPoints(ax, ay, bx, by) + HALF_PI;
+        while (angle < 0.f) {
+            angle += TWO_PI;
+        }
+        while (angle > TWO_PI) {
+            angle -= TWO_PI;
+        }
+        const float s = std::sin(angle), c = std::cos(angle);
+
+        ASide = { ax + s * width, ay - c * width };
+        BSide = { bx + s * width, by - c * width };
+        Side  = ASide - A;
+    }
+
+    //! Check if the given position is within the area (Bounds are inclusive)
+    bool IsPointInside(const CVector& pos, bool is3D) const {
+        if (is3D && (pos.z < Z1 || pos.z > Z2)) {
+            return false;
+        }
+
+        const CVector2D spine = B - A;
+        const float     spineLen = spine.Magnitude();
+
+        CVector2D uSpine = spine;
+        uSpine.Normalise();
+
+        const float alongSpine = (pos.x - A.x) * uSpine.x + (pos.y - A.y) * uSpine.y;
+        if (alongSpine < 0.f || alongSpine > spineLen) {
+            return false;
+        }
+
+        const float sideLen = Side.Magnitude(); // Must be computed before normalising
+        CVector2D uSide = Side;
+        uSide.Normalise();
+
+        const float alongSide = (pos.x - A.x) * uSide.x + (pos.y - A.y) * uSide.y;
+        return alongSide >= 0.f && alongSide <= sideLen;
+    }
+
+    float GetHighlightZ(bool is3D) const {
+        return is3D ? (Z1 + Z2) * 0.5f : MAP_Z_LOW_LIMIT;
+    }
+
+    void Highlight(uint32 markerId, bool is3D) const {
+        CTheScripts::HighlightImportantAngledArea(
+            markerId,
+            A.x, A.y,
+            B.x, B.y,
+            BSide.x, BSide.y,
+            ASide.x, ASide.y,
+            GetHighlightZ(is3D)
+        );
+    }
+};
+} // namespace
+
+/*!
+ * @addr 0x487F60
+ * @brief Is a char within an angled (parallelogram) area
+ */
 void CRunningScript::CharInAngledAreaCheckCommand(int32 commandId) {
-    plugin::CallMethod<0x487F60, CRunningScript*, int32>(this, commandId);
+    const bool is3D = commandId >= COMMAND_IS_CHAR_IN_ANGLED_AREA_3D && commandId <= COMMAND_IS_CHAR_STOPPED_IN_ANGLED_AREA_IN_CAR_3D;
+    CollectParameters(is3D ? 9 : 7);
+
+    CPed* ped = GetPedPool()->GetAtRef(ScriptParams[0].iParam);
+
+    bool mustBeStopped = false;
+    switch (commandId) {
+    case COMMAND_IS_CHAR_STOPPED_IN_ANGLED_AREA_2D:
+    case COMMAND_IS_CHAR_STOPPED_IN_ANGLED_AREA_ON_FOOT_2D:
+    case COMMAND_IS_CHAR_STOPPED_IN_ANGLED_AREA_IN_CAR_2D:
+    case COMMAND_IS_CHAR_STOPPED_IN_ANGLED_AREA_3D:
+    case COMMAND_IS_CHAR_STOPPED_IN_ANGLED_AREA_ON_FOOT_3D:
+    case COMMAND_IS_CHAR_STOPPED_IN_ANGLED_AREA_IN_CAR_3D:
+        mustBeStopped = true;
+        break;
+    }
+
+    const ScriptAngledArea area{
+        ScriptParams[1].fParam,                        // a.x
+        ScriptParams[2].fParam,                        // a.y
+        ScriptParams[is3D ? 4 : 3].fParam,             // b.x
+        ScriptParams[is3D ? 5 : 4].fParam,             // b.y
+        is3D ? ScriptParams[3].fParam : 0.f,           // z1
+        is3D ? ScriptParams[6].fParam : 0.f,           // z2
+        ScriptParams[is3D ? 7 : 5].fParam              // width
+    };
+    const float highlight = ScriptParams[is3D ? 8 : 6].fParam;
+
+    bool result = false;
+    if ((!mustBeStopped || CTheScripts::IsPedStopped(ped)) && area.IsPointInside(GetScriptPedPosition(ped), is3D)) {
+        switch (commandId) {
+        // On foot
+        case COMMAND_IS_CHAR_IN_ANGLED_AREA_ON_FOOT_2D:
+        case COMMAND_IS_CHAR_STOPPED_IN_ANGLED_AREA_ON_FOOT_2D:
+        case COMMAND_IS_CHAR_IN_ANGLED_AREA_ON_FOOT_3D:
+        case COMMAND_IS_CHAR_STOPPED_IN_ANGLED_AREA_ON_FOOT_3D:
+            result = !ped->bInVehicle;
+            break;
+        // In a vehicle
+        case COMMAND_IS_CHAR_IN_ANGLED_AREA_IN_CAR_2D:
+        case COMMAND_IS_CHAR_STOPPED_IN_ANGLED_AREA_IN_CAR_2D:
+        case COMMAND_IS_CHAR_IN_ANGLED_AREA_IN_CAR_3D:
+        case COMMAND_IS_CHAR_STOPPED_IN_ANGLED_AREA_IN_CAR_3D:
+            result = ped->bInVehicle;
+            break;
+        // Any means
+        case COMMAND_IS_CHAR_IN_ANGLED_AREA_2D:
+        case COMMAND_IS_CHAR_STOPPED_IN_ANGLED_AREA_2D:
+        case COMMAND_IS_CHAR_IN_ANGLED_AREA_3D:
+        case COMMAND_IS_CHAR_STOPPED_IN_ANGLED_AREA_3D:
+            result = true;
+            break;
+        }
+    }
+
+    UpdateCompareFlag(result);
+
+    if (highlight != 0.f) {
+        area.Highlight(GetHighlightMarkerId(), is3D);
+    }
+
+    // NOTE: The original draws a debug square here (`CTheScripts::DrawDebugAngledSquare`) if `CTheScripts::DbgFlag` is set
 }
 
-// 0x488780
+/*!
+ * @addr 0x488780
+ * @brief Is any flamethrower flame within an angled (parallelogram) area
+ * @note Unlike the other "angled area" commands this one has no entity argument, so the parameters start at index 0
+ */
 void CRunningScript::FlameInAngledAreaCheckCommand(int32 commandId) {
-    plugin::CallMethod<0x488780, CRunningScript*, int32>(this, commandId);
+    const bool is3D = commandId == COMMAND_IS_FLAME_IN_ANGLED_AREA_3D;
+    CollectParameters(is3D ? 8 : 6);
+
+    const ScriptAngledArea area{
+        ScriptParams[0].fParam,                        // a.x
+        ScriptParams[1].fParam,                        // a.y
+        ScriptParams[is3D ? 3 : 2].fParam,             // b.x
+        ScriptParams[is3D ? 4 : 3].fParam,             // b.y
+        is3D ? ScriptParams[2].fParam : 0.f,           // z1
+        is3D ? ScriptParams[5].fParam : 0.f,           // z2
+        ScriptParams[is3D ? 6 : 4].fParam              // width
+    };
+    const float highlight = ScriptParams[is3D ? 7 : 5].fParam;
+
+    bool result = false;
+    for (auto shotId = 0u; shotId < 100u && !result; shotId++) { // 100 == `MAX_SHOT_INFOS`
+        CVector pos;
+        if (!CShotInfo::GetFlameThrowerShotPosn(shotId, pos)) {
+            continue;
+        }
+        result = area.IsPointInside(pos, is3D);
+    }
+
+    UpdateCompareFlag(result);
+
+    if (highlight != 0.f) {
+        area.Highlight(GetHighlightMarkerId(), is3D);
+    }
 }
 
-// 0x4883F0
+/*!
+ * @addr 0x4883F0
+ * @brief Is an object within an angled (parallelogram) area
+ */
 void CRunningScript::ObjectInAngledAreaCheckCommand(int32 commandId) {
-    plugin::CallMethod<0x4883F0, CRunningScript*, int32>(this, commandId);
+    const bool is3D = commandId == COMMAND_IS_OBJECT_IN_ANGLED_AREA_3D;
+    CollectParameters(is3D ? 9 : 7);
+
+    CObject* obj = GetObjectPool()->GetAtRef(ScriptParams[0].iParam);
+
+    const ScriptAngledArea area{
+        ScriptParams[1].fParam,                        // a.x
+        ScriptParams[2].fParam,                        // a.y
+        ScriptParams[is3D ? 4 : 3].fParam,             // b.x
+        ScriptParams[is3D ? 5 : 4].fParam,             // b.y
+        is3D ? ScriptParams[3].fParam : 0.f,           // z1
+        is3D ? ScriptParams[6].fParam : 0.f,           // z2
+        ScriptParams[is3D ? 7 : 5].fParam              // width
+    };
+    const float highlight = ScriptParams[is3D ? 8 : 6].fParam;
+
+    const bool result = area.IsPointInside(obj->GetPosition(), is3D);
+
+    UpdateCompareFlag(result);
+
+    if (highlight != 0.f) {
+        area.Highlight(GetHighlightMarkerId(), is3D);
+    }
+
+    // NOTE: The original draws a debug square here (`CTheScripts::DrawDebugAngledSquare`) if `CTheScripts::DbgFlag` is set
 }
 
 // 0x464D70
@@ -462,9 +1204,56 @@ int16 CRunningScript::GetPadState(uint16 playerIndex, eButtonId buttonId) {
     }
 }
 
-// 0x46AF50
+/*!
+ * @addr 0x46AF50
+ * @brief Makes a ped pick up (Hold) an object, optionally playing an animation
+ */
 void CRunningScript::ScriptTaskPickUpObject(int32 commandId) {
-    plugin::CallMethod<0x46AF50, CRunningScript*, int32>(this, commandId);
+    CollectParameters(7);
+
+    const int32 pedRef = ScriptParams[0].iParam;
+    CObject*    object = GetObjectPool()->GetAtRef(ScriptParams[1].iParam);
+
+    const CVector posn{
+        ScriptParams[2].fParam,
+        ScriptParams[3].fParam,
+        ScriptParams[4].fParam
+    };
+    const uint8 boneFrameId = (uint8)(ScriptParams[5].iParam);
+    const uint8 boneFlags   = (uint8)(ScriptParams[6].iParam);
+
+    char animName[24];
+    char animGroup[16];
+    ReadTextLabelFromScript(animName, 0x18);
+    ReadTextLabelFromScript(animGroup, 0x10);
+
+    // If either of the labels is "NULL" no animation is played
+    const bool noAnim = !std::strncmp(animName, "NULL", 5) || !std::strncmp(animGroup, "NULL", 5);
+
+    CollectParameters(1);
+    const eAnimationFlags animFlags = ScriptParams[0].iParam == 0
+        ? static_cast<eAnimationFlags>(ANIMATION_IS_FINISH_AUTO_REMOVE | ANIMATION_IS_PARTIAL) // 0x18
+        : ANIMATION_IS_PARTIAL;                                                                // 0x10
+
+    CTask* task = noAnim
+        ? static_cast<CTask*>(new CTaskSimpleHoldEntity(object, &posn, boneFrameId, boneFlags, AnimationId::ANIM_ID_NO_ANIMATION_SET, ANIM_GROUP_DEFAULT, false))
+        : static_cast<CTask*>(new CTaskSimpleHoldEntity(object, &posn, boneFrameId, boneFlags, animName, animGroup, animFlags));
+
+    if (pedRef == -1) { // No ped, so add the task to the active task sequence
+        if (commandId == COMMAND_TASK_PICK_UP_OBJECT) {
+            task = new CTaskSimpleAffectSecondaryBehaviour(true, TASK_SECONDARY_PARTIAL_ANIM, task);
+        }
+        CTaskSequences::AddTaskToActiveSequence(task);
+    } else {
+        CPed* ped = GetPedPool()->GetAtRef(pedRef);
+        ped->GetTaskManager().SetTaskSecondary(
+            task,
+            commandId == COMMAND_TASK_PICK_UP_OBJECT
+                ? TASK_SECONDARY_PARTIAL_ANIM
+                : TASK_SECONDARY_ATTACK
+        );
+        CPedScriptedTaskRecord::ms_scriptedTasks[CPedScriptedTaskRecord::GetVacantSlot()].Set(ped, commandId, task);
+    }
 }
 
 // 0x464DC0

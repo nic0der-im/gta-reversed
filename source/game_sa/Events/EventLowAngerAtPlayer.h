@@ -6,6 +6,7 @@
 
 
 class NOTSA_EXPORT_VTABLE CEventLowAngerAtPlayer : public CEventEditableResponse {
+public: // Constructed on the stack by `CMentalState::Process`
     CEventLowAngerAtPlayer() = default;
     ~CEventLowAngerAtPlayer() override = default;
 

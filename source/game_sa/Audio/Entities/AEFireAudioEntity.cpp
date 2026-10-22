@@ -3,7 +3,15 @@
 #include "AEFireAudioEntity.h"
 #include "AEAudioHardware.h"
 
+#ifdef NOTSA_NATIVE
+//! 0x8AE598, file-backed in the executable's `.data`.
+namespace {
+std::array<float, 5> gfFireFrequencyVariationsX = { 1.16f, 1.08f, 1.0f, 0.92f, 0.84f };
+}
+auto& gfFireFrequencyVariations = gfFireFrequencyVariationsX;
+#else
 auto& gfFireFrequencyVariations = StaticRef<std::array<float, 5>>(0x8AE598);
+#endif
 
 // 0x4DCF20
 void CAEFireAudioEntity::Initialise(FxSystem_c* system) {

@@ -10,7 +10,7 @@ void RwHelperInjectHooks() {
     RH_ScopedGlobalInstall(GetNameAndDamage, 0x5370A0);
     RH_ScopedGlobalInstall(GetFirstAtomicCallback, 0x734810);
     RH_ScopedGlobalInstall(GetFirstAtomic, 0x734820);
-    // RH_ScopedGlobalInstall(Get2DEffectAtomicCallback, 0x734850);
+    RH_ScopedGlobalInstall(Get2DEffectAtomicCallback, 0x734850);
     RH_ScopedGlobalInstall(Get2DEffectAtomic, 0x734880);
     RH_ScopedGlobalInstall(GetFirstObjectCallback, 0x7348B0);
     RH_ScopedGlobalInstall(GetFirstObject, 0x7348C0);
@@ -18,7 +18,7 @@ void RwHelperInjectHooks() {
     RH_ScopedGlobalInstall(GetFirstChild, 0x734900);
     RH_ScopedGlobalInstall(SkinAtomicGetHAnimHierarchCB, 0x734A20);
     RH_ScopedGlobalInstall(GetAnimHierarchyFromSkinClump, 0x734A40);
-    // RH_ScopedGlobalInstall(GetAnimHierarchyFromFrame, 0x734AB0);
+    RH_ScopedGlobalInstall(GetAnimHierarchyFromFrame, 0x734AB0);
     RH_ScopedGlobalInstall(GetAnimHierarchyFromClump, 0x734B10);
     RH_ScopedGlobalInstall(AtomicRemoveAnimFromSkinCB, 0x734B90);
     RH_ScopedGlobalInstall(RpAtomicConvertGeometryToTL, 0x734BE0);
@@ -31,6 +31,12 @@ void RwHelperInjectHooks() {
     RH_ScopedGlobalInstall(SetFilterModeOnClumpsTextures, 0x734DC0);
     RH_ScopedGlobalInstall(forceLinearFilteringMatTexturesCB, 0x734D60);
     RH_ScopedGlobalInstall(SetFilterModeOnAtomicsTextures, 0x734D80);
+    RH_ScopedGlobalInstall(RpGeometryReplaceOldMaterialWithNewMaterial, 0x734DE0);
+    RH_ScopedGlobalInstall(RwTexDictionaryFindHashNamedTexture, 0x734E50);
+    RH_ScopedGlobalInstall(RpClumpGetBoundingSphere, 0x734FC0);
+    RH_ScopedGlobalInstall(SkinGetBonePositions, 0x735140);
+    RH_ScopedGlobalInstall(SkinSetBonePositions, 0x7352D0);
+    RH_ScopedGlobalInstall(SkinGetBonePositionsToTable, 0x735360);
     RH_ScopedGlobalInstall(RemoveRefsCB, 0x7226D0);
 }
 
@@ -88,7 +94,12 @@ RpAtomic* GetFirstAtomic(RpClump* clump) {
 
 // 0x734850
 RpAtomic* Get2DEffectAtomicCallback(RpAtomic* atomic, void* data) {
-    return plugin::CallAndReturn<RpAtomic *, 0x734850, RpAtomic*, void*>(atomic, data);
+    // Stops the traversal at the first atomic whose geometry has any 2d effects
+    if (RpGeometryGet2dFxCount(atomic->geometry) == 0) {
+        return atomic; // Keep iterating
+    }
+    *static_cast<RpAtomic**>(data) = atomic;
+    return nullptr; // Stop iterating
 }
 
 // 0x734880
@@ -124,10 +135,28 @@ RwFrame* GetFirstChild(RwFrame* frame) {
     return child;
 }
 
+// 0x734A70
+static RwFrame* GetAnimHierarchyFromChildCB(RwFrame* frame, void* data) {
+    RpHAnimHierarchy* hier = RpHAnimFrameGetHierarchy(frame);
+    if (!hier) {
+        RwFrameForAllChildren(frame, GetAnimHierarchyFromChildCB, data);
+        return frame; // Keep iterating
+    }
+    *static_cast<RpHAnimHierarchy**>(data) = hier;
+    return nullptr; // Stop iterating
+}
+
 // 0x734AB0
 RpHAnimHierarchy* GetAnimHierarchyFromFrame(RwFrame* frame) {
     assert(frame);
-    return plugin::CallAndReturn<RpHAnimHierarchy *, 0x734AB0, RwFrame*>(frame);
+
+    RpHAnimHierarchy* hier{};
+    if (RpHAnimHierarchy* own = RpHAnimFrameGetHierarchy(frame)) {
+        return own;
+    }
+    // NOTE: The exe runs this very same traversal twice - the second pass can never find anything else
+    RwFrameForAllChildren(frame, GetAnimHierarchyFromChildCB, &hier);
+    return hier;
 }
 
 // 0x734B10
@@ -252,32 +281,236 @@ bool SetFilterModeOnClumpsTextures(RpClump* clump, RwTextureFilterMode filtering
 
 // 0x734DE0
 bool RpGeometryReplaceOldMaterialWithNewMaterial(RpGeometry* geometry, RpMaterial* oldMaterial, RpMaterial* newMaterial) {
-    return plugin::CallAndReturn<bool, 0x734DE0, RpGeometry*, RpMaterial*, RpMaterial*>(geometry, oldMaterial, newMaterial);
+    bool replaced = false;
+
+    for (uint16 i = 0; i < geometry->mesh->numMeshes; i++) {
+        RpMesh* mesh = RpGeometryGetMesh(geometry, i);
+        if (mesh->material != oldMaterial) {
+            continue;
+        }
+
+        const auto index = _rpMaterialListFindMaterialIndex(&geometry->matList, oldMaterial);
+        RpMaterialDestroy(oldMaterial);
+        geometry->matList.materials[index] = newMaterial;
+        mesh->material                     = newMaterial;
+        newMaterial->refCount++;
+        replaced = true; // NOTE: The exe doesn't break out - it keeps replacing any further hit
+    }
+
+    return replaced;
 }
 
 // 0x734E50
 RwTexture* RwTexDictionaryFindHashNamedTexture(RwTexDictionary* txd, uint32 hash) {
-    return plugin::CallAndReturn<RwTexture *, 0x734E50, RwTexDictionary*, uint32>(txd, hash);
+    // Walks the dictionary's intrusive list of textures
+    const RwLLLink* head = &txd->texturesInDict.link;
+    for (const RwLLLink* node = head->next; node != head; node = node->next) {
+        RwTexture* texture = rwLLLinkGetData(node, RwTexture, lInDictionary);
+        if (CKeyGen::GetUppercaseKey(texture->name) == hash) {
+            return texture;
+        }
+    }
+    return nullptr;
+}
+
+// 0x008D60BC - Whether to use the frame's LTM (or its modelling matrix) when transforming the atomics
+static bool g_bUseLTM = true;
+
+// 0x734970
+static RpAtomic* ClumpBoundingSphereCentreCB(RpAtomic* atomic, void* data) {
+    RpAtomicGetWorldBoundingSphere(atomic); // Recomputes the world binding sphere if it's dirty (the exe checks `privateFlags` itself)
+
+    const auto frame = RpAtomicGetFrame(atomic);
+    const auto mat   = g_bUseLTM ? RwFrameGetLTM(frame) : &frame->modelling;
+
+    RwV3d centre;
+    RwV3dTransformPoints(&centre, &atomic->boundingSphere.center, 1, mat);
+
+    auto& sum = *static_cast<RwV3d*>(data);
+    sum.x += centre.x;
+    sum.y += centre.y;
+    sum.z += centre.z;
+    return atomic;
+}
+
+// 0x734ED0
+static RpAtomic* ClumpBoundingSphereRadiusCB(RpAtomic* atomic, void* data) {
+    RpAtomicGetWorldBoundingSphere(atomic); // See above
+
+    const auto frame = RpAtomicGetFrame(atomic);
+    const auto mat   = g_bUseLTM ? RwFrameGetLTM(frame) : &frame->modelling;
+
+    RwV3d centre;
+    RwV3dTransformPoints(&centre, &atomic->boundingSphere.center, 1, mat);
+
+    auto&      sphere = *static_cast<RwSphere*>(data);
+    const auto radius = DistanceBetweenPoints(centre, sphere.center) + atomic->boundingSphere.radius;
+    if (radius > sphere.radius) {
+        sphere.radius = radius;
+    }
+    return atomic;
 }
 
 // 0x734FC0
 RpClump* RpClumpGetBoundingSphere(RpClump* clump, RwSphere* sphere, bool bUseLTM) {
-    return plugin::CallAndReturn<RpClump *, 0x734FC0, RpClump*, RwSphere*, bool>(clump, sphere, bUseLTM);
+    g_bUseLTM = bUseLTM; // NOTE: Global side effect, exactly as in the exe
+
+    if (!clump || !sphere) {
+        return nullptr;
+    }
+
+    sphere->center = {};
+    sphere->radius = 0.0f;
+
+    const auto numAtomics = RpClumpGetNumAtomics(clump);
+    if (numAtomics < 1) {
+        return nullptr;
+    }
+
+    RwV3d sum{};
+    RpClumpForAllAtomics(clump, ClumpBoundingSphereCentreCB, &sum);
+    const auto invNumAtomics = 1.0f / static_cast<float>(numAtomics);
+    sum.x *= invNumAtomics;
+    sum.y *= invNumAtomics;
+    sum.z *= invNumAtomics;
+
+    RwSphere result{};
+    result.center = sum;
+    result.radius = 0.0f;
+    RpClumpForAllAtomics(clump, ClumpBoundingSphereRadiusCB, &result);
+
+    const auto frame = RpClumpGetFrame(clump);
+    RwMatrix   mat;
+    RwMatrixCopy(&mat, g_bUseLTM ? RwFrameGetLTM(frame) : &frame->modelling);
+    RwV3dTransformPoints(&result.center, &result.center, 1, &mat);
+
+    *sphere = result;
+    return clump;
+}
+
+//! One entry of the bone-position table written by `SkinGetBonePositions` (0xC88258, stride 0x10)
+struct SkinBoneSlot {
+    int32 parentIndex;
+    RwV3d position;
+};
+VALIDATE_SIZE(SkinBoneSlot, 0x10);
+
+//! The re-entrancy flag lives right after the table (at 0xC88658), which gives the table's size
+static constexpr size_t SKIN_BONE_SLOT_COUNT = 64;
+
+struct SkinBoneSlotTable {
+    SkinBoneSlot slots[SKIN_BONE_SLOT_COUNT];
+};
+
+static SkinBoneSlotTable& GetSkinBoneSlotTable() {
+    return StaticRef<SkinBoneSlotTable>(0xC88258);
+}
+
+//! 0xC88658 - Re-entrancy guard of `SkinGetBonePositions` (NOTE: Nothing ever clears it in the exe)
+static bool& SkinGetBonePositionsBusy() {
+    return StaticRef<bool>(0xC88658);
 }
 
 // 0x735140
 void SkinGetBonePositions(RpClump* clump) {
-    plugin::Call<0x735140, RpClump*>(clump);
+    if (SkinGetBonePositionsBusy()) {
+        return;
+    }
+    SkinGetBonePositionsBusy() = true;
+
+    RpAtomic* atomic{};
+    RpClumpForAllAtomics(clump, GetFirstAtomicCallback, &atomic);
+    RpSkin* skin = RpSkinGeometryGetSkin(atomic->geometry);
+
+    RpHAnimHierarchy* hier{};
+    RpClumpForAllAtomics(clump, SkinAtomicGetHAnimHierarchCB, &hier);
+
+    auto& slots = GetSkinBoneSlotTable();
+    slots.slots[0].position    = {};
+    slots.slots[0].parentIndex = -1;
+
+    const auto numBones = static_cast<int32>(RpSkinGetNumBones(skin));
+    if (numBones <= 1) {
+        return;
+    }
+
+    int32  parentStack[50];
+    int32* stackPtr = parentStack;
+    int32  parent   = 0;
+    for (int32 node = 1; node < numBones; node++) {
+        const RwMatrix* skinMatrices = RpSkinGetSkinToBoneMatrices(skin);
+
+        const RwV3d origin{};
+        RwV3dTransformPoints(&slots.slots[node].position, &origin, 1, &skinMatrices[parent]);
+        slots.slots[node].parentIndex = parent;
+
+        // Walk the hierarchy: push the parent when descending into children, pop when moving to a sibling
+        const auto flags = hier->pNodeInfo[node].flags;
+        if (flags & rpHANIMPUSHPARENTMATRIX) {
+            *++stackPtr = parent;
+        }
+        parent = (flags & rpHANIMPOPPARENTMATRIX) ? *stackPtr-- : node;
+    }
 }
 
 // 0x7352D0
 void SkinSetBonePositions(RpClump* clump) {
-    plugin::Call<0x7352D0, RpClump*>(clump);
+    RpAtomic* atomic{};
+    RpClumpForAllAtomics(clump, GetFirstAtomicCallback, &atomic);
+    RpSkin* skin = RpSkinGeometryGetSkin(atomic->geometry);
+
+    RpHAnimHierarchy* hier{};
+    RpClumpForAllAtomics(clump, SkinAtomicGetHAnimHierarchCB, &hier);
+
+    RwMatrix*  matrices = RpHAnimHierarchyGetMatrixArray(hier);
+    const auto numBones = static_cast<int32>(RpSkinGetNumBones(skin));
+    if (numBones <= 1) {
+        return;
+    }
+
+    // Re-place every bone relative to the parent saved by `SkinGetBonePositions`
+    const auto& slots = GetSkinBoneSlotTable();
+    for (int32 node = 1; node < numBones; node++) {
+        const SkinBoneSlot& slot = slots.slots[node];
+        RwV3dTransformPoints(&matrices[node].pos, &slot.position, 1, &matrices[slot.parentIndex]);
+    }
 }
 
 // 0x735360
 void SkinGetBonePositionsToTable(RpClump* clump, RwV3d* table) {
-    plugin::Call<0x735360, RpClump*, RwV3d*>(clump, table);
+    if (!table) {
+        return;
+    }
+
+    RpAtomic* atomic{};
+    RpClumpForAllAtomics(clump, GetFirstAtomicCallback, &atomic);
+    RpSkin* skin = RpSkinGeometryGetSkin(atomic->geometry);
+
+    RpHAnimHierarchy* hier{};
+    RpClumpForAllAtomics(clump, SkinAtomicGetHAnimHierarchCB, &hier);
+
+    table[0] = {};
+
+    const auto numBones = static_cast<int32>(RpSkinGetNumBones(skin));
+    if (numBones <= 1) {
+        return;
+    }
+
+    int32  parentStack[32];
+    int32* stackPtr = parentStack;
+    int32  parent   = 0;
+    for (int32 node = 1; node < numBones; node++) {
+        const RwMatrix* skinMatrices = RpSkinGetSkinToBoneMatrices(skin);
+
+        const RwV3d origin{};
+        RwV3dTransformPoints(&table[node], &origin, 1, &skinMatrices[parent]);
+
+        const auto flags = hier->pNodeInfo[node].flags;
+        if (flags & rpHANIMPUSHPARENTMATRIX) {
+            *++stackPtr = parent;
+        }
+        parent = (flags & rpHANIMPOPPARENTMATRIX) ? *stackPtr-- : node;
+    }
 }
 
 // 0x7226D0

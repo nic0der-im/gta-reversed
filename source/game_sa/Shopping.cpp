@@ -2,6 +2,24 @@
 #include "Shopping.h"
 #include "PedClothesDesc.h"
 
+#ifdef NOTSA_NATIVE
+//! 0x8A61D8, file-backed in the executable's `.data`: the shop UI section titles, indexed by
+//! `ePriceSection`.
+std::array<const char*, CShopping::NUM_SECTION_NAMES> CShopping::ms_sectionNamesX = {
+    "None",
+    "CarMods",
+    "CarPaintJobs",
+    "Furniture",
+    "Clothes",
+    "Haircuts",
+    "Tattoos",
+    "Gifts",
+    "Food",
+    "Weapons",
+    "Property"
+};
+#endif
+
 void CShopping::InjectHooks() {
     RH_ScopedClass(CShopping);
     RH_ScopedCategoryGlobal();

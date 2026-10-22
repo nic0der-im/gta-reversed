@@ -30,6 +30,12 @@ struct CWaterVertex {
     CRenPar rp;
 };
 
+//! Surface info as filled by `CWaterLevel::GetGroundLevel` (0x6EA8A0)
+struct ColData {
+    uint8 material{}; //!< `CColPoint::m_nSurfaceTypeB`
+    uint8 piece{};    //!< `CColPoint::m_nPieceTypeB`
+};
+
 template<size_t NumVerts>
 struct CWaterPolygon { // NOTSA - I hate duplicate code
     CWaterPolygon(bool isInvisible, bool isLimitedDepth, auto vertIdxs) :
@@ -118,6 +124,9 @@ class CWaterLevel {
     static inline auto& TextureShiftSecondV = StaticRef<float>(0xC21180);
     static inline auto& TextureShiftSecondU = StaticRef<float>(0xC21184);
 
+    static inline auto& TextureShiftJitterV = StaticRef<float>(0xC21170);
+    static inline auto& TextureShiftJitterU = StaticRef<float>(0xC21174);
+
     struct WaterFog {
         std::array<int16, 70> minX;
         std::array<int16, 70> minY;
@@ -129,6 +138,25 @@ class CWaterLevel {
     static inline auto& gWaterFogIndex = StaticRef<uint32>(0xC228E4);
     static inline auto& m_fWaterFogHeight = StaticRef<float>(0x8D37E4);
     static inline auto& gbPlayerIsInsideWaterFog = StaticRef<bool>(0xC228E8);
+
+    static inline auto& m_WaterFogCol        = StaticRef<CRGBA>(0x8D37E8); //!< Colour of the fog slices
+    static inline auto& m_WaterFogInsideCol  = StaticRef<CRGBA>(0x8D37EC); //!< Colour of the full-screen quad (when inside the fog)
+    static inline auto& m_fWaterFogFadeSpeed = StaticRef<float>(0x8D37F0);
+    static inline auto& WaterFogFade         = StaticRef<float>(0xC228EC); //!< 0..1
+    static inline auto& WaterFogTimer        = StaticRef<float>(0xC228F0); //!< 40.0 initialized
+
+    // Water surface texture animation state (see `RenderWater`)
+    static inline auto& waterTexOfsU0     = StaticRef<float>(0x8D3824);
+    static inline auto& waterTexOfsV0     = StaticRef<float>(0x8D3828);
+    static inline auto& waterTexOfsU1     = StaticRef<float>(0x8D382C);
+    static inline auto& waterTexOfsV1     = StaticRef<float>(0x8D3830);
+    static inline auto& WaterTexJitterAmp = StaticRef<float>(0x8D3834);
+    static inline auto& WaterTexJitter    = StaticRef<float>(0x8D3928);
+    static inline auto& WaterTexFlowScale = StaticRef<float>(0x8D392C);
+    static inline auto& WaterTextureAddressMode = StaticRef<uint32>(0x8D3930); //!< An `RwTextureAddressMode`, `rwTEXTUREADDRESSWRAP` by default
+    static inline auto& WaterFarDist      = StaticRef<float>(0x8D3934);
+    static inline auto& WaterLayerAlphaRand = StaticRef<uint32>(0x8D380C); //!< Same address as `WaterLayerAlpha[1]`
+    static inline auto& bRandomizeWaterColorPerQuad = StaticRef<bool>(0xC228DC);
 
 
     // In reality the alpha component isn't used and instead `WaterLayerAlpha` is used
@@ -166,6 +194,12 @@ class CWaterLevel {
         };
 
     public:
+        PolyInfo() = default;
+        PolyInfo(PType type, uint16 id) :
+            m_id{ id },
+            m_type{ (uint16)type }
+        {}
+
         auto Id()   const { return m_id; }
         auto Type() const { return (PType)(m_type); }
 
@@ -278,9 +312,9 @@ public:
 
     static void CalculateWavesOnlyForCoordinate2(
         int32 x, int32 y,
-        float* pResultHeight, // in/out variable => in is the "water level" from `GetWaterLevelNoWaves`/out is the Z coordinate of the wave
         float bigWavesAmpl,
-        float smallWavesAmpl
+        float smallWavesAmpl,
+        float* pResultHeight // in/out variable => in is the "water level" from `GetWaterLevelNoWaves`/out is the Z coordinate of the wave
     );
 
     static float CalculateWavesOnlyForCoordinate2_Direct( // TODO: Once the OG function is reversed, we should use this instead of it (once we've verified that the reversed version works as expected)
@@ -289,7 +323,7 @@ public:
         float bigWavesAmpl,
         float smallWavesAmpl
     ) {
-        CalculateWavesOnlyForCoordinate2(x, y, &waterLevel, bigWavesAmpl, smallWavesAmpl);
+        CalculateWavesOnlyForCoordinate2(x, y, bigWavesAmpl, smallWavesAmpl, &waterLevel);
         return waterLevel; // Result of the above function is stored in this variable.
     }
 
@@ -312,6 +346,19 @@ public:
     static void SetCameraRange();
     static void HandleBeachToysStuff();
     static void UpdateFlow();
+
+    //! @name Previously "missing", now reversed
+    ///@{
+    static void AddToQuadsAndTrianglesList(int32 blockX, int32 blockY, int32 polyIdx, uint32 type);
+    static bool TestQuadToGetWaterLevel(CWaterQuad* quad, float x, float y, float z, float* outLevel, float* outBigWaves, float* outSmallWaves);
+    static bool TestTriangleToGetWaterLevel(CWaterTriangle* tri, float x, float y, float z, float* outLevel, float* outBigWaves, float* outSmallWaves);
+    static bool GetGroundLevel(const CVector& pos, float* outGroundZ, ColData* outColData, float maxHeight);
+    static void RenderSeaBedSegment(int32 blockX, int32 blockY, float x1, float x2, float y1, float y2);
+    static void RenderDetailedSeaBedSegment(int32 blockX, int32 blockY, float x1, float x2, float y1, float y2);
+    static void RenderAndEmptyRenderBuffer();
+    static void RenderHighDetailWaterRectangle_OneLayer(int32 minX, int32 maxX, int32 Y1, int32 Y2, CRenPar P1, CRenPar P2, CRenPar P3, CRenPar P4, int32 WaterLayer, int32 numVertices, int32 numRows, int32 halfX, int32 halfY);
+    static void RenderHighDetailWaterTriangle_OneLayer(int32 X1, int32 Y1, CRenPar P1, int32 X2, int32 Y2, CRenPar P2, int32 X3, int32 Y3, CRenPar P3, int32 WaterLayer, int32 numTris, int32 numRows, int32 halfSpan);
+    ///@}
 
     /* Missing (In no particular order):
     static void AddWaveToResult(float x, float y, float z, float* pLevel, uint8 bTouchingWater, CVector* normalVec);

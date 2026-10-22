@@ -1,6 +1,12 @@
 #include "StdInc.h"
 
 #include "TaskComplexHitPedWithCar.h"
+#include "TaskSimpleHitFromBehind.h"
+#include "TaskSimpleLeaveGroup.h"
+#include "TaskComplexFallAndGetUp.h"
+#include "TaskComplexEvasiveStep.h"
+#include "TaskSimpleKillPedWithCar.h"
+#include "TaskSimpleHurtPedWithCar.h"
 
 void CTaskComplexHitPedWithCar::InjectHooks() {
     RH_ScopedVirtualClass(CTaskComplexHitPedWithCar, 0x86f294, 11);
@@ -11,14 +17,14 @@ void CTaskComplexHitPedWithCar::InjectHooks() {
 
     RH_ScopedGlobalInstall(ComputeEvasiveStepMoveDir, 0x653B40, { .Reversed = false });
 
-    RH_ScopedInstall(HitHurtsPed, 0x653AE0, { .Reversed = false });
-    RH_ScopedInstall(CreateSubTask, 0x6560E0, { .Reversed = false });
+    RH_ScopedInstall(HitHurtsPed, 0x653AE0);
+    RH_ScopedInstall(CreateSubTask, 0x6560E0);
 
     RH_ScopedVMTInstall(Clone, 0x6559B0, { .Reversed = false });
     RH_ScopedVMTInstall(GetTaskType, 0x653A20, { .Reversed = false });
     RH_ScopedVMTInstall(CreateNextSubTask, 0x657AF0, { .Reversed = false });
-    RH_ScopedVMTInstall(CreateFirstSubTask, 0x656300, { .Reversed = false });
-    RH_ScopedVMTInstall(ControlSubTask, 0x653A90, { .Reversed = false });
+    RH_ScopedVMTInstall(CreateFirstSubTask, 0x656300);
+    RH_ScopedVMTInstall(ControlSubTask, 0x653A90);
 
 }
 
@@ -47,12 +53,40 @@ CVector CTaskComplexHitPedWithCar::ComputeEvasiveStepMoveDir(const CPed* ped, CV
 
 // 0x653AE0
 bool CTaskComplexHitPedWithCar::HitHurtsPed(CPed* ped) {
-    return plugin::CallMethodAndReturn<bool, 0x653AE0, CTaskComplexHitPedWithCar*, CPed*>(this, ped);
+    if (m_ImpulseMag > (ped->IsPlayer() ? 10.0f : 6.0f)) {
+        return true;
+    }
+    return ped->m_vecLastCollisionImpactVelocity.z <= -0.8f && m_ImpulseMag > 3.0f;
 }
 
 // 0x6560E0
-CTask* CTaskComplexHitPedWithCar::CreateSubTask(eTaskType tt) {
-    return plugin::CallMethodAndReturn<CTask*, 0x6560E0, CTaskComplexHitPedWithCar*, eTaskType>(this, tt);
+CTask* CTaskComplexHitPedWithCar::CreateSubTask(eTaskType taskType) {
+    switch (taskType) {
+    case TASK_SIMPLE_HIT_BEHIND:
+        return new CTaskSimpleHitFromBehind{};
+    case TASK_NONE:
+        return new CTaskSimpleLeaveGroup{};
+    case TASK_COMPLEX_FALL_AND_GET_UP: {
+        AnimationId animId;
+        switch (m_PedHitSide) {
+        case 0:  animId = ANIM_ID_KO_SKID_BACK;  break;
+        case 1:  animId = ANIM_ID_KO_SPIN_R;     break;
+        case 2:  animId = ANIM_ID_KO_SKID_FRONT; break;
+        case 3:  animId = ANIM_ID_KO_SPIN_L;     break;
+        default: animId = static_cast<AnimationId>(static_cast<int32>(taskType)); break; // SA reads the argument as-is
+        }
+        return new CTaskComplexFallAndGetUp{ animId, ANIM_GROUP_DEFAULT, m_DownTime };
+    }
+    case TASK_COMPLEX_EVASIVE_STEP:
+        return new CTaskComplexEvasiveStep{ m_Veh, m_MoveDir };
+    case TASK_SIMPLE_KILL_PED_WITH_CAR:
+        return new CTaskSimpleKillPedWithCar{ m_Veh, m_ImpulseMag };
+    case TASK_SIMPLE_HURT_PED_WITH_CAR:
+        return new CTaskSimpleHurtPedWithCar{ m_Veh, m_ImpulseMag };
+    case TASK_FINISHED:
+    default:
+        return nullptr;
+    }
 }
 
 // 0x657AF0
@@ -62,10 +96,21 @@ CTask* CTaskComplexHitPedWithCar::CreateNextSubTask(CPed* ped) {
 
 // 0x656300
 CTask* CTaskComplexHitPedWithCar::CreateFirstSubTask(CPed* ped) {
-    return plugin::CallMethodAndReturn<CTask*, 0x656300, CTaskComplexHitPedWithCar*, CPed*>(this, ped);
+    m_PedHitSide = (int32)CPedGeometryAnalyser::ComputePedHitSide(*ped, *m_Veh);
+
+    if (m_ImpulseMag > (ped->IsPlayer() ? 20.0f : 12.0f)) {
+        return CreateSubTask(TASK_SIMPLE_KILL_PED_WITH_CAR);
+    }
+
+    if (HitHurtsPed(ped)) {
+        return CreateSubTask(TASK_SIMPLE_HURT_PED_WITH_CAR);
+    }
+
+    m_MoveDir = ComputeEvasiveStepMoveDir(ped, m_Veh);
+    return CreateSubTask(TASK_COMPLEX_EVASIVE_STEP);
 }
 
 // 0x653A90
 CTask* CTaskComplexHitPedWithCar::ControlSubTask(CPed* ped) {
-    return plugin::CallMethodAndReturn<CTask*, 0x653A90, CTaskComplexHitPedWithCar*, CPed*>(this, ped);
+    return m_pSubTask;
 }

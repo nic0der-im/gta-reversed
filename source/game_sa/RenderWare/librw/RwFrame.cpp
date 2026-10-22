@@ -349,11 +349,15 @@ RwFrame* RwFrameForAllObjects(RwFrame* frame, RwObjectCallBack callBack, void* d
         return frame;
     }
 
-    for (RwLLLink* link = frame->objectList.link.next; link != &frame->objectList.link; link = link->next) {
+    for (RwLLLink* link = frame->objectList.link.next; link != &frame->objectList.link;) {
+        // The callback may unlink the object (e.g. `RpAtomicSetFrame`), which nulls this link's
+        // next/prev, so advance through a saved pointer.
+        RwLLLink* next = link->next;
         auto* object = rwLLLinkGetData(link, RwObjectHasFrame, lFrame);
         if (!callBack(&object->object, data)) {
             return nullptr;
         }
+        link = next;
     }
     return frame;
 }

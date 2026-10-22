@@ -10,7 +10,11 @@ public:
     CVector  m_endPoint;
     bool     m_bHasNoSound;
 
+#ifdef NOTSA_NATIVE
+    static inline float ms_fGunShotSenseRangeForRiot2 = -1.0f; // File-backed default in the executable's `.data`
+#else
     static inline auto& ms_fGunShotSenseRangeForRiot2 = StaticRef<float>(0x8A625C);
+#endif
     static void InjectHooks();
 
     CEventGunShot(CEntity* entity, CVector startPoint, CVector endPoint, bool bHasNoSound);

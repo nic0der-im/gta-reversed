@@ -1,7 +1,85 @@
 #include "StdInc.h"
 #include "AEAudioEnvironment.h"
 
+#ifdef NOTSA_NATIVE
+//! 0x8AD670, file-backed in the executable's `.data`: the reverb environment and depth used for
+//! each audio zone.
+namespace {
+sReverbEnvironment gAudioZoneToReverbEnvironmentMapX[NUM_AUDIO_ENVIRONMENTS] = {
+    { 23, -100 },
+    { 19, -100 },
+    { 15, -100 },
+    { 16, -100 },
+    { 4, -12 },
+    { 23, -100 },
+    { 4, -12 },
+    { 23, -100 },
+    { 10, -30 },
+    { 23, -100 },
+    { 23, -100 },
+    { 23, -100 },
+    { 23, -100 },
+    { 23, -100 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 5, -30 },
+    { 2, -20 },
+    { 10, -30 },
+    { 10, -30 },
+    { 4, -12 },
+    { 2, -20 },
+    { 10, -30 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 2, -20 },
+    { 2, -20 },
+    { 5, -30 },
+    { 4, -12 },
+    { 23, -100 },
+    { 4, -12 },
+    { 5, -30 },
+    { 2, -20 },
+    { 4, -12 },
+    { 1, -12 },
+    { 2, -20 },
+    { 23, -100 },
+    { 2, -20 },
+    { 4, -12 },
+    { 9, -20 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 5, -20 },
+    { 2, -20 },
+    { 10, -30 },
+    { 23, -100 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 4, -12 },
+    { 2, -20 },
+    { 4, -12 },
+};
+}
+sReverbEnvironment (&gAudioZoneToReverbEnvironmentMap)[NUM_AUDIO_ENVIRONMENTS] = gAudioZoneToReverbEnvironmentMapX;
+#else
 auto& gAudioZoneToReverbEnvironmentMap = StaticRef<sReverbEnvironment[NUM_AUDIO_ENVIRONMENTS]>(0x8AD670);
+#endif
 
 #include "data/SoundAttenuationTable.h"
 

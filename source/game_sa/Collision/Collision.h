@@ -23,11 +23,20 @@ public:
     static inline auto& ms_iProcessLineNumCrossings = StaticRef<uint32>(0x9655D0);
     static inline auto& ms_collisionInMemory = StaticRef<uint32>(0x9655D4);
 
+#ifdef NOTSA_NATIVE
+    //! File-backed defaults of the executable's `.data`; the native build defines them itself.
+    static inline bool bCamCollideWithVehicles  = true;
+    static inline bool bCamCollideWithObjects   = true;
+    static inline bool bCamCollideWithPeds      = true;
+    static inline bool bCamCollideWithBuildings = true;
+    static inline float relVelCamCollisionVehiclesSqr = 0.01f;
+#else
     static inline auto& bCamCollideWithVehicles = StaticRef<bool>(0x8A5B14);         // = true
     static inline auto& bCamCollideWithObjects = StaticRef<bool>(0x8A5B15);          // = true
     static inline auto& bCamCollideWithPeds = StaticRef<bool>(0x8A5B17);             // = true
     static inline auto& bCamCollideWithBuildings = StaticRef<bool>(0x8A5B16);        // = true
     static inline auto& relVelCamCollisionVehiclesSqr = StaticRef<float>(0x8A5B18); // = 0.01f
+#endif
 
     static inline struct DebugSettings {
         struct ShapeShapeCollision {

@@ -3144,7 +3144,11 @@ bool CCollision::CheckCameraCollisionVehicles(
 
     static auto& gpLastSittingOnEntity   = StaticRef<CEntity*>(0x9689D8);
     static auto& gFramesSittingOnTimeOut = StaticRef<int32>(0x9689D4);
+#ifdef NOTSA_NATIVE
+    static int32 gFramesToConsiderSittingOnStillTrue = 30; // File-backed default in the executable's `.data`
+#else
     static auto& gFramesToConsiderSittingOnStillTrue = StaticRef<int32>(0x8A5B1C); // 30
+#endif
 
     bool anyCollided = false;
     for (auto* const entity : CWorld::GetRepeatSector(X, Y).Vehicles) {

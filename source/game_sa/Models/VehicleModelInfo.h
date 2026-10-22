@@ -268,7 +268,14 @@ public:
     // vehicle components description tables
     // static RwObjectNameIdAssocation ms_vehicleDescs[12];
     static constexpr int32 NUM_VEHICLE_MODEL_DESCS = 12;
+#ifdef NOTSA_NATIVE
+    //! File-backed in the executable's `.data`; the native build defines it in `VehicleModelInfo.cpp`
+    //! (the component names point at string literals instead of `.rdata`).
+    static RwObjectNameIdAssocation* ms_vehicleDescsX[NUM_VEHICLE_MODEL_DESCS];
+    static inline auto& ms_vehicleDescs = ms_vehicleDescsX; // use eVehicleType to access
+#else
     static inline auto& ms_vehicleDescs = StaticRef<RwObjectNameIdAssocation*[NUM_VEHICLE_MODEL_DESCS]>(0x8A7740); // use eVehicleType to access
+#endif
 
     // remap texture
     static inline auto& ms_pRemapTexture = StaticRef<RwTexture*>(0xB4E47C);
@@ -287,7 +294,12 @@ public:
     static constexpr int32 NUM_WHEELS = 4;
     static inline auto& ms_numWheelUpgrades = StaticRef<int16[NUM_WHEELS]>(0xB4E470);
 
+#ifdef NOTSA_NATIVE
+    static int32 ms_wheelFrameIDsX[NUM_WHEELS]; // defined in `VehicleModelInfo.cpp`
+    static inline auto& ms_wheelFrameIDs = ms_wheelFrameIDsX;
+#else
     static inline auto& ms_wheelFrameIDs = StaticRef<int32[NUM_WHEELS]>(0x8A7770);
+#endif
 
     // wheels upgrades data
     static constexpr int32 NUM_WHEEL_UPGRADES = 15;
@@ -301,7 +313,11 @@ public:
     // static char ms_compsUsed[2];
     static constexpr int32 NUM_COMPS_USAGE = 2;
     static inline auto& ms_compsUsed = StaticRef<int8[NUM_COMPS_USAGE]>(0xB4E478);
+#ifdef NOTSA_NATIVE
+    static inline int8 ms_compsToUse[NUM_COMPS_USAGE] = { -2, -2 }; // File-backed default in the executable's `.data`
+#else
     static inline auto& ms_compsToUse = StaticRef<int8[NUM_COMPS_USAGE]>(0x8A6458);
+#endif
 
     // vehicle colours from carcols.dat
     // static CRGBA ms_vehicleColourTable[128];

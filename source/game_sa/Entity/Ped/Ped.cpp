@@ -31,6 +31,11 @@
 #include "TaskComplexEnterCarAsDriver.h"
 #include "RealTimeShadowManager.h"
 #include "WindModifiers.h"
+#include "PedPlacement.h"
+#include "TaskComplexDestroyCarMelee.h"
+#include "TaskSimpleUseGun.h"
+#include "TempColModels.h"
+#include "CustomBuildingDNPipeline.h"
 
 void CPed::InjectHooks() {
     RH_ScopedVirtualClass(CPed, 0x86C358, 26);
@@ -63,18 +68,18 @@ void CPed::InjectHooks() {
     RH_ScopedOverloadedInstall(GiveWeapon, "", 0x5E6080, eWeaponSlot(CPed::*)(eWeaponType, uint32, bool));
     RH_ScopedInstall(TakeOffGoggles, 0x5E6010);
     RH_ScopedInstall(AddWeaponModel, 0x5E5ED0);
-    RH_ScopedInstall(PlayFootSteps, 0x5E57F0, { .Reversed = false });
-    RH_ScopedInstall(DoFootLanded, 0x5E5380, { .Reversed = false });
+    RH_ScopedInstall(PlayFootSteps, 0x5E57F0);
+    RH_ScopedInstall(DoFootLanded, 0x5E5380);
     RH_ScopedInstall(ClearAll, 0x5E5320);
     RH_ScopedInstall(CalculateNewOrientation, 0x5E52E0);
-    RH_ScopedInstall(CalculateNewVelocity, 0x5E4C50, { .Reversed = false });
+    RH_ScopedInstall(CalculateNewVelocity, 0x5E4C50);
     RH_ScopedInstall(SetCharCreatedBy, 0x5E47E0);
     RH_ScopedInstall(SetPedState, 0x5E4500);
     RH_ScopedInstall(GiveObjectToPedToHold, 0x5E4390);
     RH_ScopedInstall(ClearLookFlag, 0x5E1950);
     RH_ScopedInstall(WorkOutHeadingForMovingFirstPerson, 0x5E1A00);
-    RH_ScopedInstall(UpdatePosition, 0x5E1B10, { .Reversed = false });
-    RH_ScopedInstall(MakeTyresMuddySectorList<CPtrListSingleLink<CPhysical*>>, 0x6AE0D0, { .Reversed = false });
+    RH_ScopedInstall(UpdatePosition, 0x5E1B10);
+    RH_ScopedInstall(MakeTyresMuddySectorList<CPtrListSingleLink<CPhysical*>>, 0x6AE0D0);
     RH_ScopedInstall(IsPedInControl, 0x5E3960);
     RH_ScopedInstall(RemoveWeaponModel, 0x5E3990);
     RH_ScopedInstall(RemoveWeaponWhenEnteringVehicle, 0x5E6370);
@@ -86,7 +91,7 @@ void CPed::InjectHooks() {
     RH_ScopedOverloadedInstall(GetBonePosition, "Original", 0x5E4280, void(CPed::*)(CVector*, eBoneTag, bool));
     RH_ScopedInstall(PutOnGoggles, 0x5E3AE0);
     RH_ScopedInstall(ReplaceWeaponWhenExitingVehicle, 0x5E6490);
-    RH_ScopedInstall(KillPedWithCar, 0x5F0360, { .Reversed = false });
+    RH_ScopedInstall(KillPedWithCar, 0x5F0360);
     RH_ScopedInstall(IsPedHeadAbovePos, 0x5F02C0);
     RH_ScopedInstall(RemoveWeaponAnims, 0x5F0250);
     RH_ScopedInstall(DoesLOSBulletHitPed, 0x5F01A0);
@@ -112,7 +117,7 @@ void CPed::InjectHooks() {
     RH_ScopedInstall(RemoveWeaponForScriptedCutscene, 0x5E6550);
     RH_ScopedInstall(GiveWeaponAtStartOfFight, 0x5E8AB0);
     RH_ScopedInstall(ProcessBuoyancy, 0x5E1FA0);
-    RH_ScopedInstall(PositionPedOutOfCollision, 0x5E0820, { .Reversed = false });
+    RH_ScopedInstall(PositionPedOutOfCollision, 0x5E0820);
     RH_ScopedInstall(GrantAmmo, 0x5DF220);
     RH_ScopedInstall(GetWeaponSlot, 0x5DF200);
     RH_ScopedInstall(PositionAnyPedOutOfCollision, 0x5E13C0);
@@ -168,21 +173,21 @@ void CPed::InjectHooks() {
     RH_ScopedInstall(GetBikeRidingSkill, 0x5DF510);
     RH_ScopedInstall(SetPedPositionInCar, 0x5DF910);
     RH_ScopedInstall(SetRadioStation, 0x5DFD90);
-    RH_ScopedInstall(PositionAttachedPed, 0x5DFDF0, { .Reversed = false });
+    RH_ScopedInstall(PositionAttachedPed, 0x5DFDF0);
     RH_ScopedInstall(ResetGunFlashAlpha, 0x5DF4E0);
 
     RH_ScopedVMTInstall(SetModelIndex, 0x5E4880);
     RH_ScopedVMTInstall(DeleteRwObject, 0x5DEBF0);
-    //RH_ScopedVirtualInstall(ProcessControl, 0x5E8CD0, { .Reversed = false });
+    RH_ScopedVMTInstall(ProcessControl, 0x5E8CD0);
     RH_ScopedVMTInstall(Teleport, 0x5E4110);
-    //RH_ScopedVirtualInstall(SpecialEntityPreCollisionStuff, 0x5E3C30, { .Reversed = false });
-    //RH_ScopedVirtualInstall(SpecialEntityCalcCollisionSteps, 0x5E3E90, { .Reversed = false });
+    RH_ScopedVMTInstall(SpecialEntityPreCollisionStuff, 0x5E3C30);
+    RH_ScopedVMTInstall(SpecialEntityCalcCollisionSteps, 0x5E3E90);
     RH_ScopedVMTInstall(PreRender, 0x5E8A20);
     RH_ScopedVMTInstall(Render, 0x5E7680);
     RH_ScopedVMTInstall(SetupLighting, 0x553F00);
     RH_ScopedVMTInstall(RemoveLighting, 0x5533B0);
     RH_ScopedVMTInstall(FlagToDestroyWhenNextProcessed, 0x5E7B70);
-    //RH_ScopedVirtualInstall(ProcessEntityCollision, 0x5E2530, { .Reversed = false });
+    RH_ScopedVMTInstall(ProcessEntityCollision, 0x5E2530);
     RH_ScopedVMTInstall(SetMoveAnim, 0x5E4A00);
     RH_ScopedVMTInstall(Save, 0x5D5730);
     RH_ScopedVMTInstall(Load, 0x5D4640);
@@ -1360,7 +1365,69 @@ void CPed::SetRadioStation()
 */
 void CPed::PositionAttachedPed()
 {
-    plugin::CallMethod<0x5DFDF0, CPed*>(this);
+    const auto carrier = m_pAttachedTo;
+    if (!carrier) {
+        return;
+    }
+
+    // TODO(re): When the carrier is a fire truck and the ped is attached to its ladder (MODEL_FIRELA,
+    //           offset.z < -900, ladder frame at `carrier + 0x69C`), the game takes the ladder's matrix
+    //           instead of the carrier's (0x5DFE4D-0x5DFEAF). The ladder frame has no named member in
+    //           this codebase, so the carrier's matrix is always used here.
+    if (!carrier->m_matrix) {
+        carrier->AllocateMatrix();
+        carrier->m_placement.UpdateMatrix(carrier->m_matrix);
+    }
+
+    CMatrix carrierMat = *carrier->m_matrix;
+
+    // Offset our position by the local attach offset (rotated by the carrier's orientation)
+    carrierMat.GetPosition() += carrierMat.TransformVector(m_vecTurretOffset);
+
+    // The carrier's own heading (Yaw of its forward axis)
+    const auto baseHeading = std::atan2(-carrierMat.GetUp().x, carrierMat.GetUp().y);
+
+    if (!IsPlayer()) {
+        float heading = baseHeading;
+        switch (m_fTurretAngleA) {
+        case 1: heading += HALF_PI; break;
+        case 2: heading += PI;      break;
+        case 3: heading -= HALF_PI; break;
+        }
+        heading = CGeneral::LimitRadianAngle(heading);
+
+        m_fCurrentRotation = CGeneral::LimitRadianAngle(m_fCurrentRotation);
+        auto headingDelta = m_fCurrentRotation - heading;
+        if (headingDelta > PI) {
+            headingDelta -= TWO_PI;
+        } else if (headingDelta < -PI) {
+            headingDelta += TWO_PI;
+        }
+
+        // We can't turn more than `m_fTurretAngleB` away from the attachment's heading
+        if (headingDelta > m_fTurretAngleB) {
+            m_fCurrentRotation = heading + m_fTurretAngleB;
+        } else if (headingDelta < -m_fTurretAngleB) {
+            m_fCurrentRotation = heading - m_fTurretAngleB;
+        }
+
+        m_fCurrentRotation = CGeneral::LimitRadianAngle(m_fCurrentRotation);
+    }
+
+    CMatrix rotateMat;
+    rotateMat.SetRotateZ(m_fCurrentRotation - baseHeading);
+    carrierMat *= rotateMat;
+
+    SetMatrix(carrierMat);
+
+    // Move along with the carrier
+    if (carrier->GetIsTypeVehicle() || carrier->GetIsTypePed()) {
+        m_vecMoveSpeed = carrier->AsPhysical()->m_vecMoveSpeed;
+        m_vecTurnSpeed = carrier->AsPhysical()->m_vecTurnSpeed;
+    }
+
+    m_standingOnEntity = nullptr;
+    bIsStanding = true;
 }
 
 /*!
@@ -1571,7 +1638,149 @@ bool CPed::CanSeeEntity(CEntity* entity, float limitAngle) {
 */
 bool CPed::PositionPedOutOfCollision(int32 exitDoor, CVehicle* vehicle, bool findClosestNode)
 {
-    return plugin::CallMethodAndReturn<bool, 0x5E0820, CPed*, int32, CVehicle*, bool>(this, exitDoor, vehicle, findClosestNode);
+    if (!vehicle) {
+        vehicle = m_pVehicle;
+        if (!vehicle) {
+            return false;
+        }
+    }
+
+    if (bDonePositionOutOfCollision) {
+        return true;
+    }
+
+    const auto colModel = GetColModel();
+    const auto boxMin = colModel->m_boundBox.m_vecMin;
+    const auto boxMax = colModel->m_boundBox.m_vecMax;
+
+    const auto vehPos = vehicle->GetPosition();
+    const auto oldPos = GetPosition();
+
+    CWorld::pIgnoreEntity = vehicle;
+    m_vecMoveSpeed.Reset();
+    physicalFlags.bDisableSimpleCollision = true;
+
+    const auto wasUsingCollision = m_bUsesCollision;
+    m_bUsesCollision = false;
+
+    bool positioned = false;
+    const auto TrySetPosition = [this, &vehPos](const CVector& pos) {
+        SetPosn(pos);
+        return !CheckCollision()
+            && CWorld::GetIsLineOfSightClear(vehPos, pos, true, false, false, true, false, false, false);
+    };
+
+    const auto& vehMat = vehicle->GetMatrix();
+    const auto right  = vehMat.GetRight();
+    const auto up     = vehMat.GetUp();
+
+    if (!vehicle->IsOnItsSide() || vehicle->m_nVehicleType == VEHICLE_TYPE_BIKE) {
+        if (exitDoor != 0) {
+            positioned = TrySetPosition(CCarEnterExit::GetPositionToOpenCarDoor(vehicle, exitDoor));
+            if (   !positioned
+                && vehicle->m_nVehicleType == VEHICLE_TYPE_BIKE
+                && (exitDoor == 10 || exitDoor == 11)
+            ) {
+                positioned = TrySetPosition(CCarEnterExit::GetPositionToOpenCarDoor(vehicle, exitDoor == 10 ? 8 : 9));
+            }
+        }
+    } else {
+        auto pos = vehPos;
+        pos.z += boxMax.x + 1.f;
+        positioned = TrySetPosition(pos);
+    }
+
+    // How far to the side of the vehicle the ped should be placed
+    auto sideOffset = std::abs(up.z) * std::max(-boxMin.z, boxMax.z) + (boxMin.x - 0.355f);
+    if (exitDoor == 8 || exitDoor == 9) {
+        sideOffset = boxMax.x + 0.355f;
+    }
+
+    if (!positioned) {
+        // Push out along the vehicle's right axis, relative to where the ped currently is
+        const auto rightDist = sideOffset - DotProduct(oldPos - vehPos, right);
+        if (TrySetPosition(oldPos + right * rightDist)) {
+            positioned = true;
+        }
+
+        // Try at various depths along the vehicle's forward axis
+        for (auto i = 0; i < 4 && !positioned; i++) {
+            const auto forwardOffset = (float)i * (boxMax.y - boxMin.y) / 3.f + boxMin.y;
+            positioned = TrySetPosition(vehPos + right * sideOffset + up * forwardOffset);
+        }
+        if (!positioned) {
+            positioned = TrySetPosition(vehPos + up * (boxMin.y - 0.355f));
+        }
+        if (!positioned) {
+            positioned = TrySetPosition(vehPos + up * (boxMax.y + 0.355f));
+        }
+        if (!positioned) {
+            positioned = TrySetPosition(vehPos - right * sideOffset + up * boxMin.y);
+        }
+        if (!positioned) {
+            positioned = TrySetPosition(vehPos - right * sideOffset + up * boxMax.y);
+        }
+        if (!positioned && vehicle->m_nVehicleType == VEHICLE_TYPE_AUTOMOBILE) {
+            auto pos = vehPos + vehMat.GetForward() * boxMax.z;
+            pos.z += 1.f;
+            positioned = TrySetPosition(pos);
+        }
+    }
+
+    CWorld::pIgnoreEntity = nullptr;
+    physicalFlags.bDisableSimpleCollision = false;
+    m_bUsesCollision = wasUsingCollision;
+
+    if (positioned) {
+        m_vecMoveSpeed.Reset();
+        m_vecTurnSpeed.Reset();
+        bDonePositionOutOfCollision = true;
+        if (vehicle->m_nVehicleType != VEHICLE_TYPE_BIKE || findClosestNode) {
+            vehicle->m_vecMoveSpeed.Reset();
+            vehicle->m_vecTurnSpeed.Reset();
+            vehicle->m_vecMoveSpeed.z -= 0.05f;
+        }
+        return true;
+    }
+
+    if (!findClosestNode) {
+        return false;
+    }
+
+    // Position the ped at the closest path node instead
+    const auto pedNode = ThePaths.FindNodeClosestToCoors(vehPos, PATH_TYPE_PED, 999998.f, 0, 0, 0, 0, 0);
+    const auto vehNode = ThePaths.FindNodeClosestToCoors(vehPos, PATH_TYPE_VEH, 999998.f, 0, 0, 0, 0, 0);
+
+    CVector nodePos = vehPos;
+    if (pedNode) {
+        nodePos = ThePaths.GetPathNode(pedNode)->GetPosition();
+    }
+    if (vehNode) {
+        const auto vehNodePos = ThePaths.GetPathNode(vehNode)->GetPosition();
+        if (!pedNode || (vehNodePos - vehPos).Magnitude2D() < (nodePos - vehPos).Magnitude2D()) {
+            nodePos = vehNodePos;
+        }
+    } else if (!pedNode) {
+        return false;
+    }
+
+    nodePos = CPedPlacement::FindZCoorForPed(nodePos).first;
+    SetPosn(nodePos);
+
+    const auto vehHeading = std::atan2(-vehMat.GetUp().x, vehMat.GetUp().y);
+    if (m_matrix) {
+        m_matrix->SetRotateZOnly(vehHeading);
+    } else {
+        m_placement.m_fHeading = vehHeading;
+    }
+
+    bDonePositionOutOfCollision = true;
+    m_vecMoveSpeed.Reset();
+    m_vecTurnSpeed.Reset();
+    vehicle->m_vecMoveSpeed.Reset();
+    vehicle->m_vecTurnSpeed.Reset();
+    vehicle->m_vecMoveSpeed.z += 0.02f;
+    return true;
 }
 
 /*!
@@ -1670,9 +1879,38 @@ bool CPed::OurPedCanSeeThisEntity(CEntity* entity, bool isSpotted) {
 * @addr 0x5E17E0
 * @unused
 */
-void CPed::SortPeds(CPed** pedList, int32 arg1, int32 arg2)
+void CPed::SortPeds(CPed** pedList, int32 left, int32 right)
 {
-    plugin::CallMethod<0x5E17E0, CPed*, CPed**, int32, int32>(this, pedList, arg1, arg2);
+    if (left >= right) {
+        return;
+    }
+
+    // Sort the peds by their distance from `this`, using the middle one as the pivot
+    const auto pivotDist = (GetPosition() - pedList[(left + right) / 2]->GetPosition()).Magnitude();
+
+    int32 i = left;
+    int32 j = right;
+    do {
+        while ((pedList[i]->GetPosition() - GetPosition()).Magnitude() < pivotDist) {
+            ++i;
+        }
+        while ((pedList[j]->GetPosition() - GetPosition()).Magnitude() > pivotDist) {
+            --j;
+        }
+
+        if (i > j) {
+            break;
+        }
+
+        std::swap(pedList[i], pedList[j]);
+        ++i;
+        --j;
+    } while (i <= j);
+
+    SortPeds(pedList, left, j);
+    if (i < right) {
+        SortPeds(pedList, i, right);
+    }
 }
 
 /*!
@@ -1702,7 +1940,127 @@ float CPed::WorkOutHeadingForMovingFirstPerson(float heading) {
 */
 void CPed::UpdatePosition()
 {
-    plugin::CallMethod<0x5E1B10, CPed*>(this);
+    if (CReplay::Mode == MODE_PLAYBACK) {
+        return;
+    }
+
+    if (!bIsStanding) {
+        // Only peds that are being moved by a task (Swimming, jetpack, rappelling) may update their heading
+        if (!GetIntelligence()->GetTaskSwim() && !GetIntelligence()->GetTaskJetPack()) {
+            const auto task = GetIntelligence()->m_TaskMgr.m_aPrimaryTasks[TASK_PRIMARY_PRIMARY];
+            if (!task || task->GetTaskType() != TASK_COMPLEX_USE_SWAT_ROPE) {
+                return;
+            }
+        }
+        if (m_matrix) {
+            m_matrix->SetRotateZOnly(m_fCurrentRotation);
+        } else {
+            m_placement.m_fHeading = m_fCurrentRotation;
+        }
+        return;
+    }
+
+    if (m_pAttachedTo) {
+        return;
+    }
+
+    if (m_matrix) {
+        m_matrix->SetRotateZOnly(m_fCurrentRotation);
+    } else {
+        m_placement.m_fHeading = m_fCurrentRotation;
+    }
+
+    // Compute the delta to apply to our velocity this frame
+    float deltaX, deltaY;
+    if (const auto standingOn = m_standingOnEntity) {
+        if (IsPlayer() && standingOn->GetIsTypeVehicle() && standingOn->AsVehicle()->m_nVehicleType == VEHICLE_TYPE_BOAT) {
+            // Standing on a boat - Follow its movement at our position
+            const auto& boat = *standingOn->AsPhysical();
+            CVector pos = GetPosition();
+            pos.z -= 1.f;
+            pos -= boat.GetPosition();
+            const auto speed = CrossProduct(boat.m_vecTurnSpeed, pos) + boat.m_vecMoveSpeed;
+            deltaX = speed.x;
+            deltaY = speed.y;
+            m_vecMoveSpeed.z = speed.z;
+            // TODO(re): 0x5E1CA9 additionally multiplies `pos` by `-boat.m_vecTurnSpeed.SquaredMagnitude()`
+            //            (and scales the result of that) - The decompiler lost the expression it's applied to.
+        } else {
+            const auto speed = standingOn->AsPhysical()->GetSpeed(field_56C);
+            deltaX = speed.x;
+            deltaY = speed.y;
+        }
+        deltaX += m_vecAnimMovingShift.x - m_vecMoveSpeed.x;
+        deltaY += m_vecAnimMovingShift.y - m_vecMoveSpeed.y;
+
+        // Rotate along with the entity we're standing on
+        const auto turnSpeedZ = CTimer::GetTimeStep() * standingOn->AsPhysical()->m_vecTurnSpeed.z;
+        m_fCurrentRotation += turnSpeedZ;
+        m_fAimingRotation  += turnSpeedZ;
+    } else if (g_surfaceInfos.IsSteepSlope(m_nContactSurface) && (field_578.x != 0.f || field_578.y != 0.f)) {
+        // Slide down steep slopes
+        CVector2D slopeNormal;
+        slopeNormal.x = field_578.x;
+        slopeNormal.y = field_578.y;
+        slopeNormal.Normalise();
+
+        m_vecMoveSpeed.x = 0.f;
+        m_vecMoveSpeed.y = 0.f;
+        m_vecMoveSpeed.z = -0.001f;
+
+        deltaX = slopeNormal.x * 0.02f + m_vecAnimMovingShift.x;
+        deltaY = slopeNormal.y * 0.02f + m_vecAnimMovingShift.y;
+        const auto alongNormal = slopeNormal.x * deltaX + slopeNormal.y * deltaY;
+        if (alongNormal < 0.f) {
+            deltaX -= slopeNormal.x * alongNormal;
+            deltaY -= alongNormal * slopeNormal.y;
+        }
+    } else {
+        deltaX = m_vecAnimMovingShift.x - m_vecMoveSpeed.x;
+        deltaY = m_vecAnimMovingShift.y - m_vecMoveSpeed.y;
+    }
+
+    // Clamp the delta to a per-frame maximum
+    const auto standingOn = m_standingOnEntity;
+    if (   !standingOn
+        || standingOn->AsPhysical()->m_pAttachedTo
+        || (standingOn->AsPhysical()->physicalFlags.bDisableCollisionForce && !standingOn->AsPhysical()->physicalFlags.bCollidable)
+    ) {
+        if (bFallenDown && !standingOn) {
+            const auto deltaMag = std::sqrt(deltaX * deltaX + deltaY * deltaY);
+            const auto maxDelta = CTimer::GetTimeStep() * 0.01f;
+            if (deltaMag > maxDelta) {
+                const auto scale = maxDelta / deltaMag;
+                deltaX *= scale;
+                deltaY *= scale;
+            }
+        }
+    } else {
+        const auto deltaMag = std::sqrt(deltaX * deltaX + deltaY * deltaY);
+        float maxDelta = -1.f; // Negative = No clamping
+        if (standingOn->GetIsTypeVehicle()) {
+            const auto veh = standingOn->AsVehicle();
+            if (m_nPedState == PEDSTATE_DIE) {
+                maxDelta = CTimer::GetTimeStep() * 0.002f;
+            } else if (veh->m_nVehicleType == VEHICLE_TYPE_BIKE) {
+                if (veh->m_vecMoveSpeed.SquaredMagnitude() > 0.04f) {
+                    maxDelta = CTimer::GetTimeStep() * 0.0002f;
+                }
+            } else if (veh->m_nVehicleType == VEHICLE_TYPE_AUTOMOBILE) {
+                maxDelta = CTimer::GetTimeStep() * 0.01f;
+            }
+        } else {
+            maxDelta = CTimer::GetTimeStep() * 0.01f;
+        }
+        if (maxDelta >= 0.f && deltaMag > maxDelta) {
+            const auto scale = maxDelta / deltaMag;
+            deltaX *= scale;
+            deltaY *= scale;
+        }
+    }
+
+    m_vecMoveSpeed.x += deltaX;
+    m_vecMoveSpeed.y += deltaY;
 }
 
 /*!
@@ -2191,7 +2549,141 @@ void CPed::SetCharCreatedBy(ePedCreatedBy createdBy) {
  * @addr 0x5E4C50
  */
 void CPed::CalculateNewVelocity() {
-    plugin::CallMethod<0x5E4C50, CPed*>(this);
+    if (!bIsInTheAir && !bIsLanding && m_nPedState != PEDSTATE_DIE && m_nPedState != PEDSTATE_DEAD && m_nPedState != PEDSTATE_ARRESTED) {
+        // Turn towards `m_fAimingRotation`
+        const auto turnRate = m_fHeadingChangeRate * 0.017453292f * CTimer::GetTimeStep(); // Degrees -> Radians
+
+        m_fCurrentRotation = CGeneral::LimitRadianAngle(m_fCurrentRotation);
+        float targetHeading = CGeneral::LimitRadianAngle(m_fAimingRotation);
+        if (targetHeading > m_fCurrentRotation + PI) {
+            targetHeading -= TWO_PI;
+        } else if (targetHeading < m_fCurrentRotation - PI) {
+            targetHeading += TWO_PI;
+        }
+        const auto headingDelta = targetHeading - m_fCurrentRotation;
+
+        if (IsPlayer()) {
+            m_fMoveAnim = 1.f;
+        } else {
+            if (headingDelta >= 0.f && m_fMoveAnim < 0.f) {
+                m_fMoveAnim = 0.1f;
+            }
+            if (headingDelta < 0.f && m_fMoveAnim > 0.f) {
+                m_fMoveAnim = -0.1f;
+            }
+        }
+
+        const auto maxTurn = std::abs(m_fMoveAnim) * turnRate;
+        bool wasTurnClamped = false;
+        if (headingDelta <= maxTurn) {
+            if (-maxTurn <= headingDelta) {
+                // Target heading is reachable this frame
+                if (IsPlayer() || std::abs(headingDelta) <= turnRate * 0.1f) {
+                    m_fCurrentRotation += headingDelta;
+                    m_fMoveAnim = std::max(std::abs(headingDelta) / turnRate, 0.1f);
+                } else {
+                    m_fCurrentRotation += headingDelta * 0.5f;
+                    m_fMoveAnim *= 0.5f;
+                }
+            } else {
+                // Turn right
+                m_fCurrentRotation -= maxTurn;
+                m_fMoveAnim -= CTimer::GetTimeStep() * 0.1f;
+                if (m_fMoveAnim < -1.f) {
+                    m_fMoveAnim = -1.f;
+                }
+                wasTurnClamped = true;
+            }
+        } else {
+            // Turn left
+            m_fCurrentRotation += maxTurn;
+            m_fMoveAnim += CTimer::GetTimeStep() * 0.1f;
+            if (m_fMoveAnim > 1.f) {
+                m_fMoveAnim = 1.f;
+            }
+            wasTurnClamped = true;
+        }
+
+        if (   IsPlayer()
+            || (m_nMoveState != PEDMOVE_STILL && m_nMoveState != PEDMOVE_NONE)
+            || !wasTurnClamped
+            || GetIntelligence()->GetTaskUseGun()
+            || GetIntelligence()->GetTaskFighting()
+        ) {
+            if (m_nMoveState == PEDMOVE_TURN_L || m_nMoveState == PEDMOVE_TURN_R) {
+                m_nMoveState = PEDMOVE_STILL;
+            }
+        } else if (headingDelta <= 0.f) {
+            m_nMoveState = PEDMOVE_TURN_R;
+        } else {
+            m_nMoveState = PEDMOVE_TURN_L;
+        }
+
+        m_pedIK.m_fBodyRoll = 0.f;
+    }
+
+    // Tilt the ped according to the slope it's standing on
+    const auto upDot    = DotProduct(field_578, m_matrix->GetUp());
+    const auto rightDot = DotProduct(field_578, m_matrix->GetRight());
+
+    if (m_pedIK.bSlopePitch) {
+        if (m_nPedState != PEDSTATE_DIE && !bFallenDown) {
+            if (m_nMoveState < PEDMOVE_WALK || g_surfaceInfos.IsStairs(m_nContactSurface) || bPedHitWallLastFrame) {
+                // Ease the slope angles out
+                float decay{};
+                if (m_pedIK.m_fSlopePitch != 0.f || m_pedIK.m_fSlopeRoll != 0.f) {
+                    decay = (float)std::pow(0.9, CTimer::GetTimeStep());
+                }
+                if (std::abs(m_pedIK.m_fSlopePitch) <= 0.01f) {
+                    m_pedIK.m_fSlopePitch = 0.f;
+                } else {
+                    m_pedIK.m_fSlopePitch *= decay;
+                }
+                if (std::abs(m_pedIK.m_fSlopeRoll) <= 0.02f) {
+                    m_pedIK.m_fSlopeRoll = 0.f;
+                } else {
+                    m_pedIK.m_fSlopeRoll *= decay;
+                }
+            } else {
+                m_pedIK.m_fSlopeRoll  = 0.f;
+                m_pedIK.m_fSlopePitch = 0.25f * (float)std::asin(std::clamp(upDot, -1.f, 1.f)) + 0.75f * m_pedIK.m_fSlopePitch;
+            }
+        } else {
+            m_pedIK.m_fSlopeRoll  = (float)std::asin(std::clamp(rightDot, -1.f, 1.f));
+            m_pedIK.m_fSlopePitch = 0.25f * (float)std::asin(std::clamp(upDot, -1.f, 1.f)) + 0.75f * m_pedIK.m_fSlopePitch;
+        }
+    } else if (m_nMoveState >= PEDMOVE_WALK && !IsPlayer()) {
+        m_pedIK.m_fSlopeRoll = 0.f;
+    }
+
+    // Project the local movement onto the ground plane to get the world-space movement
+    auto upFactor    = std::sqrt(std::max(1.f - upDot * upDot, 0.f));
+    auto rightFactor = std::sqrt(std::max(1.f - rightDot * rightDot, 0.f));
+    if (upFactor < 0.f) {
+        upFactor = 0.f;
+    }
+    if (rightFactor < 0.f) {
+        rightFactor = 0.f;
+    }
+
+    m_vecAnimMovingShift.Reset();
+
+    const auto upSpeed = upFactor * m_vecAnimMovingShiftLocal.y;
+    m_vecAnimMovingShift.x += upSpeed * m_matrix->GetUp().x;
+    m_vecAnimMovingShift.y += upSpeed * m_matrix->GetUp().y;
+
+    const auto rightSpeed = rightFactor * m_vecAnimMovingShiftLocal.x;
+    m_vecAnimMovingShift.x += rightSpeed * m_matrix->GetRight().x;
+    m_vecAnimMovingShift.y += rightSpeed * m_matrix->GetRight().y;
+
+    if (CTimer::GetTimeStep() < 0.01f && !CTimer::GetIsSlowMotionActive()) {
+        m_vecAnimMovingShift.x *= 0.01f;
+        m_vecAnimMovingShift.y *= 0.01f;
+    } else {
+        const auto invTimeStep = 1.f / CTimer::GetTimeStep();
+        m_vecAnimMovingShift.x *= invTimeStep;
+        m_vecAnimMovingShift.y *= invTimeStep;
+    }
 }
 
 /*!
@@ -2221,245 +2713,250 @@ void CPed::ClearAll() {
  * @addr 0x5E5380
  */
 void CPed::DoFootLanded(bool leftFoot, uint8 arg1) {
-    plugin::CallMethod<0x5E5380, CPed*, bool, uint8>(this, leftFoot, arg1);
+    if (!bCalledPreRender || m_bDontUpdateHierarchy) {
+        return;
+    }
+
+    CVector footPos;
+    GetBonePosition(&footPos, leftFoot ? BONE_L_FOOT : BONE_R_FOOT, false);
+
+    const auto up    = m_matrix->GetUp();
+    const auto right = m_matrix->GetRight();
+
+    const CVector footprintPos{
+        footPos.x + up.x * 0.2f,
+        footPos.y + up.y * 0.2f,
+        footPos.z + up.z * 0.2f - 0.1f
+    };
+
+    // Leave a bloody footprint
+    if (bDoBloodyFootprints && CLocalisation::Blood()) {
+        CShadows::AddPermanentShadow(
+            SHADOW_DEFAULT,
+            gpBloodPoolTex,
+            const_cast<CVector*>(&footprintPos),
+            up.x * 0.26f,
+            up.y * 0.26f,
+            right.x * 0.14f,
+            right.y * 0.14f,
+            0xFF, 200, 0, 0,
+            4.f,
+            3000,
+            1.f
+        );
+        if (m_nDeathTimeMS < 0x15) {
+            m_nDeathTimeMS = 0;
+            bDoBloodyFootprints = false;
+        } else {
+            m_nDeathTimeMS -= 0x14;
+        }
+    }
+
+    // Leave a dust footprint
+    if (g_surfaceInfos.LeavesFootsteps(m_nContactSurface)) {
+        const auto pedPos = GetPosition();
+        const auto camPos = TheCamera.GetPosition();
+        const auto dist2D = std::sqrt(
+            (camPos.x - pedPos.x) * (camPos.x - pedPos.x) +
+            (camPos.y - pedPos.y) * (camPos.y - pedPos.y)
+        );
+        if (dist2D < 10.f) {
+            CShadows::AddPermanentShadow(
+                SHADOW_DEFAULT,
+                gpShadowPedTex,
+                const_cast<CVector*>(&footprintPos),
+                up.x * -0.26f,
+                up.y * -0.26f,
+                right.x * -0.1f,
+                right.y * -0.1f,
+                0x78, 0xFA, 0xFA, 0x32,
+                4.f,
+                (IsPlayer() ? 3000 : 0) + 2000,
+                1.f
+            );
+        }
+    }
+
+    if (CWeather::Rain > 0.1f && !CCullZones::CamNoRain() && !CCullZones::PlayerNoRain() && CGame::currArea == 0) {
+        // TODO(re): 0x5E3630 spawns rain splash particles around the ped's feet - Not implemented in this codebase.
+    }
+    // NOTE: 0x5E37C0 (foot dust particles) is called with a count of 0, thus it never does anything.
+
+    if (arg1) {
+        m_Wobble = TWO_PI;
+        m_WobbleSpeed = (m_vecAnimMovingShift.x * m_vecAnimMovingShift.x + m_vecAnimMovingShift.y * m_vecAnimMovingShift.y) * 20.f + 0.4f;
+    }
+
+    CVector splashPos;
+    if (physicalFlags.bSubmergedInWater) {
+        const auto pedPos = GetPosition();
+        float waterZ;
+        CWaterLevel::GetWaterLevel(pedPos.x, pedPos.y, pedPos.z + 1.5f, waterZ, true, nullptr);
+        splashPos.x = pedPos.x + CTimer::GetTimeStep() * m_vecMoveSpeed.x * 2.f;
+        splashPos.y = pedPos.y + CTimer::GetTimeStep() * m_vecMoveSpeed.y * 2.f;
+        splashPos.z = waterZ;
+        if (pedPos.z - 0.4f <= waterZ) {
+            return;
+        }
+    } else {
+        if (!g_surfaceInfos.IsShallowWater(m_nContactSurface)) {
+            return;
+        }
+        const auto fwdDir = GetForwardVector();
+        splashPos.x = footprintPos.x + fwdDir.x * -0.2f;
+        splashPos.y = footprintPos.y + fwdDir.y * -0.2f;
+        splashPos.z = footprintPos.z + fwdDir.z * -0.2f + 0.3f;
+    }
+
+    g_fx.TriggerFootSplash(splashPos);
+    m_pedAudio.AddAudioEvent(AE_PED_FOOTSTEP_LEFT, 0.f, 1.f, nullptr, SURFACE_WATER_SHALLOW, 0, 0);
 }
 
 /*!
 * @addr 0x5E57F0
 */
 void CPed::PlayFootSteps() {
-    return plugin::CallMethod<0x5E57F0>(this);
-    // Below code is kinda working.. kinda. I'm too lazy to fix it, good luck future me!
-    /* auto& anim = *RpAnimBlendClumpGetFirstAssociation(GetRpClump());
+    //! Whether the current animation set is one of the "standing" ones (Used as the `arg1` of `DoFootLanded`)
+    bool footLandedArg{};
 
-    const auto IsWalkRunSprintAnim = [&] {
-        switch (anim.m_nAnimId) {
-        case ANIM_ID_WALK:
-        case ANIM_ID_RUN:
-        case ANIM_ID_SPRINT: {
-            return true;
-        }
-        }
-        return false;
-    };
+    auto* const firstAssoc = RpAnimBlendClumpGetFirstAssociation(GetRpClump());
+    switch (firstAssoc->m_AnimId) {
+    case (AnimationId)0:
+    case (AnimationId)1:
+    case (AnimationId)2:
+        footLandedArg = true;
+        break;
+    }
 
-    if (bDoBloodyFootprints) {
-        if (m_nDeathTimeMS && m_nDeathTimeMS < 300) {
-            m_nDeathTimeMS -= 1;
-            if (!m_nDeathTimeMS) {
-                bDoBloodyFootprints = false;
-            }
-        }
+    // Decay the "bloody footprints" counter
+    if (bDoBloodyFootprints && m_nDeathTimeMS && m_nDeathTimeMS < 300 && --m_nDeathTimeMS == 0) {
+        bDoBloodyFootprints = false;
     }
 
     if (!bIsStanding) {
         return;
     }
 
-    // 0x5E58FB, 0x5E5A0B, 0x5E5AB9, 0x5E5E64, 0x5E5D87
-    const auto DoProcessLanding = [this] {
-        if (bIsLanding) { // Redundant check.. probably inlined function?
-            if (const auto task = GetTaskManager().GetSimplestActiveTask(); task->GetTaskType() == TASK_SIMPLE_LAND) {
-                auto landedTask = task->As<CTaskSimpleLand>();
-                if (landedTask->RightFootLanded()) {
-                    DoFootLanded(false, true);
-                } else if (landedTask->RightFootLanded()) {
-                    DoFootLanded(true, true);
-                }
-            }
+    // Accumulate the animations that use/aren't the walking ones
+    CAnimBlendAssociation* footAssoc{};
+    float footBlend{}, otherBlend{};
+    for (auto* assoc = firstAssoc; assoc; assoc = RpAnimBlendGetNextAssociation(assoc)) {
+        if (assoc->m_Flags & ANIMATION_WALK) {
+            footBlend += assoc->m_BlendAmount;
+            footAssoc = assoc;
+        } else if (   !(assoc->m_Flags & ANIMATION_DONT_ADD_TO_PARTIAL_BLEND)
+                   && assoc->m_AnimId != (AnimationId)0xDF
+                   && (assoc->IsPartial() || !bIsDucking)
+        ) {
+            otherBlend += assoc->m_BlendAmount;
+        }
+    }
+
+    const auto DoLandingCheck = [this] {
+        if (!bCalledPreRender) {
+            return;
+        }
+        const auto task = GetTaskManager().GetSimplestActiveTask();
+        if (!task || task->GetTaskType() != TASK_SIMPLE_LAND) {
+            return;
+        }
+        const auto landTask = static_cast<CTaskSimpleLand*>(task);
+        if (landTask->RightFootLanded()) {
+            DoFootLanded(false, true);
+        } else if (landTask->LeftFootLanded()) {
+            DoFootLanded(true, true);
         }
     };
 
-    // TODO: Is this inlined? What is this doing exactly? (Anim stuff)
-    float walkBlendTotal{}, idleBlendTotal{};
-    CAnimBlendAssociation* walkAssoc{};
-    auto* lastAssoc = &anim;
-    do { // 0x5E58A1
-        if (lastAssoc->m_nFlags & ANIMATION_WALK) {
-            walkBlendTotal += lastAssoc->m_fBlendAmount;
-            walkAssoc = lastAssoc;
-        } else {
-            if ((lastAssoc->m_nFlags & ANIMATION_ADD_TO_BLEND) == 0) {
-                if (lastAssoc->m_nAnimId != ANIM_ID_FIGHT_IDLE) {
-                    if (lastAssoc->m_nFlags & ANIMATION_IS_PARTIAL || bIsDucking) {
-                        idleBlendTotal += lastAssoc->m_fBlendAmount;
-                    }
-                }
-            }
-        }
-
-        lastAssoc = RpAnimBlendGetNextAssociation(lastAssoc);
-    } while (lastAssoc);
-
-
-    if (!walkAssoc || walkBlendTotal <= 0.5f || idleBlendTotal >= 1.f) { // 0x5E58FB
-        DoProcessLanding();
+    if (!footAssoc || footBlend <= 0.5f || otherBlend >= 1.f) {
+        DoLandingCheck();
         return;
     }
 
-    auto* walkAssocHier = walkAssoc->m_pHierarchy;
-
-    float minAnimTime = walkAssocHier->m_fTotalTime / 15.f;
-    float maxAnimTime = walkAssocHier->m_fTotalTime / 2.f + minAnimTime; // Weird.. Why adding `minAnimTime` to it?
-
+    const auto animTotalTime = footAssoc->m_BlendHier->m_fTotalTime;
+    auto minAnimTime = animTotalTime / 15.f;
+    auto maxAnimTime = animTotalTime * 0.5f + minAnimTime;
     if (bIsDucking) {
         minAnimTime += 0.2f;
         maxAnimTime += 0.2f;
     }
 
-    if (m_pStats == &CPedStats::ms_apPedStats[STAT_BURGULAR_STATUS]) { // 0X5E5968
-
-        // NOTE: The number `15` seems to be reoccurring, it's used above as well.
-        const float animTimeMult = walkAssoc->m_nAnimId != AnimationId::ANIM_ID_WALK ? 8.f / 15.f : 5.f / 15.f;
-
-        float adhesionMult{ 1.f };
+    if (m_pStats == &CPedStats::ms_apPedStats[(size_t)ePedStats::PLAYER]) {
+        // The player has a different footstep cadence, and doesn't leave footprints here
+        // TODO(re): Play the footstep sounds (audio events 0x38/0x39). Their `AddAudioEvent` calls are
+        //           gated on the byte at `this + 0x1B4` (inside `m_pedAudio`, no named member for it)
+        //           and the volume is computed with a CRT `log10` conversion.
+        const auto stepTime = footAssoc->m_AnimId != (AnimationId)0 ? 0.33333334f : 0.53333336f;
+        UNUSED(stepTime);
         switch (g_surfaceInfos.GetAdhesionGroup(m_nContactSurface)) {
-        case eAdhesionGroup::ADHESION_GROUP_SAND: { // 0X5E599F
-            if (CGeneral::GetRandomNumber() % 64) {
-                m_vecAnimMovingShiftLocal *= 0.2f;
+        case ADHESION_GROUP_LOOSE:
+            if (CGeneral::GetRandomNumber() & 0x7F) {
+                m_vecAnimMovingShiftLocal.x *= 0.5f;
+                m_vecAnimMovingShiftLocal.y *= 0.5f;
             }
-
-            DoProcessLanding();
-            return;
-        }
-        case eAdhesionGroup::ADHESION_GROUP_WET: { // 0X5E59B1
-            m_vecAnimMovingShiftLocal *= 0.3f;
-            DoProcessLanding();
-            return;
-        }
-        case eAdhesionGroup::ADHESION_GROUP_LOOSE: { // 0x5E5A25
-            if (CGeneral::GetRandomNumber() % 128) {
-                m_vecAnimMovingShiftLocal *= 0.5f;
+            break;
+        case ADHESION_GROUP_SAND:
+            if (CGeneral::GetRandomNumber() & 0x3F) {
+                m_vecAnimMovingShiftLocal.x *= 0.2f;
+                m_vecAnimMovingShiftLocal.y *= 0.2f;
             }
-            adhesionMult = 0.5f;
+            break;
+        case ADHESION_GROUP_WET:
+            m_vecAnimMovingShiftLocal.x *= 0.3f;
+            m_vecAnimMovingShiftLocal.y *= 0.3f;
             break;
         }
-        }
-
-        if (m_pedAudio.m_iRadioStationScriptRequest) { // Move condition out here, but originally it was at 0x5E5AFA and 0x5E5A68
-            const auto DoAddSkateAE = [&, this](eAudioEvents audio) {
-                // 0x5E5AB4
-                m_pedAudio.AddAudioEvent(audio,
-                    CAEAudioUtility::AudioLog10(adhesionMult) * 20.f,
-                    walkAssoc->m_nAnimId == AnimationId::ANIM_ID_WALK ? 1.f : 0.75f
-                );
-            };
-
-            if (   walkAssoc->m_fCurrentTime <= 0.f
-                || walkAssoc->m_fCurrentTime - walkAssoc->m_fTimeStep > 0.f
-            ) {
-                if (adhesionMult > 0.2f
-                    && walkAssoc->m_fCurrentTime > animTimeMult
-                    && walkAssoc->m_fCurrentTime - walkAssoc->m_fTimeStep <= animTimeMult
-                ) {
-                    // 0x5E5B46
-                    DoAddSkateAE(eAudioEvents::AE_PED_SKATE_RIGHT);
-                }
-            } else {
-                // 0x5E5AB4
-                DoAddSkateAE(eAudioEvents::AE_PED_SKATE_LEFT);
-            }
-        }
-
-        DoProcessLanding();
+        DoLandingCheck();
         return;
     }
 
-    // 0x5E5E56 and 0x5E5D57.. Seems like inlined?
-    const auto DoFootStepAE = [&, this](bool isLeftFoot) {
-        if (m_pedAudio.m_iRadioStationScriptRequest) {
-            const auto DoAddFootStepAE = [&, this](float volume, float speed) {
-                m_pedAudio.AddAudioEvent(isLeftFoot ? eAudioEvents::AE_PED_FOOTSTEP_RIGHT : eAudioEvents::AE_PED_FOOTSTEP_LEFT, volume, speed);
-            };
-
-            if (bIsDucking) {
-                DoAddFootStepAE(-18.f, 0.8f);
-            } else {
-                const auto DoAddMovingFootStepAE = [&, this](float volume, float speed) {
-                    if (m_nAnimGroup == ANIM_GROUP_PLAYERSNEAK) {
-                        DoAddFootStepAE(volume - 6.f, speed - 0.1f);
-                    } else {
-                        DoAddFootStepAE(volume, speed);
-                    }
-                };
-
-                switch (m_nMoveState) {
-                case PEDMOVE_RUN:
-                    DoAddMovingFootStepAE(-6.f, 1.1f);
-                    break;
-                case PEDMOVE_SPRINT:
-                    DoAddMovingFootStepAE(0.f, 1.2f);
-                    break;
-                default:
-                    DoAddMovingFootStepAE(-12.f, 0.9f);
-                    break;
-                }
-            }
-        }
-        DoFootLanded(isLeftFoot, IsWalkRunSprintAnim());
-    };
-
-    // 0x5E5B50
-    if (   minAnimTime > walkAssoc->m_fCurrentTime
-        || walkAssoc->m_fCurrentTime - walkAssoc->m_fTimeStep >= minAnimTime
-    ) {
-        // 0x5E5D8E
-        if (walkAssoc->m_fCurrentTime >= (double)maxAnimTime
-            && walkAssoc->m_fCurrentTime - walkAssoc->m_fTimeStep < maxAnimTime)
-        {
-            // 0x5E592B - 0x5E5E56
-            DoFootStepAE(false); // Do right footstep AE
-            DoProcessLanding();
+    const auto curAnimTime  = footAssoc->m_CurrentTime;
+    const auto prevAnimTime = curAnimTime - footAssoc->m_TimeStep;
+    if (minAnimTime >= curAnimTime || minAnimTime <= prevAnimTime) {
+        if (curAnimTime < maxAnimTime || maxAnimTime <= prevAnimTime) {
+            DoLandingCheck();
             return;
         }
-    }
-
-    if (IsPlayer()) { // 0x5E5B79
-        if (const auto pd = GetPlayerData()) {
-            const auto DoEventSoundQuiet = [this](float volume) {
-                // 0x5E5BCB
-                CEventSoundQuiet event{ this, volume, (uint32)-1, {0.f, 0.f, 0.f}};
-                GetEventGlobalGroup()->Add(&event);
-            };
-
-            const auto isWearingBalaclava = pd->m_pPedClothesDesc->GetIsWearingBalaclava();
+        // TODO(re): Play the right footstep sound (audio event 0x37, see the note above).
+        DoFootLanded(false, footLandedArg);
+    } else {
+        // The player's footsteps make noise other peds can hear
+        if (IsPlayer() && GetPlayerData()) {
+            const auto isWearingBalaclava = GetClothesDesc()->GetIsWearingBalaclava();
+            float soundLevel{};
+            bool  makeNoise{};
             switch (m_nMoveState) {
-            case PEDMOVE_JOG:   // 0x5E5BAD -- hehehe, 0x 5E5 - BAD
-            case PEDMOVE_RUN: { // 0x5E5BB6
-                // 0x5E5BDD
-                if (pd->m_fMoveBlendRatio >= 2.f) {
-                    DoEventSoundQuiet(isWearingBalaclava ? 55.f : 45.f);
-                } else {
-                    const auto DoEventSoundQuiet_MoveBlendFactor = [&](float moveBlendFactor) {
-                        // 0x5E5C31
-                        if (const auto volume = (pd->m_fMoveBlendRatio - 1.f) * moveBlendFactor + 30.f; volume > 0.f) {
-                            DoEventSoundQuiet(volume);
-                        }
-                    };
-
-                    // 0x05E5BF3
-                    if (isWearingBalaclava && pd->m_fMoveBlendRatio > 1.1f) {
-                        DoEventSoundQuiet_MoveBlendFactor(20.f);
-                    } else if (pd->m_fMoveBlendRatio > 1.5f) {
-                        DoEventSoundQuiet_MoveBlendFactor(15.f);
+            case PEDMOVE_JOG:
+            case PEDMOVE_RUN: {
+                const auto moveBlend = GetPlayerData()->m_fMoveBlendRatio;
+                if (moveBlend >= 2.f) {
+                    soundLevel = isWearingBalaclava ? 55.f : 45.f;
+                    makeNoise  = true;
+                } else if (isWearingBalaclava || moveBlend <= 1.1f) {
+                    if (moveBlend > 1.5f) {
+                        soundLevel = (moveBlend - 1.f) * 15.f + 30.f;
+                        makeNoise  = soundLevel > 0.f;
                     }
+                } else {
+                    soundLevel = (moveBlend - 1.f) * 20.f + 30.f;
+                    makeNoise  = soundLevel > 0.f;
                 }
                 break;
             }
-            case PEDMOVE_SPRINT: { // 0x5E5BBB
-                DoEventSoundQuiet(isWearingBalaclava ? 65.f : 55.f);
+            case PEDMOVE_SPRINT:
+                soundLevel = isWearingBalaclava ? 55.f : 65.f;
+                makeNoise  = true;
                 break;
             }
-            }
-            if (pd->m_pPedClothesDesc->GetIsWearingBalaclava()) {
+            if (makeNoise) {
+                GetEventGlobalGroup()->Add(CEventSoundQuiet{ this, soundLevel, (uint32)(-1), CVector{} });
             }
         }
+        // TODO(re): Play the left footstep sound (audio event 0x36, see the note above).
+        DoFootLanded(true, footLandedArg);
     }
 
-    // 0x5E5C8D
-    DoFootStepAE(true); // Do left foot step AE
-    DoFootLanded(true, IsWalkRunSprintAnim());
-    DoProcessLanding(); */
+    DoLandingCheck();
 }
 
 /*!
@@ -3567,19 +4064,416 @@ bool CPed::IsPedHeadAbovePos(float zPos) {
 
 /*!
 * @addr 0x5F0360
+* @brief Handle the ped being ran over by a car.
+*
+* Depending on the damage intensity the ped is either just shoved along by the car,
+* or it gets knocked down (And damaged/killed) - In which case a `CEventDamage` is created for it as well.
 */
 void CPed::KillPedWithCar(CVehicle* car, float fDamageIntensity, bool bPlayDeadAnimation)
 {
-    plugin::CallMethod<0x5F0360, CPed*, CVehicle*, float, bool>(this, car, fDamageIntensity, bPlayDeadAnimation);
+    // Ped's already on the ground/dying - Just make it ignore collisions with the car
+    if (const auto task = GetTaskManager().GetSimplestActiveTask()) {
+        switch (task->GetTaskType()) {
+        case TASK_SIMPLE_FALL:
+        case TASK_SIMPLE_DIE:
+            if (m_pEntityIgnoredCollision && car->GetStatus() != STATUS_PLAYER) {
+                return;
+            }
+            m_pEntityIgnoredCollision = car;
+            return;
+        case TASK_SIMPLE_DEAD:
+            return;
+        }
+    }
+
+    // Boats never knock peds down (Same for planes, but only if that's the vehicle the ped is in/in the process of entering)
+    if (const auto contact = m_pContactEntity; contact && contact->GetIsTypeVehicle()) {
+        if (contact->AsVehicle()->m_nVehicleType == VEHICLE_TYPE_BOAT) {
+            return;
+        }
+        if (IsPlayer()) {
+            return;
+        }
+    } else if (m_pVehicle == car) {
+        if (car->m_nVehicleType == VEHICLE_TYPE_BOAT) {
+            return;
+        }
+        if (car->m_nVehicleSubType == VEHICLE_TYPE_PLANE) {
+            return;
+        }
+    }
+
+    // The car is already after this ped, but it's standing still - Not a hit
+    if (const auto task = GetTaskManager().FindActiveTaskByType(TASK_COMPLEX_DESTROY_CAR_MELEE)) {
+        if (static_cast<CTaskComplexDestroyCarMelee*>(task)->m_VehToDestroy == car && car->m_vecMoveSpeed.SquaredMagnitude() < 0.0225f) {
+            return;
+        }
+    }
+
+    const auto& carPos = car->GetPosition();
+    const auto& carMat = car->GetMatrix();
+    const auto  delta  = GetPosition() - carPos;
+
+    if (fDamageIntensity <= 12.0f || IsPlayer()) {
+        // Low energy hit (Or the ped is the player) - Just knock the ped down (If the hit is strong enough)
+        if (m_vecLastCollisionImpactVelocity.z >= -0.8f || fDamageIntensity <= 3.0f) {
+            if (fDamageIntensity <= 6.0f) {
+                return;
+            }
+            if (IsPlayer() && fDamageIntensity <= 10.0f) {
+                return;
+            }
+        }
+
+        bIsStanding = false;
+
+        const auto dir = GetLocalDirection(CVector2D{ -car->m_vecMoveSpeed.x, -car->m_vecMoveSpeed.y });
+
+        // Trains are way heavier than any other vehicle, so they deal a lot more damage to the player
+        const auto fDamage = IsPlayer() && car->m_nVehicleSubType == VEHICLE_TYPE_TRAIN ? 150.0f : 30.0f;
+
+        CPedDamageResponseCalculator calc(car, fDamage, WEAPON_RAMMEDBYCAR, PED_PIECE_TORSO, false);
+        // NOTE: The original passes `(m_nPedFlags >> 8) & 0x101` as the last argument (Bits 8 and 16 of the flags word)
+        CEventDamage event(car, CTimer::GetTimeInMS(), WEAPON_RAMMEDBYCAR, PED_PIECE_TORSO, (uint8)dir, false, bInVehicle || bFiringWeapon);
+        const auto animId = (AnimationId)(dir + ANIM_ID_KO_SKID_FRONT);
+        if (event.AffectsPed(this)) {
+            calc.ComputeDamageResponse(this, event.m_damageResponse, true);
+
+            event.m_nAnimGroup = ANIM_GROUP_DEFAULT;
+            event.m_nAnimID    = animId;
+            event.m_fAnimBlend = 8.0f;
+            event.m_fAnimSpeed = 1.0f;
+            if (bPlayDeadAnimation) {
+                auto* const assoc = CAnimManager::BlendAnimation(GetRpClump(), ANIM_GROUP_DEFAULT, animId, 8.0f);
+                assoc->m_Speed = 1.0f;
+                event.m_bAnimAdded = true;
+            }
+            GetEventGroup().Add(&event, false);
+
+            if (!IsPlayer() || m_bHasHitWall || car->m_nVehicleSubType == VEHICLE_TYPE_TRAIN || m_vecLastCollisionImpactVelocity.z < -0.8f) {
+                m_pEntityIgnoredCollision = car;
+            }
+            GetIntelligence()->m_collisionScanner.m_bAlreadyHitByCar = true;
+        }
+
+        bKnockedUpIntoAir = false;
+
+        if (car->m_nVehicleSubType == VEHICLE_TYPE_TRAIN) {
+            if (m_bHasHitWall) {
+                m_vecMoveSpeed = CVector{};
+            } else {
+                auto carVelDir = car->m_vecMoveSpeed;
+                carVelDir.Normalise();
+                m_vecMoveSpeed -= carVelDir * DotProduct(carVelDir, m_vecMoveSpeed);
+                m_vecMoveSpeed += car->m_vecMoveSpeed * 0.3f;
+            }
+        } else if (!m_bHasHitWall) {
+            m_vecMoveSpeed = car->m_vecMoveSpeed * 0.75f;
+        }
+        m_vecMoveSpeed.z = 0.0f;
+
+        if (CLocalisation::KnockDownPeds()) {
+            car->m_vehicleAudio.AddAudioEvent(AE_PED_KNOCK_DOWN, 0.0f);
+        }
+        Say(CTX_GLOBAL_PAIN_LOW);
+    } else {
+        // High energy hit - The ped gets properly knocked down (And damaged)
+        const auto randDir = (uint8)(CGeneral::GetRandomNumber() & 3);
+
+        // Shake the pad if the vehicle that ran the ped over is the player's
+        if (car == FindPlayerVehicle(-1, false)) {
+            const auto fShakeFreq = std::min(car->m_vecMoveSpeed.Magnitude() * (1.0f / car->m_fMass) * 200000.0f + 80.0f, 250.0f);
+            const auto nShakeFreq = (uint8)(int32)fShakeFreq;
+            CPad::GetPad()->StartShake((int16)(40000 / nShakeFreq), nShakeFreq, 0);
+        }
+
+        bIsStanding = false;
+
+        int32 dir = GetLocalDirection(CVector2D{ -car->m_vecMoveSpeed.x, -car->m_vecMoveSpeed.y });
+
+        eWeaponType weapon = WEAPON_RAMMEDBYCAR;
+        uint8       hitPart{}; // 1 = front, 2 = side, 3 = left, 4 = right
+        auto        animId = ANIM_ID_NO_ANIMATION_SET;
+
+        // Make the ped be shoved along by the car (Instead of being knocked down)
+        const auto shoveAlong = [&] {
+            m_vecMoveSpeed   = car->m_vecMoveSpeed * 0.9f;
+            m_vecMoveSpeed.z = 0.0f;
+            if (dir == 1 || dir == 3) {
+                dir = 2;
+            }
+        };
+
+        // Find out which part of the car hit the ped
+        const auto* const colModel = car->GetColModel();
+        if (car->m_nVehicleSubType == VEHICLE_TYPE_TRAIN) {
+            hitPart = 2;
+            weapon  = WEAPON_RUNOVERBYCAR;
+            shoveAlong();
+        } else if (DotProduct(car->m_vecMoveSpeed, carMat.GetForward()) >= 0.0f) {
+            const auto fRightOffset = DotProduct(delta, carMat.GetRight());
+            const auto fFwdOffset   = DotProduct(delta, carMat.GetForward());
+            const auto fUpOffset    = DotProduct(delta, carMat.GetUp());
+
+            if (colModel->m_boundBox.m_vecMax.x * 0.99f < std::abs(fRightOffset)) {
+                // The ped is to the side of the car
+                hitPart = fRightOffset <= 0.0f ? 3 : 4;
+                if (std::abs(fFwdOffset) < colModel->m_boundBox.m_vecMax.y * 0.85f) {
+                    weapon = WEAPON_RUNOVERBYCAR;
+                    shoveAlong();
+                }
+            } else if ((randDir != 0 && (fUpOffset <= 0.1f || randDir < 2)) || (car->m_nHandlingFlagsIntValue & VEHICLE_HANDLING_NPC_NEUTRAL_HANDL)) {
+                hitPart = 2;
+                weapon  = WEAPON_RUNOVERBYCAR;
+                shoveAlong();
+            } else {
+                // The ped got hit by the front of the car
+                hitPart = 1;
+
+                const auto fBoxMaxY = colModel->m_boundBox.m_vecMax.y;
+                const auto fBoxMaxZ = colModel->m_boundBox.m_vecMax.z;
+                const auto fBoxMinY = colModel->m_boundBox.m_vecMin.y;
+
+                // Find the point on the car the ped was hit at (Depends on how the car is tilted)
+                float      fPointZ;
+                float      fHeightRange;
+                const auto fFwdZ = carMat.GetForward().z;
+                if (fFwdZ < -0.2f) { // Facing steeply downwards
+                    fHeightRange = fBoxMaxY - fBoxMinY;
+                    fPointZ      = (carPos + carMat.GetForward() * fBoxMinY + carMat.GetUp() * fBoxMaxZ).z;
+                } else if (fFwdZ <= 0.1f) {
+                    fHeightRange = fBoxMaxY;
+                    fPointZ      = (carPos + carMat.GetUp() * fBoxMaxZ).z;
+                } else {
+                    fHeightRange = fBoxMaxY;
+                    const auto point = carPos + carMat.GetForward() * fBoxMaxY + carMat.GetUp() * fBoxMaxZ;
+                    fPointZ = point.z;
+                    if (point.z > GetPosition().z) { // Don't let the ped end up inside the car
+                        GetMatrix().GetPosition().z += (point.z - GetPosition().z) * 0.5f;
+                        fPointZ = (point.z - GetPosition().z) * 0.25f + point.z;
+                    }
+                }
+
+                // Launch the ped
+                const auto fImpulse = ((CGeneral::GetRandomNumber() & 0xFF) * 0.002f + 1.5f) * ((fPointZ - GetPosition().z) / (fHeightRange / car->m_vecMoveSpeed.Magnitude()));
+                auto carVelDir = car->m_vecMoveSpeed;
+                carVelDir.Normalise();
+                m_vecMoveSpeed    = carVelDir * (fImpulse * 0.2f);
+                m_vecMoveSpeed.z += fImpulse;
+
+                // Rotate the knock-down direction by 180 degrees
+                dir = (dir + 2) <= 3 ? (dir + 2) : (dir - 2);
+
+                // Kick off the bonnet (If there's one)
+                if (car->m_nVehicleType == VEHICLE_TYPE_AUTOMOBILE) {
+                    if (auto* const bonnet = car->AsAutomobile()->RemoveBonnetInPedCollision()) {
+                        bonnet->m_vecMoveSpeed  = m_vecMoveSpeed + carMat.GetRight() * ((CGeneral::GetRandomNumber() & 1) ? 0.1f : -0.1f);
+                        bonnet->m_vecMoveSpeed += carMat.GetUp() * 0.5f;
+                        bonnet->ApplyTurnForce(carMat.GetUp() * 10.0f, carMat.GetForward());
+                    }
+                }
+            }
+        }
+
+        // Play the impact sound
+        if (CLocalisation::KnockDownPeds()) {
+            car->m_vehicleAudio.AddAudioEvent(hitPart == 1 ? AE_PED_BOUNCE : AE_PED_CRUNCH, 0.0f);
+        }
+
+        // Report the crime (If the car has a driver)
+        if (car->m_pDriver) {
+            CCrime::ReportCrime(m_nPedType == PED_TYPE_COP ? CRIME_KILL_COP_PED_WITH_CAR : CRIME_KILL_PED_WITH_CAR, this, car->m_pDriver);
+        }
+
+        CPedDamageResponseCalculator calc(car, 1000.0f, weapon, PED_PIECE_TORSO, false);
+        // NOTE: The original passes `(m_nPedFlags >> 8) & 0x101` as the last argument (Bits 8 and 16 of the flags word)
+        CEventDamage event(car, CTimer::GetTimeInMS(), weapon, PED_PIECE_TORSO, (uint8)dir, false, bInVehicle || bFiringWeapon);
+
+        // Choose the animation to play based on the knock-down direction and the part of the car that hit the ped
+        const auto randAnim = (uint8)(CGeneral::GetRandomNumber() & 3);
+        switch (dir) {
+        case 0:
+            if (hitPart == 3 && randAnim >= 2) {
+                animId = ANIM_ID_KO_SPIN_R;
+            } else if (hitPart == 4 && randAnim >= 2) {
+                animId = ANIM_ID_KO_SPIN_L;
+            } else {
+                animId = ANIM_ID_KO_SKID_FRONT;
+            }
+            break;
+        case 1:
+            animId = ANIM_ID_KD_LEFT;
+            break;
+        case 2:
+            if (hitPart == 3 && randAnim > 1) {
+                animId = ANIM_ID_KD_LEFT;
+            } else if (hitPart == 4 && randAnim > 1) {
+                animId = ANIM_ID_KD_RIGHT;
+            } else {
+                animId = ANIM_ID_KO_SKID_BACK;
+            }
+            break;
+        case 3:
+            animId = ANIM_ID_KD_RIGHT;
+            break;
+        }
+
+        if (event.AffectsPed(this)) {
+            float fAnimBlend;
+            float fAnimSpeed;
+            if (weapon == WEAPON_RAMMEDBYCAR) {
+                fAnimBlend = car->m_vecMoveSpeed.Magnitude() * 8.0f + 4.0f;
+                fAnimSpeed = 1.0f;
+            } else {
+                fAnimBlend = car->m_vecMoveSpeed.Magnitude() * 12.0f + 4.0f;
+                fAnimSpeed = car->m_vecMoveSpeed.Magnitude() * 16.0f + 1.0f;
+            }
+
+            calc.ComputeDamageResponse(this, event.m_damageResponse, true);
+
+            event.m_nAnimGroup = ANIM_GROUP_DEFAULT;
+            event.m_nAnimID    = animId;
+            event.m_fAnimBlend = fAnimBlend;
+            event.m_fAnimSpeed = fAnimSpeed;
+            if (bPlayDeadAnimation) {
+                auto* const assoc = CAnimManager::BlendAnimation(GetRpClump(), ANIM_GROUP_DEFAULT, animId, fAnimBlend);
+                assoc->m_Speed = fAnimSpeed;
+                event.m_bAnimAdded = true;
+            }
+            GetEventGroup().Add(&event, false);
+
+            if (!m_pEntityIgnoredCollision) {
+                m_pEntityIgnoredCollision = car;
+            }
+            bKnockedUpIntoAir = hitPart == 1;
+            GetIntelligence()->m_collisionScanner.m_bAlreadyHitByCar = true;
+        } else {
+            bKnockedUpIntoAir = false;
+        }
+
+        Say(CTX_GLOBAL_PAIN_DEATH_HIGH);
+    }
+
+    // Apply the force resulting from the hit
+    {
+        CVector v = GetPosition() - car->GetPosition();
+        v -= carMat.GetUp() * DotProduct(v, carMat.GetUp());
+        CVector vDir = v;
+        vDir.Normalise();
+        const auto fDot = DotProduct(vDir, car->m_vecMoveSpeed);
+        if (!bKnockedUpIntoAir) {
+            vDir.z -= 0.2f;
+        }
+        const auto fMassFactor = std::min(1.0f, car->m_fMass / 1600.0f);
+        const auto fForce      = std::min(car->m_fMass, 1600.0f) * fMassFactor * (fDot * (car->m_nVehicleType == VEHICLE_TYPE_BIKE ? -0.75f : -0.5f));
+        car->ApplyForce(vDir * fForce, v * 0.25f, true);
+    }
 }
 
 /*!
 * @addr 0x6AE0D0
+* @brief Make the tyres of the moving vehicles in the given sector list muddy/bloody if they're driving over this (dead) ped.
 */
 template<typename PtrListType>
 void CPed::MakeTyresMuddySectorList(PtrListType& ptrList)
 {
-    plugin::CallMethod<0x6AE0D0, CPed*, PtrListType&>(this, ptrList);
+    const auto& pedPos = GetPosition();
+
+    for (auto* item : ptrList) {
+        auto* const veh = item->AsVehicle();
+
+        // Don't process the same vehicle twice
+        if (veh->GetScanCode() == CWorld::ms_nCurrentScanCode) {
+            continue;
+        }
+        veh->SetScanCode(CWorld::ms_nCurrentScanCode);
+
+        const auto& vehPos = veh->GetPosition();
+        if (std::abs(pedPos.x - vehPos.x) >= 10.0f || std::abs(pedPos.y - vehPos.y) >= 10.0f) {
+            continue;
+        }
+
+        // The vehicle must be actually moving (I.e. its wheels rolling over the ped)
+        if (veh->m_vecMoveSpeed.SquaredMagnitude2D() <= 0.05f) {
+            continue;
+        }
+
+        // NOTE: The model's collision model is used here (And not `CEntity::GetColModel`, which may return a special one)
+        const auto* const colModel = veh->GetModelInfo()->GetColModel();
+        const auto&       vehMat   = veh->GetMatrix();
+        if (veh->m_nVehicleType == VEHICLE_TYPE_AUTOMOBILE) {
+            auto* const automobile = veh->AsAutomobile();
+            for (auto i = 0; i < 4; i++) {
+                if (automobile->m_wheelSkidmarkBloodState[i] || automobile->m_fWheelsSuspensionCompression[i] >= 1.0f) {
+                    continue; // Already bloody, or the wheel isn't touching the ground
+                }
+
+                // The wheel's position in the vehicle's local space
+                const auto    fHalfWidth = colModel->m_boundBox.m_vecMax.x;
+                const auto    fFrontY    = colModel->m_boundBox.m_vecMax.y;
+                const auto    fRearY     = colModel->m_boundBox.m_vecMin.y;
+                const CVector wheelLocal = {
+                    (i == 0 || i == 1) ? -fHalfWidth : fHalfWidth, // Left, left, right, right
+                    (i == 0 || i == 2) ? fFrontY : fRearY,         // Front, rear, front, rear
+                    0.0f
+                };
+                const auto wheelPos = vehMat.TransformPoint(wheelLocal);
+
+                // The wheel has to be at the ped's height, and close to it
+                if (std::abs(wheelPos.z - pedPos.z) >= 2.0f) {
+                    continue;
+                }
+                if (CVector2D{ wheelPos.x - pedPos.x, wheelPos.y - pedPos.y }.SquaredMagnitude() >= 1.0f) {
+                    continue;
+                }
+
+                if (CLocalisation::Blood()) {
+                    automobile->m_wheelSkidmarkBloodState[i] = true;
+                    veh->m_vehicleAudio.AddAudioEvent(AE_PED_DRIVE_OVER, 0.0f);
+                }
+
+                if (veh->m_fMass > 500.0f) {
+                    veh->ApplyMoveForce(CVector{ 0.0f, 0.0f, std::min(m_fMass * 0.0005f, 1.0f) * 50.0f });
+                    veh->ApplyTurnForce(CVector{ 0.0f, 0.0f, std::min(m_fTurnMass * 0.001f, 1.0f) * 50.0f }, wheelPos - vehPos);
+                    if (FindPlayerVehicle(-1, false) == veh) {
+                        CPad::GetPad()->StartShake(300, 70, 0);
+                    }
+                }
+            }
+        } else if (veh->m_nVehicleType == VEHICLE_TYPE_BIKE) {
+            auto* const bike = veh->AsBike();
+            for (auto i = 0; i < 2; i++) {
+                if (bike->m_bWheelBloody[i] || bike->m_aWheelRatios[i * 2] >= 1.0f) {
+                    continue; // Already bloody, or the wheel isn't touching the ground
+                }
+
+                // The wheel's position in the vehicle's local space
+                const auto fWheelY  = (i == 0 ? colModel->m_boundBox.m_vecMax.y : colModel->m_boundBox.m_vecMin.y) * 0.8f;
+                const auto wheelPos = vehMat.TransformPoint(CVector{ 0.0f, fWheelY, 0.0f });
+
+                // The wheel has to be at the ped's height, and close to it
+                if (std::abs(wheelPos.z - pedPos.z) >= 2.0f) {
+                    continue;
+                }
+                if (CVector2D{ wheelPos.x - pedPos.x, wheelPos.y - pedPos.y }.SquaredMagnitude() >= 1.0f) {
+                    continue;
+                }
+
+                if (CLocalisation::Blood()) {
+                    bike->m_bWheelBloody[i] = true;
+                    veh->m_vehicleAudio.AddAudioEvent(AE_PED_DRIVE_OVER, 0.0f);
+                }
+
+                if (veh->m_fMass > 100.0f) {
+                    veh->ApplyMoveForce(CVector{ 0.0f, 0.0f, 10.0f });
+                    veh->ApplyTurnForce(CVector{ 0.0f, 0.0f, 10.0f }, wheelPos - vehPos);
+                    if (FindPlayerVehicle(-1, false) == veh) {
+                        CPad::GetPad()->StartShake(300, 70, 0);
+                    }
+                }
+            }
+        }
+    }
 }
 
 /*!
@@ -3703,7 +4597,248 @@ void CPed::DeleteRwObject()
 */
 void CPed::ProcessControl()
 {
-    plugin::CallMethod<0x5E8CD0, CPed*>(this);
+    m_pedAudio.Service();
+
+    // Attach the molotov's flame to the player's right hand (And remove it when it shouldn't be visible)
+    if (IsPlayer()) {
+        auto& wep = GetActiveWeapon();
+        if (wep.m_Type == WEAPON_MOLOTOV) {
+            if (   bDontRender
+                || !m_bIsVisible
+                || (physicalFlags.bSubmergedInWater && GetIntelligence()->GetTaskSwim())
+                || !m_pWeaponObject
+            ) {
+                if (wep.m_FxSystem) {
+                    g_fxMan.DestroyFxSystem(wep.m_FxSystem);
+                    wep.m_FxSystem = nullptr;
+                }
+            } else if (!wep.m_FxSystem) {
+                auto* const hier = GetAnimHierarchyFromSkinClump(GetRpClump());
+                wep.m_FxSystem = g_fxMan.CreateFxSystem(
+                    "molotov_flame",
+                    CVector{ 0.f, 0.f, 0.f },
+                    &RpHAnimHierarchyGetMatrixArray(hier)[RpHAnimIDGetIndex(hier, BONE_R_HAND)],
+                    false
+                );
+                if (wep.m_FxSystem) {
+                    wep.m_FxSystem->SetLocalParticles(true);
+                    wep.m_FxSystem->CopyParentMatrix();
+                    wep.m_FxSystem->Play();
+                }
+            }
+        }
+    }
+
+    if (bUsedForReplay) {
+        return;
+    }
+
+    // Skip peds that are far above the world (In interiors, etc.)
+    if (bPartOfAttackWave && (CGame::currArea || FindPlayerCoors().z > 950.f)) {
+        return;
+    }
+
+    if (!(((uint8)m_nRandomSeed + CTimer::GetFrameCounter()) & 0x1F)) {
+        PruneReferences();
+    }
+
+    // Fade the ped's clump in, or out
+    {
+        auto* const clump = GetRpClump();
+        int32 alpha = CVisibilityPlugins::GetClumpAlpha(clump);
+        if (bFadeOut) {
+            alpha -= 8;
+            if (alpha < 0) {
+                alpha = 0;
+            }
+        } else if (alpha < 255) {
+            alpha = std::min(alpha + 0x10, 255);
+        }
+        CVisibilityPlugins::SetClumpAlpha(clump, alpha);
+    }
+
+    // Un-stick a ped that was knocked off a bike by checking if it still collides with it
+    if (bKnockedOffBike
+        && (bIsStanding || bIsDrowning)
+        && !m_standingOnEntity
+        && !bHeadStuckInCollision
+        && field_588 == 99999.992f
+        && m_vecMoveSpeed.SquaredMagnitude() < 0.01f
+    ) {
+        if (!m_pVehicle) {
+            bKnockedOffBike = false;
+        } else if (CCollision::ProcessColModels(
+                *m_matrix,
+                *GetColModel(),
+                m_pVehicle->GetMatrix(),
+                *m_pVehicle->GetColModel(),
+                CWorld::m_aTempColPts,
+                nullptr,
+                nullptr,
+                false
+            ) == 0
+        ) {
+            bKnockedOffBike = false;
+            m_pEntityIgnoredCollision = nullptr;
+        }
+    }
+
+    if (bHeadStuckInCollision && bCheckColAboveHead) {
+        if (GetPosition().z + 1.5f < field_588) {
+            bHeadStuckInCollision = false;
+        }
+    }
+
+    // Per-frame flag resets
+    bWasStanding       = false;
+    bFiringWeapon      = false;
+    bIsDrowning        = false;
+    physicalFlags.bSubmergedInWater = false;
+    bDonePositionOutOfCollision = false;
+    bPushOtherPeds     = false;
+    bCheckColAboveHead = false;
+    bPedHitWallLastFrame = false;
+    bTestForShotInVehicle = false;
+    field_588 = 99999.992f;
+
+    // Gun flash fade out timers
+    if (m_nWeaponGunflashAlphaMP1 > 0) {
+        const auto amount = (int32)m_nWeaponGunFlashAlphaProgMP1 * (int32)CTimer::GetTimeStepInMS();
+        m_nWeaponGunflashAlphaMP1 = m_nWeaponGunflashAlphaMP1 > amount
+            ? (int16)(m_nWeaponGunflashAlphaMP1 - amount)
+            : 0;
+    }
+    if (m_nWeaponGunflashAlphaMP2 > 0) {
+        const auto amount = (int32)m_nWeaponGunFlashAlphaProgMP2 * (int32)CTimer::GetTimeStepInMS();
+        m_nWeaponGunflashAlphaMP2 = m_nWeaponGunflashAlphaMP2 > amount
+            ? (int16)(m_nWeaponGunflashAlphaMP2 - amount)
+            : 0;
+    }
+
+    if (!bIsStanding) {
+        bHeadStuckInCollision = false;
+    }
+
+    // If we're a mission ped and a part of the player's group, there's no need to check for collisions above our head
+    if (m_nCreatedBy == PED_MISSION) {
+        const auto player = FindPlayerPed();
+        if (this != player && CPedGroups::ms_groups[player->GetPlayerData()->m_nPlayerGroup].GetMembership().IsMember(this)) {
+            bCheckColAboveHead = false;
+        }
+    }
+
+    ProcessBuoyancy();
+
+    // Get wetter while underwater, drier otherwise
+    if (auto* const playerData = GetPlayerData()) {
+        if (physicalFlags.bSubmergedInWater && playerData->m_nWaterCoverPerc > 50) {
+            if (playerData->m_nWetness < 100) {
+                playerData->m_nWetness++;
+            }
+        } else if (playerData->m_nWetness > 0) {
+            playerData->m_nWetness--;
+        }
+    }
+
+    // Don't process peds standing on something that is in a safe position (Or on a train)
+    if (   bIsStanding
+        && !CWorld::bForceProcessControl
+        && m_standingOnEntity
+        && (   m_standingOnEntity->m_bIsInSafePosition
+            || (m_standingOnEntity->GetIsTypeVehicle() && m_standingOnEntity->AsVehicle()->m_nVehicleSubType == VEHICLE_TYPE_TRAIN)
+           )
+    ) {
+        m_bWasPostponed = true;
+        return;
+    }
+
+    GetIntelligence()->ProcessFirst();
+
+    // Dampen the upwards velocity of peds that were pushed up into the air
+    if (!bIsStanding && m_vecMoveSpeed.z > 0.25f) {
+        if (GetPlayerData()) {
+            m_vecMoveSpeed.z = 0.25f;
+        } else {
+            m_vecMoveSpeed *= (float)std::pow(0.95, CTimer::GetTimeStep());
+        }
+    }
+
+    if (   IsPlayer()
+        || !bIsStanding
+        || m_vecMoveSpeed.x != 0.f || m_vecMoveSpeed.y != 0.f || m_vecMoveSpeed.z != 0.f
+        || (m_nMoveState != PEDMOVE_NONE && m_nMoveState != PEDMOVE_STILL)
+        || m_vecAnimMovingShiftLocal.x != 0.f || m_vecAnimMovingShiftLocal.y != 0.f
+        || m_nPedState == PEDSTATE_JUMP
+        || bIsInTheAir
+        || m_standingOnEntity
+    ) {
+        CPhysical::ProcessControl();
+    } else {
+        CPhysical::SkipPhysics();
+    }
+
+    RequestDelayedWeapon();
+    PlayFootSteps();
+    bTestForBlockedPositions = false;
+    bFallenDown = false;
+    GetIntelligence()->Process();
+    if (m_nPedState != PEDSTATE_DEAD) {
+        CalculateNewVelocity();
+    }
+    UpdatePosition();
+    Render();
+    bRightArmBlocked         = false;
+    bLeftArmBlocked          = false;
+    bDuckRightArmBlocked     = false;
+    bMidriffBlockedForJump   = false;
+
+    // Leave a blood pool under bleeding peds
+    if ((bPedIsBleeding || field_72F) && CLocalisation::Blood() && !bInVehicle) {
+        if (field_72F) {
+            field_72F--;
+        }
+        if ((CTimer::GetFrameCounter() & 3) == 0) {
+            const auto pos = GetPosition();
+            if ((pos - TheCamera.GetPosition()).SquaredMagnitude() < 2500.f) {
+                const auto size = (CGeneral::GetRandomNumber() & 0x7F) * 0.0015f + 0.15f;
+                CVector shadowPos{
+                    pos.x + (float)((int32)(CGeneral::GetRandomNumber() & 0x7F) - 0x40) * 0.007f,
+                    pos.y + (float)((int32)(CGeneral::GetRandomNumber() & 0x7F) - 0x40) * 0.007f,
+                    pos.z + 1.f
+                };
+                CShadows::AddPermanentShadow(
+                    SHADOW_DEFAULT,
+                    gpBloodPoolTex,
+                    &shadowPos,
+                    size, 0.f, 0.f, -size,
+                    0xFF, 200, 0, 0,
+                    4.f,
+                    2000 + (CGeneral::GetRandomNumber() & 0xFFF),
+                    1.f
+                );
+            }
+        }
+    }
+
+    // Fix up a dangling `bInVehicle` flag, or account for the ped being in a vehicle
+    if (bInVehicle && !m_pVehicle) {
+        bInVehicle = false;
+    } else {
+        CPopulation::UpdatePedCount(this, bInVehicle);
+    }
+
+    if (!(((uint16)m_nRandomSeed + CTimer::GetFrameCounter()) & 0x3FFF) && bDruggedUp) {
+        Say(CTX_GLOBAL_DRUGGED_CHAT);
+    }
+
+    if (GetActiveWeapon().m_Type == WEAPON_CHAINSAW
+        && m_nPedState != PEDSTATE_ATTACK
+        && !bInVehicle
+        && !GetIntelligence()->GetTaskSwim()
+    ) {
+        m_weaponAudio.AddAudioEvent(AE_WEAPON_CHAINSAW_IDLE);
+    }
+    m_weaponAudio.Service();
 }
 
 /*!
@@ -3738,7 +4873,83 @@ void CPed::SpecialEntityPreCollisionStuff(CPhysical* colPhysical,
                                           bool& bCollidedEntityUnableToMove,
                                           bool& bThisOrCollidedEntityStuck)
 {
-    plugin::CallMethod<0x5E3C30, CPed*, CPhysical*, bool, bool&, bool&, bool&, bool&>(this, colPhysical, bIgnoreStuckCheck, bCollisionDisabled, bCollidedEntityCollisionIgnored, bCollidedEntityUnableToMove, bThisOrCollidedEntityStuck);
+    const auto Finish = [this] {
+        if (IsPlayer() && GetIntelligence()->GetTaskClimb()) {
+            physicalFlags.bSkipLineCol = true;
+        }
+    };
+
+    if (colPhysical->GetIsTypeVehicle() && m_pVehicle == colPhysical && bKnockedOffBike) {
+        bCollisionDisabled = true;
+        return Finish();
+    }
+
+    if (m_pEntityIgnoredCollision == colPhysical || colPhysical->m_pEntityIgnoredCollision == this) {
+        bCollidedEntityCollisionIgnored = true;
+        if (bKnockedUpIntoAir && !bKnockedOffBike) {
+            return Finish();
+        }
+    } else {
+        if (m_pAttachedTo == colPhysical || colPhysical->m_pAttachedTo == this) {
+            bCollisionDisabled = true;
+            return Finish();
+        }
+        if (m_pAttachedTo && colPhysical->m_pAttachedTo) {
+            bCollisionDisabled = true;
+            return Finish();
+        }
+
+        const auto& colFlags = colPhysical->physicalFlags;
+        if (colFlags.bDisableMoveForce) {
+            if (colFlags.bDisableCollisionForce || colFlags.bDoorHitEndStop) {
+                bCollidedEntityUnableToMove = true;
+            } else if (bIgnoreStuckCheck) {
+                bCollisionDisabled = true;
+            } else if (m_bIsStuck || colPhysical->m_bIsStuck) {
+                bThisOrCollidedEntityStuck = true;
+            }
+        } else if (colFlags.bInfiniteMass || colFlags.bDisableZ) {
+            if (bIgnoreStuckCheck) {
+                bCollidedEntityCollisionIgnored = true;
+            } else if (m_bIsStuck || colPhysical->m_bIsStuck) {
+                bThisOrCollidedEntityStuck = true;
+            }
+        } else if (colPhysical->GetIsTypeObject()) {
+            const auto object = static_cast<CObject*>(colPhysical);
+
+            if (   object->objectFlags.bIsLampPost
+                && object->GetMatrix().GetForward().z <= 0.66f
+            ) {
+                bCollidedEntityCollisionIgnored = true;
+            } else if (   object->m_nModelIndex == MODEL_GRENADE
+                       && object->GetPosition().z >= GetPosition().z
+            ) {
+                bCollidedEntityCollisionIgnored = true;
+            } else if (   (object->m_pObjectInfo->m_fUprootLimit > 0.f || (object->m_nPhysicalFlags & 4))
+                       && std::abs(object->m_vecMoveSpeed.x) < 0.001f
+                       && std::abs(object->m_vecMoveSpeed.y) < 0.001f
+                       && std::abs(object->m_vecMoveSpeed.z) < 0.001f
+            ) {
+                bCollidedEntityUnableToMove = true;
+                return Finish(); // NOTE: Doesn't mark the collision as processed
+            } else if (object->m_bIsStuck) {
+                bCollidedEntityUnableToMove = true;
+                return Finish(); // NOTE: Doesn't mark the collision as processed
+            }
+        } else if (   colPhysical->m_nModelIndex == MODEL_GRENADE
+                   || colPhysical->m_nModelIndex == MODEL_RCBANDIT
+                   || colPhysical->m_nModelIndex == MODEL_RCTIGER
+                   || colPhysical->m_nModelIndex == MODEL_RCCAM
+        ) {
+            bCollidedEntityCollisionIgnored = true;
+        } else if (colPhysical->m_bIsStuck) {
+            bCollidedEntityUnableToMove = true;
+        }
+
+        physicalFlags.bSkipLineCol = true;
+    }
+
+    Finish();
 }
 
 /*!
@@ -3746,7 +4957,31 @@ void CPed::SpecialEntityPreCollisionStuff(CPhysical* colPhysical,
 */
 uint8 CPed::SpecialEntityCalcCollisionSteps(bool& bProcessCollisionBeforeSettingTimeStep, bool& unk2)
 {
-    return plugin::CallMethodAndReturn<uint8, 0x5E3E90, CPed*, bool&, bool&>(this, bProcessCollisionBeforeSettingTimeStep, unk2);
+    UNUSED(bProcessCollisionBeforeSettingTimeStep);
+    UNUSED(unk2);
+
+    if (m_pAttachedTo) {
+        return 1;
+    }
+
+    const auto timeStep = CTimer::GetTimeStep();
+    const auto speedSq  = m_vecMoveSpeed.SquaredMagnitude();
+
+    if (!GetPlayerData() && speedSq * timeStep * timeStep < 0.09f) {
+        return 1;
+    }
+
+    const auto speed = std::sqrt(speedSq) * timeStep;
+
+    if (!GetPlayerData()) {
+        const auto steps = (int32)std::ceil(speed * 5.f);
+        m_fElasticity *= 2.f;
+        return (uint8)steps;
+    }
+
+    const auto numSteps = speed * (m_standingOnEntity ? 6.6666665f : 3.3333333f);
+    const auto ceiledNumSteps = (float)std::ceil(numSteps);
+    return (uint8)(ceiledNumSteps < (m_standingOnEntity ? 4.f : 2.f) ? numSteps : ceiledNumSteps);
 }
 
 /*!
@@ -3981,9 +5216,448 @@ void CPed::FlagToDestroyWhenNextProcessed() {
 /*!
 * @addr 0x5E2530
 */
-int32 CPed::ProcessEntityCollision(CEntity* entity, CColPoint* colPoint)
-{
-    return plugin::CallMethodAndReturn<int32, 0x5E2530, CPed*, CEntity*, CColPoint*>(this, entity, colPoint);
+int32 CPed::ProcessEntityCollision(CEntity* entity, CColPoint* colPoint) {
+    const auto timeStep = CTimer::GetTimeStep();
+
+    auto* colModel = CModelInfo::GetModelInfo(m_nModelIndex)->GetColModel();
+    auto* colData  = colModel->m_pColData;
+
+    // Colpoints of the col model's lines (Only used if the "reaction volume" is set up below)
+    CColPoint lineColPoints[2];
+    float     maxTouchDistances[]{ 1.f, 1.f };
+
+    // Normal of the contact the ped was pushed by
+    CVector contactNormal{ 0.f, 0.f, 1.f };
+
+    // Only set if the heading is overwritten below
+    float savedHeading{ -1001.f };
+
+    // Height of the ped's head above its feet
+    float pedHeight{ 0.94f };
+
+    bool bCollidedWithBoat{};
+    bool bUsedReactionVolume{};
+
+    // 0x5E25D3 - While aiming players use their "shooting stance" collision model, and face the camera
+    if (bTestForBlockedPositions && m_bUsesCollision) {
+        if (IsPlayer()) {
+            const auto& cam = TheCamera.GetActiveCam();
+            if (cam.m_nMode == MODE_AIMWEAPON) {
+                const auto* useGunTask = GetIntelligence()->GetTaskUseGun();
+                if (useGunTask && useGunTask->m_WeaponInfo && useGunTask->m_WeaponInfo->flags.bAimWithArm) {
+                    savedHeading = GetHeading();
+                    SetHeading(std::atan2(-cam.m_vecSource.x, cam.m_vecSource.y));
+                }
+            }
+        }
+
+        colModel = &CTempColModels::ms_colModelPed2;
+        colData  = colModel->m_pColData;
+    }
+
+    if (!m_bUsesCollision && !physicalFlags.bForceHitReturnFalse) {
+        return 0;
+    }
+
+    // 0x5E26A4
+    bCollidedWithBoat = entity->GetIsTypeVehicle() && entity->AsVehicle()->m_nVehicleType == VEHICLE_TYPE_BOAT;
+
+    // 0x5E26B2 - Set up the "reaction" volume (2 lines going down into the ground and up above the ped's head)
+    if (  !physicalFlags.bSkipLineCol
+        && !physicalFlags.bProcessingShift
+        && !physicalFlags.bForceHitReturnFalse
+        && !m_pAttachedTo
+        && entity->GetType() != ENTITY_TYPE_PED
+    ) {
+        if (!m_bCollisionProcessed) {
+            m_bCollisionProcessed = true;
+        }
+
+        bUsedReactionVolume = true;
+
+        auto& groundLine = colData->m_pLines[0];
+        groundLine.m_vecStart.z = 0.f;
+        groundLine.m_vecEnd.z   = -1.f;
+
+        if (bWasStanding) { // While standing the ground line reaches a little deeper
+            groundLine.m_vecEnd.z += timeStep * -0.15f;
+        }
+
+        pedHeight = colData->m_pSpheres[2].m_vecCenter.z + colData->m_pSpheres[2].m_fRadius;
+
+        if (bCheckColAboveHead) {
+            auto&      headLine   = colData->m_pLines[1];
+            const auto headOffset = (colData->m_pSpheres[0].m_vecCenter.z - colData->m_pSpheres[0].m_fRadius) + 1.f;
+
+            headLine.m_vecStart.z  = pedHeight;
+            headLine.m_vecStart.z -= headOffset;
+            headLine.m_vecEnd.z    = pedHeight;
+            headLine.m_vecEnd.z   += headOffset;
+
+            colData->m_nNumLines              = 2;
+            colModel->m_boundSphere.m_fRadius = headLine.m_vecEnd.z;
+            colModel->m_boundBox.m_vecMax.z   = headLine.m_vecEnd.z;
+            colModel->m_boundBox.m_vecMin.z   = groundLine.m_vecEnd.z;
+        } else {
+            colData->m_nNumLines              = 1;
+            colModel->m_boundBox.m_vecMax.z   = 0.95f;
+            colModel->m_boundSphere.m_fRadius = std::abs(groundLine.m_vecEnd.z);
+            colModel->m_boundBox.m_vecMin.z   = groundLine.m_vecEnd.z;
+        }
+    } else {
+        colData->m_nNumLines              = 0;
+        colModel->m_boundSphere.m_fRadius = 1.f;
+        colModel->m_boundBox.m_vecMax.z   = 0.95f;
+        colModel->m_boundBox.m_vecMin.z   = -1.f;
+    }
+
+    // 0x5E27F1
+    const auto bIsStuck = m_bIsStuck && (entity->GetType() == ENTITY_TYPE_BUILDING || entity->AsPhysical()->physicalFlags.bDisableCollisionForce);
+
+    auto numCollisions = CCollision::ProcessColModels(
+        GetMatrix(), *colModel,
+        entity->GetMatrix(), *entity->GetColModel(),
+        *(std::array<CColPoint, 32>*)colPoint,
+        lineColPoints,
+        maxTouchDistances,
+        bIsStuck
+    );
+
+    // 0x5E2840
+    const auto posZ = GetMatrix().GetPosition().z;
+
+    if (bUsedReactionVolume) {
+        // The lines are no longer needed - Reset the col model to its default state
+        colData->m_nNumLines              = 0;
+        colModel->m_boundSphere.m_fRadius = 1.f;
+        colModel->m_boundBox.m_vecMin.z   = -1.f;
+        colModel->m_boundBox.m_vecMax.z   = 0.95f;
+
+        if (maxTouchDistances[0] >= 1.f) {
+            // The ground line didn't collide with anything - Check if there's something above the ped's head
+            if (  bCheckColAboveHead
+                && maxTouchDistances[1] < 1.f
+                && lineColPoints[1].m_vecPoint.z < field_588
+                && (!entity->GetIsTypePhysical() || entity->AsPhysical()->physicalFlags.bCollidable)
+            ) {
+                field_588 = lineColPoints[1].m_vecPoint.z;
+                if (  bIsStanding
+                    && GetMatrix().GetPosition().z + pedHeight > lineColPoints[1].m_vecPoint.z
+                ) {
+                    GetMatrix().GetPosition().z = lineColPoints[1].m_vecPoint.z - pedHeight;
+                }
+            }
+
+            bOnBoat = false;
+        } else {
+            // 0x5E2892 - The ground line collided with something below the ped (Unless it's standing on the ground already)
+            if (  !bIsStanding
+                || lineColPoints[0].m_vecPoint.z + 1.f > GetMatrix().GetPosition().z
+                || (bCollidedWithBoat && lineColPoints[0].m_vecPoint.z + 3.f > GetMatrix().GetPosition().z)
+            ) {
+                // 0x5E28DB - Did any of the colpoints have a normal pointing (almost) straight down?
+                const auto bHasDownwardColPoint = rng::any_of(
+                    std::span{ colPoint, (size_t)numCollisions },
+                    [](const CColPoint& cp) { return cp.m_vecNormal.z < -0.867f; }
+                );
+
+                // 0x5E29A9 - Blend the contact surface brightness from the line colpoint's lighting
+                const auto lighting   = lineColPoints[0].m_nLightingB.value;
+                const auto dnBalance  = CCustomBuildingDNPipeline::m_fDNBalanceParam;
+                const auto brightness = (
+                        dnBalance         * (float)(lighting >> 4)
+                      + (1.f - dnBalance) * (float)(lighting & 0xF)
+                ) * (1.f / 30.f);
+
+                if (IsPlayer()) {
+                    const auto blend = timeStep * 0.1f;
+                    m_fContactSurfaceBrightness = (1.f - blend) * m_fContactSurfaceBrightness + brightness * blend;
+                } else {
+                    m_fContactSurfaceBrightness = brightness;
+                }
+
+                // 0x5E2A5B
+                if (bIsStanding) {
+                    CEntity::SetEntityReference(m_pContactEntity, entity);
+                    bOnBoat               = false;
+                    bTryingToReachDryLand = false;
+                } else if (entity->GetType() == ENTITY_TYPE_VEHICLE || entity->GetType() == ENTITY_TYPE_OBJECT) {
+                    // Attach the ped to the entity it's standing on
+                    CEntity::SetEntityReference(m_standingOnEntity, entity);
+                    field_56C = lineColPoints[0].m_vecPoint - entity->GetPosition();
+                    CEntity::SetEntityReference(m_pContactEntity, entity);
+
+                    bOnBoat = entity->GetIsTypeVehicle() && entity->AsVehicle()->m_nVehicleType == VEHICLE_TYPE_BOAT;
+
+                    if (entity->GetIsTypeVehicle()) {
+                        m_fContactSurfaceBrightness = entity->AsPhysical()->m_fContactSurfaceBrightness;
+                    }
+                }
+
+                // 0x5E2B4C - Something above the ped's head may be closer than whatever is below it
+                if (  bCheckColAboveHead
+                    && maxTouchDistances[1] < 1.f
+                    && lineColPoints[1].m_vecPoint.z < field_588
+                    && (  entity->GetType() <= ENTITY_TYPE_BUILDING
+                       || entity->GetType() >= ENTITY_TYPE_DUMMY
+                       || entity->AsPhysical()->physicalFlags.bCollidable)
+                ) {
+                    field_588 = lineColPoints[1].m_vecPoint.z;
+                }
+
+                // 0x5E2BA8 - Set the ped's height from the line colpoint
+                const auto bHeadStuck = bHeadStuckInCollision;
+                bool       bSkipFrameHeightUpdate{};
+                if (bHeadStuck && lineColPoints[0].m_vecPoint.z + 1.f >= GetMatrix().GetPosition().z) {
+                    bSkipFrameHeightUpdate =   entity->GetType() != ENTITY_TYPE_BUILDING
+                                           || lineColPoints[0].m_vecNormal.Dot(m_vecMoveSpeed) <= 0.f;
+                }
+
+                if (!bSkipFrameHeightUpdate && !bHasDownwardColPoint) {
+                    if (field_588 >= 100000.f) {
+                        GetMatrix().GetPosition().z = lineColPoints[0].m_vecPoint.z + 1.f;
+                        bHeadStuckInCollision       = false;
+                    } else {
+                        auto newZ = lineColPoints[0].m_vecPoint.z + 1.f;
+                        if (field_588 < lineColPoints[0].m_vecPoint.z + pedHeight + 1.f) {
+                            const auto zFromGround = field_588 - pedHeight;
+                            contactNormal          = lineColPoints[0].m_vecNormal;
+                            if (zFromGround < newZ) {
+                                newZ = zFromGround;
+                            }
+                        }
+                        GetMatrix().GetPosition().z = newZ;
+                    }
+                } else if (bHeadStuck && entity->GetType() != ENTITY_TYPE_VEHICLE) {
+                    contactNormal = lineColPoints[0].m_vecNormal;
+                }
+
+                // 0x5E2CC6
+                field_578         = lineColPoints[0].m_vecNormal;
+                m_nContactSurface = lineColPoints[0].m_nSurfaceTypeB;
+                if (g_surfaceInfos.IsSteepSlope(m_nContactSurface)) {
+                    bHitSteepSlope = true;
+                }
+            }
+
+            // 0x5E2D06 - Landing damage
+            auto maxHorizontalSpeed = 0.33f;
+            auto minVerticalSpeed   = -0.25f;
+            if (m_nPedState == PEDSTATE_IDLE) {
+                maxHorizontalSpeed *= 2.f;
+                minVerticalSpeed   *= 1.5f;
+            }
+
+            const auto animAssoc = RpAnimBlendClumpGetAssociation(GetRpClump(), ANIM_ID_FALL_FALL);
+
+            auto relMoveSpeed = m_vecMoveSpeed;
+            if (entity->GetType() > ENTITY_TYPE_BUILDING && entity->GetType() < ENTITY_TYPE_DUMMY) {
+                relMoveSpeed -= entity->AsPhysical()->m_vecMoveSpeed;
+            }
+
+            const auto horizontalSpeed = std::sqrt(sq(relMoveSpeed.x) + sq(relMoveSpeed.y));
+            const auto bHitHard =   (horizontalSpeed > maxHorizontalSpeed && !bPushedAlongByCar)
+                                 || ((horizontalSpeed <= maxHorizontalSpeed || bPushedAlongByCar) && relMoveSpeed.z < minVerticalSpeed);
+            const auto bCanDamage = entity != m_pEntityIgnoredCollision && entity != m_pVehicle;
+
+            if (bHitHard && bCanDamage) {
+                // The ped has hit something hard - Damage it based on how hard it hit
+                auto verticalThreshold   = -0.25f;
+                auto horizontalThreshold = 0.25f;
+                if (g_surfaceInfos.IsSoftLanding(lineColPoints[0].m_nSurfaceTypeB)) {
+                    verticalThreshold  *= 1.5f;
+                    horizontalThreshold = 0.375f;
+                }
+
+                auto damage = 100.f * std::max(horizontalSpeed - horizontalThreshold, 0.f)
+                            + 400.f * std::max(verticalThreshold - relMoveSpeed.z, 0.f);
+                if (relMoveSpeed.z < -0.6f) {
+                    damage = 500.f;
+                }
+
+                uint8 damageDirection{};
+                if (  relMoveSpeed.x > 0.01f || relMoveSpeed.x < -0.01f
+                   || relMoveSpeed.y > 0.01f || relMoveSpeed.y < -0.01f
+                ) {
+                    damageDirection = (uint8)GetLocalDirection(CVector2D{ -relMoveSpeed.x, -relMoveSpeed.y });
+                }
+
+                CEventDamage eventDamage(entity, CTimer::GetTimeInMS(), WEAPON_FALL, PED_PIECE_TORSO, damageDirection, false, false);
+                if (eventDamage.AffectsPed(this)) {
+                    CPedDamageResponseCalculator damageCalculator(entity, damage, WEAPON_FALL, PED_PIECE_TORSO, false);
+                    damageCalculator.ComputeDamageResponse(this, eventDamage.m_damageResponse, true);
+                    GetEventGroup().Add(&eventDamage, false);
+                }
+            } else if (  animAssoc
+                      && relMoveSpeed.z < timeStep * -0.016f
+                      && entity != m_pVehicle
+            ) {
+                // The ped is playing the falling anim and is landing hard
+                CEventDamage eventDamage(entity, CTimer::GetTimeInMS(), WEAPON_FALL, PED_PIECE_TORSO, 2, false, false);
+                if (eventDamage.AffectsPed(this)) {
+                    CPedDamageResponseCalculator damageCalculator(entity, 15.f, WEAPON_FALL, PED_PIECE_TORSO, false);
+                    damageCalculator.ComputeDamageResponse(this, eventDamage.m_damageResponse, true);
+                    GetEventGroup().Add(&eventDamage, false);
+                }
+            }
+
+            // 0x5E3099
+            bIsStanding      = true;
+            m_vecMoveSpeed.z = 0.f;
+
+            if (  posZ + 0.1f < GetMatrix().GetPosition().z
+                && colData->m_nNumLines == 0
+                && IsPlayer()
+            ) {
+                numCollisions = CCollision::ProcessColModels(
+                    GetMatrix(), *colModel,
+                    entity->GetMatrix(), *entity->GetColModel(),
+                    *(std::array<CColPoint, 32>*)colPoint,
+                    nullptr, nullptr, false
+                );
+            }
+        }
+    }
+
+    // 0x5E31F1 - Post-process the colpoints
+    for (int32 i = 0; i < numCollisions; i++) {
+        auto& cp = colPoint[i];
+
+        if (  bTestForBlockedPositions
+            && m_bUsesCollision
+            && cp.m_nPieceTypeA > PED_COL_SPHERE_HEAD
+        ) {
+            // Remember which body parts are blocked (The other ped may prevent some of them from being set)
+            bool bBlockBodyParts{ true }, bBlockArms{ true }, bBlockAss{ true };
+            if (entity->GetIsTypePed()) {
+                const auto& otherPed = *entity->AsPed();
+                bBlockAss = false;
+                if (otherPed.bFallenDown) {
+                    bBlockBodyParts = false;
+                } else if (otherPed.bIsDucking) {
+                    bBlockArms = false;
+                }
+            }
+
+            // NOTE: In `CPed` the last two flags are named after the arm/midriff, but the exe sets
+            //       them for the right leg and the ass respectively.
+            switch (cp.m_nPieceTypeA) {
+            case PED_PIECE_RIGHT_ARM:
+                if (bBlockBodyParts && bBlockArms) {
+                    bRightArmBlocked = true;
+                }
+                break;
+            case PED_PIECE_LEFT_ARM:
+                if (bBlockBodyParts && bBlockArms) {
+                    bLeftArmBlocked = true;
+                }
+                break;
+            case PED_PIECE_RIGHT_LEG:
+                if (bBlockBodyParts) {
+                    bDuckRightArmBlocked = true;
+                }
+                break;
+            case PED_PIECE_ASS:
+                if (bBlockAss) {
+                    bMidriffBlockedForJump = true;
+                }
+                break;
+            }
+
+            // The colpoint was only needed to set the flags above - Remove it
+            for (auto j = i; j < numCollisions - 1; j++) {
+                colPoint[j] = colPoint[j + 1];
+            }
+            numCollisions--;
+            i--; // The colpoint that was shifted into this slot has to be processed too
+        } else if (  entity->GetIsTypeVehicle()
+                  && entity->AsVehicle()->m_nVehicleSubType == VEHICLE_TYPE_TRAIN
+                  && entity->AsPhysical()->physicalFlags.bDisableCollisionForce
+                  && cp.m_vecNormal.z < 0.f
+        ) {
+            // Don't push the ped down into the train it's standing on
+            cp.m_vecNormal.z = 0.f;
+            cp.m_vecNormal.Normalise();
+        }
+    }
+
+    // Restore the heading if it was overwritten above
+    if (savedHeading > -1000.f) {
+        if (m_matrix) {
+            m_matrix->SetRotateZOnly(savedHeading);
+        } else {
+            m_placement.m_fHeading = savedHeading;
+        }
+    }
+
+    // 0x5E3391 - When standing on static geometry, the colpoint normals are made vertical(ish)
+    if (  (  entity->GetType() == ENTITY_TYPE_BUILDING
+          || m_bIsStatic
+          || m_bIsStaticWaitingForCollision)
+        && bWasStanding
+        && numCollisions > 0
+    ) {
+        for (auto i = 0; i < numCollisions; i++) {
+            auto&         cp     = colPoint[i];
+            CVector       normal = cp.m_vecNormal;
+            if (  normal.z < -0.99f
+                && cp.m_nPieceTypeA == PED_COL_SPHERE_HEAD
+                && IsPlayer()
+            ) {
+                // The ped's head is stuck - Push it away using its own velocity
+                const auto speed = std::max(std::sqrt(sq(m_vecMoveSpeed.x) + sq(m_vecMoveSpeed.y)), 0.001f);
+                normal.x = -m_vecMoveSpeed.x / speed;
+                normal.y = -m_vecMoveSpeed.y / speed;
+
+                GetMatrix().GetPosition().z -= 0.05f;
+                bHitSteepSlope         = true;
+                bHeadStuckInCollision  = true;
+            } else {
+                const auto len = std::sqrt(sq(normal.x) + sq(normal.y));
+                if (len != 0.f) {
+                    normal.x /= len;
+                    normal.y /= len;
+                }
+            }
+
+            normal.Normalise();
+            cp.m_vecNormal = normal;
+
+            if (g_surfaceInfos.IsSteepSlope(cp.m_nSurfaceTypeB)) {
+                bHitSteepSlope = true;
+            }
+        }
+    }
+
+    // 0x5E34F6 - Add an extra colpoint in the direction the ped was pushed in
+    if (contactNormal.z < 1.f) {
+        auto& cp = colPoint[numCollisions];
+        cp.m_vecNormal = CVector{ contactNormal.x, contactNormal.y, 0.f };
+        cp.m_vecNormal.Normalise();
+        cp.m_vecPoint = GetMatrix().GetPosition() - cp.m_vecNormal * 0.35f;
+
+        numCollisions++;
+
+        bHitSteepSlope = true;
+    }
+
+    // 0x5E35B4
+    if (numCollisions > 0 || maxTouchDistances[0] < 1.f) {
+        AddCollisionRecord(entity);
+        if (!entity->GetIsTypeBuilding()) {
+            entity->AsPhysical()->AddCollisionRecord(this);
+        }
+
+        if (  numCollisions > 0
+            && (  entity->GetIsTypeBuilding()
+               || entity->m_bIsStatic
+               || entity->m_bIsStaticWaitingForCollision)
+        ) {
+            m_bHasHitWall = true;
+        }
+    }
+
+    return numCollisions;
 }
 
 // NOTSA

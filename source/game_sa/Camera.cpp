@@ -31,6 +31,11 @@ auto& gCurDistForCam = StaticRef<float>(0x8CCB84);
 auto& gpCamColVars = StaticRef<float*>(0xB6FE88);
 auto& gCamColVars = StaticRef<float[28][6]>(0x8CC8E0);
 static auto& gLastRadiusUsedInCollisionPreventionOfCamera = StaticRef<float>(0xB6EC6C);
+auto& gCinematicCamDirection = StaticRef<int8>(0x8CC471);              // +1 or -1, drives the cinematic cam cycling
+auto& gCinematicCamCanSwitchDirection = StaticRef<bool>(0x8CCDF4);     // true
+auto& gCinematicCamModeDuration = StaticRef<float>(0x8CCDF0);          // 15000.0f
+auto& gCinematicCamModeMaxDuration = StaticRef<float>(0x8CCDF8);       // 20000.0f
+auto& gCinematicProcessed = StaticRef<bool>(0xB6EC34);
 
 CCam& CCamera::GetActiveCamera() {
     return TheCamera.m_aCams[TheCamera.m_nActiveCam];
@@ -143,6 +148,12 @@ void CCamera::InjectHooks() {
     RH_ScopedInstall(TryToStartNewCamMode, 0x51E560);
     RH_ScopedInstall(CameraColDetAndReact, 0x520190);
     RH_ScopedInstall(CamControl, 0x527FA0);
+    RH_ScopedInstall(IsCinemaCamModeInvalid, 0x51D770);
+    RH_ScopedInstall(ProcessCarCinemaCams, 0x5267C0);
+    RH_ScopedInstall(ProcessTrainCinemaCams, 0x526950);
+    RH_ScopedInstall(ProcessHeliCinemaCams, 0x526AE0);
+    RH_ScopedInstall(ProcessPlaneCinemaCams, 0x526C80);
+    RH_ScopedInstall(ProcessBoatCinemaCams, 0x526E20);
     RH_ScopedInstall(Process, 0x52B730);
     RH_ScopedInstall(DeleteCutSceneCamDataMemory, 0x5B24A0);
     RH_ScopedInstall(LoadPathSplines, 0x5B24D0);
@@ -2764,6 +2775,544 @@ bool CCamera::CameraColDetAndReact(CVector* source, CVector* target) {
     return collided;
 }
 
+// 0x50B830
+static bool IsActiveCamSourceUnderwater() {
+    const auto& source = TheCamera.m_aCams[TheCamera.m_nActiveCam].m_vecSource;
+    float waterLevel{};
+    return CWaterLevel::GetWaterLevel(source, waterLevel, true) && waterLevel >= source.z;
+}
+
+// 0x51D770
+bool CCamera::IsCinemaCamModeInvalid(int32 mode, uint32 lastTime) {
+    if (mode < 0) {
+        return true;
+    }
+
+    const auto elapsed = static_cast<float>(CTimer::GetTimeInMS()) - static_cast<float>(static_cast<int32>(lastTime));
+    if (gCinematicCamModeMaxDuration < elapsed) {
+        return true;
+    }
+
+    // Steering decides in which direction the cinematic cams cycle
+    const auto& padState    = CPad::GetPad(0)->NewState;
+    const auto  steerAbs    = static_cast<float>(std::abs(static_cast<int32>(padState.RightStickX)));
+    if (steerAbs > 32.0f) {
+        if (steerAbs > 96.0f && gCinematicCamCanSwitchDirection) {
+            gCinematicCamDirection = 1;
+            if (padState.RightStickX <= 0) {
+                gCinematicCamDirection = static_cast<int8>(-1);
+            }
+            gCinematicCamCanSwitchDirection = false;
+            return true;
+        }
+    } else {
+        gCinematicCamCanSwitchDirection = true;
+    }
+
+    const auto hasLosToFixedModeSource = [this] {
+        return CWorld::GetIsLineOfSightClear(FindPlayerCoors(), m_vecFixedModeSource, true, false, false, false, false, false, false);
+    };
+    const auto dirToFixedModeSource = [this] {
+        return FindPlayerCoors() - m_vecFixedModeSource;
+    };
+    const auto isBoatOtherThanSkimmer = [this] {
+        const auto vehicle = FindPlayerVehicle();
+        return vehicle && vehicle->m_nVehicleSubType == VEHICLE_TYPE_BOAT && m_pTargetEntity->m_nModelIndex != MODEL_SKIMMER;
+    };
+    const auto isMovingAwayFromFixedModeSource = [](const CVector& dir) {
+        return DotProduct2D(dir, FindPlayerSpeed()) > 0.0f;
+    };
+
+    switch (mode) {
+    case 0: { // Wheel cam
+        if (const auto vehicle = FindPlayerVehicle()) {
+            if (vehicle->m_nVehicleSubType == VEHICLE_TYPE_BOAT && m_pTargetEntity->m_nModelIndex != MODEL_SKIMMER) {
+                return true;
+            }
+            if (vehicle->GetModelIndex() == MODEL_RHINO) {
+                return true;
+            }
+            if (!CWorld::GetIsLineOfSightClear(m_pTargetEntity->GetPosition(), GetActiveCam().m_vecSource, true, false, false, false, false, false, false)) {
+                return true;
+            }
+        }
+        if (lastTime + 5000u < CTimer::GetTimeInMS()) {
+            return true;
+        }
+        RwCameraSetNearClipPlane(Scene.m_pRwCamera, 0.15f);
+        break;
+    }
+    case 1: {
+        if (gCinematicCamModeDuration < elapsed || isBoatOtherThanSkimmer() || !hasLosToFixedModeSource()) {
+            return true;
+        }
+        const auto dir  = dirToFixedModeSource();
+        const auto dist = dir.Magnitude();
+        if (40.0f < dist && isMovingAwayFromFixedModeSource(dir)) {
+            return true;
+        }
+        return dist < 4.5f;
+    }
+    case 2: {
+        if (gCinematicCamModeDuration < elapsed || isBoatOtherThanSkimmer() || !hasLosToFixedModeSource()) {
+            return true;
+        }
+        const auto dir  = dirToFixedModeSource();
+        const auto dist = dir.Magnitude();
+        if (dist < 2.0f) {
+            m_fNearClipScript     = std::max(0.05f, dist * 0.5f);
+            m_bUseNearClipScript  = true;
+        }
+        if (29.0f < dist && isMovingAwayFromFixedModeSource(dir)) {
+            return true;
+        }
+        if (dist < 2.0f) {
+            return true;
+        }
+        RwCameraSetNearClipPlane(Scene.m_pRwCamera, 0.15f);
+        break;
+    }
+    case 3: {
+        if (gCinematicCamModeDuration < elapsed || !hasLosToFixedModeSource()) {
+            return true;
+        }
+        const auto dir = dirToFixedModeSource();
+        if (48.0f < dir.Magnitude() && isMovingAwayFromFixedModeSource(dir)) {
+            return true;
+        }
+        RwCameraSetNearClipPlane(Scene.m_pRwCamera, 0.15f);
+        break;
+    }
+    case 4:
+        if (lastTime + 3000u < CTimer::GetTimeInMS()) {
+            return true;
+        }
+        break;
+    case 5: {
+        if (gCinematicCamModeDuration < elapsed || isBoatOtherThanSkimmer() || !hasLosToFixedModeSource()) {
+            return true;
+        }
+        const auto dir = dirToFixedModeSource();
+        if (dir.Magnitude() <= 38.0f) {
+            return false;
+        }
+        if (!isMovingAwayFromFixedModeSource(dir)) {
+            return false;
+        }
+        return true;
+    }
+    case 6:
+        if (lastTime + 3000u < CTimer::GetTimeInMS()) {
+            return true;
+        }
+        break;
+    case 7:
+        if (lastTime + 2000u < CTimer::GetTimeInMS()) {
+            if (!FindPlayerVehicle()->GetIsOnScreen()) {
+                return true;
+            }
+        }
+        break;
+    case 8: {
+        if (gCinematicCamModeDuration < elapsed || isBoatOtherThanSkimmer()) {
+            return true;
+        }
+        if (!CWorld::GetIsLineOfSightClear(m_pTargetEntity->GetPosition(), GetActiveCam().m_vecSource, true, false, false, false, false, false, false)) {
+            return true;
+        }
+        if (lastTime + 1000u < CTimer::GetTimeInMS()) {
+            return true;
+        }
+        m_fNearClipScript    = 0.6f;
+        m_bUseNearClipScript = true;
+        return false;
+    }
+    case 0xF: {
+        if (gCinematicCamModeDuration < elapsed) {
+            return true;
+        }
+        if (!FindPlayerVehicle()) {
+            return false;
+        }
+        if (!hasLosToFixedModeSource()) {
+            return true;
+        }
+        const auto dir  = dirToFixedModeSource();
+        const auto dist = dir.Magnitude();
+        if (44.0f < dist && isMovingAwayFromFixedModeSource(dir)) {
+            return true;
+        }
+        if (dist < 3.0f) {
+            return true;
+        }
+        break;
+    }
+    case 0x10: {
+        if (gCinematicCamModeDuration < elapsed) {
+            return true;
+        }
+        if (!FindPlayerVehicle()) {
+            return false;
+        }
+        if (!hasLosToFixedModeSource()) {
+            return true;
+        }
+        const auto dist = dirToFixedModeSource().Magnitude();
+        if (50.0f < dist) {
+            return true;
+        }
+        if (dist < 3.0f) {
+            return true;
+        }
+        break;
+    }
+    case 0x11: {
+        if (gCinematicCamModeDuration < elapsed) {
+            return true;
+        }
+        if (!FindPlayerVehicle()) {
+            return false;
+        }
+        if (!hasLosToFixedModeSource()) {
+            return true;
+        }
+        const auto dir  = dirToFixedModeSource();
+        const auto dist = dir.Magnitude();
+        if (50.0f < dist && isMovingAwayFromFixedModeSource(dir)) {
+            return true;
+        }
+        if (dist < 2.0f) {
+            return true;
+        }
+        break;
+    }
+    case 0x12: {
+        if (gCinematicCamModeDuration < elapsed) {
+            return true;
+        }
+        if (!hasLosToFixedModeSource()) {
+            return true;
+        }
+        const auto dist = dirToFixedModeSource().Magnitude();
+        if (57.0f < dist) {
+            return true;
+        }
+        return dist < 1.0f;
+    }
+    case 0x13: {
+        if (gCinematicCamModeDuration < elapsed || !hasLosToFixedModeSource()) {
+            return true;
+        }
+        const auto dist = dirToFixedModeSource().Magnitude();
+        if (36.0f < dist) {
+            return true;
+        }
+        if (dist < 2.0f) {
+            return true;
+        }
+        break;
+    }
+    case 0x14:
+        return !GetActiveCam().Process_DW_HeliChaseCam(true);
+    case 0x15:
+        return !GetActiveCam().Process_DW_CamManCam(true);
+    case 0x16:
+        return !GetActiveCam().Process_DW_BirdyCam(true);
+    case 0x17:
+        return !GetActiveCam().Process_DW_PlaneSpotterCam(true);
+    case 0x18:
+    case 0x19:
+        m_bUseNearClipScript = false;
+        return true;
+    case 0x1A:
+        return !GetActiveCam().Process_DW_PlaneCam1(true);
+    case 0x1B:
+        return !GetActiveCam().Process_DW_PlaneCam2(true);
+    case 0x1C:
+        return !GetActiveCam().Process_DW_PlaneCam3(true);
+    case 0x1D:
+        return lastTime + 5000u < CTimer::GetTimeInMS();
+    default:
+        break;
+    }
+    return false;
+}
+
+// 0x5267C0
+void CCamera::ProcessCarCinemaCams() {
+    static auto&      index    = StaticRef<int32>(0x8CCEEC);
+    static auto&      lastTime = StaticRef<uint32>(0xB70120);
+    // clang-format off
+    static constexpr int32 aCams[] = { 20, 22, 7, 3, 22, 1, 21, 8, 2, 22, 5 }; // 0x8CC828
+    // clang-format on
+    static constexpr int32 numCams     = 11;
+    static constexpr int32 fallbackCam = 6; // 0x8CC854
+
+    const auto advanceIndex = [&] {
+        index = (static_cast<int32>(gCinematicCamDirection) + index) % numCams;
+        if (index < 0) {
+            index = numCams - 1;
+        } else if (index >= numCams) {
+            index = 0;
+        }
+    };
+
+    if (!bDidWeProcessAnyCinemaCam) {
+        index = -1;
+        if (gbCineyCamMessageDisplayed > 0 && !m_bCinemaCamera) {
+            gbCineyCamMessageDisplayed--;
+            CHud::SetHelpMessage(TheText.Get("CINCAM"), true, false, false);
+        }
+        gCinematicProcessed = true;
+    } else if (!IsCinemaCamModeInvalid(aCams[index], lastTime)) {
+        m_nModeObbeCamIsInForCar = index;
+        bDidWeProcessAnyCinemaCam = true;
+        return;
+    }
+
+    advanceIndex();
+    bool  started    = TryToStartNewCamMode(aCams[index]);
+    int32 numRetries = 0;
+    while (!started) {
+        if (numRetries > numCams) {
+            break;
+        }
+        advanceIndex();
+        numRetries++;
+        started = TryToStartNewCamMode(aCams[index]);
+    }
+    lastTime = CTimer::GetTimeInMS();
+    if (numRetries >= numCams) {
+        index = numCams;
+        TryToStartNewCamMode(fallbackCam);
+    }
+    m_nModeObbeCamIsInForCar = index;
+    bDidWeProcessAnyCinemaCam = true;
+}
+
+// 0x526950
+void CCamera::ProcessTrainCinemaCams() {
+    static auto&      index    = StaticRef<int32>(0x8CCEF0);
+    static auto&      lastTime = StaticRef<uint32>(0xB70124);
+    // clang-format off
+    static constexpr int32 aCams[] = { 20, 22, 2, 21, 3, 0 }; // 0x8CC858
+    // clang-format on
+    static constexpr int32 numCams     = 6;
+    static constexpr int32 fallbackCam = 0; // 0x8CC870
+
+    const auto advanceIndex = [&] {
+        index = (static_cast<int32>(gCinematicCamDirection) + index) % numCams;
+        if (index < 0) {
+            index = numCams - 1;
+        } else if (index >= numCams) {
+            index = 0;
+        }
+    };
+
+    if (!bDidWeProcessAnyCinemaCam) {
+        index = -1;
+        if (gbCineyCamMessageDisplayed > 0 && !m_bCinemaCamera) {
+            gbCineyCamMessageDisplayed--;
+            CHud::SetHelpMessage(TheText.Get("CINCAM"), true, false, false);
+        }
+        gCinematicProcessed = true;
+    } else if (!IsCinemaCamModeInvalid(aCams[index], lastTime)) {
+        m_nModeObbeCamIsInForCar = index;
+        bDidWeProcessAnyCinemaCam = true;
+        return;
+    }
+
+    advanceIndex();
+    bool  started    = TryToStartNewCamMode(aCams[index]);
+    int32 numRetries = 0;
+    while (!started) {
+        if (numRetries > numCams) {
+            break;
+        }
+        advanceIndex();
+        numRetries++;
+        started = TryToStartNewCamMode(aCams[index]);
+    }
+    lastTime = CTimer::GetTimeInMS();
+    if (numRetries >= numCams) {
+        index = numCams;
+        TryToStartNewCamMode(fallbackCam);
+    }
+    m_nModeObbeCamIsInForCar = index;
+    bDidWeProcessAnyCinemaCam = true;
+}
+
+// 0x526AE0
+void CCamera::ProcessHeliCinemaCams() {
+    static auto&      index    = StaticRef<int32>(0x8CCEF4);
+    static auto&      lastTime = StaticRef<uint32>(0xB70128);
+    // clang-format off
+    static constexpr int32 aCams[] = { 26, 27, 23, 20, 22, 28, 23 }; // 0x8CC874
+    // clang-format on
+    static constexpr int32 numCams = 7;
+
+    const auto advanceIndex = [&] {
+        index = (static_cast<int32>(gCinematicCamDirection) + index) % numCams;
+        if (index < 0) {
+            index = numCams - 1;
+        } else if (index >= numCams) {
+            index = 0;
+        }
+    };
+
+    if (!bDidWeProcessAnyCinemaCam) {
+        index = -1;
+        if (gbCineyCamMessageDisplayed > 0 && !m_bCinemaCamera) {
+            gbCineyCamMessageDisplayed--;
+            CHud::SetHelpMessage(TheText.Get("CINCAM"), true, false, false);
+        }
+        gCinematicProcessed = true;
+    } else if (!IsActiveCamSourceUnderwater() && !IsCinemaCamModeInvalid(aCams[index], lastTime)) {
+        m_nModeObbeCamIsInForCar = index;
+        bDidWeProcessAnyCinemaCam = true;
+        return;
+    }
+
+    advanceIndex();
+    bool  started    = TryToStartNewCamMode(aCams[index]);
+    int32 numRetries = 0;
+    while (!started) {
+        if (numRetries > numCams) {
+            break;
+        }
+        advanceIndex();
+        numRetries++;
+        started = TryToStartNewCamMode(aCams[index]);
+    }
+    if (numRetries >= numCams) {
+        index = numCams;
+        if (GetActiveCam().m_nMode != MODE_CAM_ON_A_STRING) {
+            TryToStartNewCamMode(MODE_PED_DEAD_BABY);
+            lastTime = CTimer::GetTimeInMS();
+        }
+        m_nModeObbeCamIsInForCar = index;
+        bDidWeProcessAnyCinemaCam = true;
+        return;
+    }
+    lastTime = CTimer::GetTimeInMS();
+    m_nModeObbeCamIsInForCar = index;
+    bDidWeProcessAnyCinemaCam = true;
+}
+
+// 0x526C80
+void CCamera::ProcessPlaneCinemaCams() {
+    static auto&      index    = StaticRef<int32>(0x8CCEF8);
+    static auto&      lastTime = StaticRef<uint32>(0xB7012C);
+    // clang-format off
+    static constexpr int32 aCams[] = { 26, 27, 20, 22, 28, 23 }; // 0x8CC894
+    // clang-format on
+    static constexpr int32 numCams = 6;
+
+    const auto advanceIndex = [&] {
+        index = (static_cast<int32>(gCinematicCamDirection) + index) % numCams;
+        if (index < 0) {
+            index = numCams - 1;
+        } else if (index >= numCams) {
+            index = 0;
+        }
+    };
+
+    if (!bDidWeProcessAnyCinemaCam) {
+        index = -1;
+        gCinematicProcessed = true;
+        if (gbCineyCamMessageDisplayed > 0 && !m_bCinemaCamera) {
+            gbCineyCamMessageDisplayed--;
+            CHud::SetHelpMessage(TheText.Get("CINCAM"), true, false, false);
+        }
+    } else if (!IsActiveCamSourceUnderwater() && !IsCinemaCamModeInvalid(aCams[index], lastTime)) {
+        m_nModeObbeCamIsInForCar = index;
+        bDidWeProcessAnyCinemaCam = true;
+        return;
+    }
+
+    advanceIndex();
+    bool  started    = TryToStartNewCamMode(aCams[index]);
+    int32 numRetries = 0;
+    while (!started) {
+        if (numRetries > numCams) {
+            break;
+        }
+        advanceIndex();
+        numRetries++;
+        started = TryToStartNewCamMode(aCams[index]);
+    }
+    if (numRetries >= numCams) {
+        index = numCams;
+        if (GetActiveCam().m_nMode != MODE_CAM_ON_A_STRING) {
+            TryToStartNewCamMode(MODE_PED_DEAD_BABY);
+            lastTime = CTimer::GetTimeInMS();
+        }
+        m_nModeObbeCamIsInForCar = index;
+        bDidWeProcessAnyCinemaCam = true;
+        return;
+    }
+    lastTime = CTimer::GetTimeInMS();
+    m_nModeObbeCamIsInForCar = index;
+    bDidWeProcessAnyCinemaCam = true;
+}
+
+// 0x526E20
+void CCamera::ProcessBoatCinemaCams() {
+    static auto&      index    = StaticRef<int32>(0x8CCEFC);
+    static auto&      lastTime = StaticRef<uint32>(0xB70130);
+    // clang-format off
+    static constexpr int32 aCams[] = { 20, 3, 18 }; // 0x8CC8B0
+    // clang-format on
+    static constexpr int32 numCams = 3;
+
+    const auto advanceIndex = [&] {
+        index = (static_cast<int32>(gCinematicCamDirection) + index) % numCams;
+        if (index < 0) {
+            index = numCams - 1;
+        } else if (index >= numCams) {
+            index = 0;
+        }
+    };
+
+    if (!bDidWeProcessAnyCinemaCam) {
+        index = -1;
+        if (gbCineyCamMessageDisplayed > 0 && !m_bCinemaCamera) {
+            gbCineyCamMessageDisplayed--;
+            CHud::SetHelpMessage(TheText.Get("CINCAM"), true, false, false);
+        }
+        gCinematicProcessed = true;
+    } else if (!IsCinemaCamModeInvalid(aCams[index], lastTime)) {
+        m_nModeObbeCamIsInForCar = index;
+        bDidWeProcessAnyCinemaCam = true;
+        return;
+    }
+
+    advanceIndex();
+    bool  started    = TryToStartNewCamMode(aCams[index]);
+    int32 numRetries = 0;
+    while (!started) {
+        if (numRetries > numCams) {
+            break;
+        }
+        advanceIndex();
+        numRetries++;
+        started = TryToStartNewCamMode(aCams[index]);
+    }
+    if (numRetries >= numCams) {
+        index = numCams;
+        if (GetActiveCam().m_nMode != MODE_CAM_ON_A_STRING) {
+            TryToStartNewCamMode(MODE_PED_DEAD_BABY);
+            lastTime = CTimer::GetTimeInMS();
+        }
+        m_nModeObbeCamIsInForCar = index;
+        bDidWeProcessAnyCinemaCam = true;
+        return;
+    }
+    lastTime = CTimer::GetTimeInMS();
+    m_nModeObbeCamIsInForCar = index;
+    bDidWeProcessAnyCinemaCam = true;
+}
+
 // 0x527FA0
 void CCamera::CamControl() {
     auto& requestedMode = StaticRef<eCamMode>(0xB70140);
@@ -3225,17 +3774,16 @@ void CCamera::CamControl() {
         CPostEffects::m_bSpeedFXUserFlagCurrentFrame = false;
         if (m_pTargetEntity->GetIsTypeVehicle()) {
             auto* vehicle = m_pTargetEntity->AsVehicle();
-            // These cinematic selectors have not yet been reversed.
             if (vehicle->m_nVehicleSubType == VEHICLE_TYPE_PLANE) {
-                plugin::CallMethod<0x526C80, CCamera*>(this);
+                ProcessPlaneCinemaCams();
             } else if (vehicle->GetVehicleAppearance() == VEHICLE_APPEARANCE_HELI) {
-                plugin::CallMethod<0x526AE0, CCamera*>(this);
+                ProcessHeliCinemaCams();
             } else if (vehicle->m_nVehicleSubType == VEHICLE_TYPE_BOAT) {
-                plugin::CallMethod<0x526E20, CCamera*>(this);
+                ProcessBoatCinemaCams();
             } else if (vehicle->m_nVehicleSubType == VEHICLE_TYPE_TRAIN) {
-                plugin::CallMethod<0x526950, CCamera*>(this);
+                ProcessTrainCinemaCams();
             } else {
-                plugin::CallMethod<0x5267C0, CCamera*>(this);
+                ProcessCarCinemaCams();
             }
         }
     }

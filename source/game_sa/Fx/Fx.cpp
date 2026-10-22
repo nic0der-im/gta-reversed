@@ -8,10 +8,19 @@
 #include "StdInc.h"
 
 #include "Fx.h"
+#include "Shadows.h"
 
 static auto& TempVertexBuffer = StaticRef<std::array<RxObjSpace3DVertex, 4>>(0xC4D958);
 
+// Holds the prim index used by `Fx_c::AddDebris` (index of the next prim to enable)
+static auto& g_FxDebrisPrimIndex = StaticRef<uint32>(0xA9ADE4);
+
 auto& g_fx = StaticRef<Fx_c>(0xA9AE00);
+
+// `rand()` scaled into `[0, 1)` (The game uses MSVC's `rand()`, which returns `[0, 32767]`)
+static float FxRand01() {
+    return (float)CGeneral::GetRandomNumber() / 32768.0f;
+}
 
 void Fx_c::InjectHooks() {
     RH_ScopedClass(Fx_c);
@@ -30,26 +39,26 @@ void Fx_c::InjectHooks() {
     // + RH_ScopedInstall(DestroyEntityFx, 0x4A1280);
     // + RH_ScopedInstall(Update, 0x49E640);
     // + RH_ScopedInstall(Render, 0x49E650);
-    // RH_ScopedInstall(CreateMatFromVec, 0x49E950);
+    RH_ScopedInstall(CreateMatFromVec, 0x49E950);
     // + RH_ScopedInstall(SetFxQuality, 0x49EA40);
     // + RH_ScopedInstall(GetFxQuality, 0x49EA50);
-    // RH_ScopedInstall(AddBlood, 0x49EB00);
-    // RH_ScopedInstall(AddWood, 0x49EE10);
-    // RH_ScopedInstall(AddSparks, 0x49F040);
-    // RH_ScopedInstall(AddTyreBurst, 0x49F300);
-    // RH_ScopedInstall(AddBulletImpact, 0x49F3D0);
-    // RH_ScopedInstall(AddPunchImpact, 0x49F670);
-    // RH_ScopedInstall(AddDebris, 0x49F750);
-    // RH_ScopedInstall(AddGlass, 0x49F970);
-    // RH_ScopedInstall(AddWheelSpray, 0x49FB30);
-    // RH_ScopedInstall(AddWheelGrass, 0x49FF20);
-    // RH_ScopedInstall(AddWheelGravel, 0x4A0170);
-    // RH_ScopedInstall(AddWheelMud, 0x4A03C0);
-    // RH_ScopedInstall(AddWheelSand, 0x4A0610);
-    // RH_ScopedInstall(AddWheelDust, 0x4A09C0);
-    // RH_ScopedInstall(TriggerWaterHydrant, 0x4A0D70);
-    // RH_ScopedInstall(TriggerGunshot, 0x4A0DE0);
-    // RH_ScopedInstall(TriggerTankFire, 0x4A0FA0);
+    RH_ScopedInstall(AddBlood, 0x49EB00);
+    RH_ScopedInstall(AddWood, 0x49EE10);
+    RH_ScopedInstall(AddSparks, 0x49F040);
+    RH_ScopedInstall(AddTyreBurst, 0x49F300);
+    RH_ScopedInstall(AddBulletImpact, 0x49F3D0);
+    RH_ScopedInstall(AddPunchImpact, 0x49F670);
+    RH_ScopedInstall(AddDebris, 0x49F750);
+    RH_ScopedInstall(AddGlass, 0x49F970);
+    RH_ScopedInstall(AddWheelSpray, 0x49FB30);
+    RH_ScopedInstall(AddWheelGrass, 0x49FF20);
+    RH_ScopedInstall(AddWheelGravel, 0x4A0170);
+    RH_ScopedInstall(AddWheelMud, 0x4A03C0);
+    RH_ScopedInstall(AddWheelSand, 0x4A0610);
+    RH_ScopedInstall(AddWheelDust, 0x4A09C0);
+    RH_ScopedInstall(TriggerWaterHydrant, 0x4A0D70);
+    RH_ScopedInstall(TriggerGunshot, 0x4A0DE0);
+    RH_ScopedInstall(TriggerTankFire, 0x4A0FA0);
     RH_ScopedInstall(TriggerWaterSplash, 0x4A1070);
     RH_ScopedInstall(TriggerBulletSplash, 0x4A10E0);
     RH_ScopedInstall(TriggerFootSplash, 0x4A1150);
@@ -198,24 +207,24 @@ void Fx_c::Render(RwCamera* camera, bool heatHaze) {
 
 // 0x49E950
 void Fx_c::CreateMatFromVec(RwMatrix* out, const CVector* origin, const CVector* direction) {
-    plugin::CallMethod<0x49E950, Fx_c*, RwMatrix*, const CVector*, const CVector*>(this, out, origin, direction);
-    return;
+    out->right = { 1.0f, 0.0f, 0.0f };
+    out->flags |= rwMATRIXINTERNALIDENTITY | rwMATRIXTYPEORTHONORMAL;
+    out->up = { 0.0f, 1.0f, 0.0f };
+    out->at = { 0.0f, 0.0f, 1.0f };
 
-    /*
-    RwMatrixSetIdentity(out);
-    RwV3dAssign(RwMatrixGetPos(out), origin);
-    RwV3dAssign(RwMatrixGetUp(out), direction);
-    RwV3dNormalize(&out->up, RwMatrixGetUp(out));
+    out->pos = *origin;
+    out->at  = *direction;
+    RwV3dNormalize(&out->at, &out->at);
 
-    out->right.x = out->up.z * 0.0f  - out->up.y * -1.0f;
-    out->right.y = out->up.x * -1.0f - out->up.z * 0.0f;
-    out->right.z = out->up.y * 0.0f  - out->up.x * 0.0f;
+    // `right = cross(at, (0, 0, 1))`
+    out->right = { out->at.y, -out->at.x, 0.0f };
 
-    out->at.x = out->up.x * -1.0f        - out->up.z * 0.0f * out->up.z - out->up.y * 0.0f  - out->up.x * 0.0f * out->up.y;
-    out->at.y = out->up.y * 0.0f         - out->up.x * 0.0f * out->up.x - out->right.x                         * out->up.z;
-    out->at.z = out->right.x * out->up.y - out->up.x * -1.0f            - out->up.z * 0.0f                     * out->up.x;
+    // `up = cross(right, at)`
+    out->up.x = out->right.y * out->at.z - out->right.z * out->at.y;
+    out->up.y = out->right.z * out->at.x - out->right.x * out->at.z;
+    out->up.z = out->right.x * out->at.y - out->right.y * out->at.x;
 
-    RwMatrixUpdate(out);*/
+    RwMatrixUpdate(out);
 }
 
 // 0x49EA40
@@ -230,87 +239,553 @@ FxQuality_e Fx_c::GetFxQuality() const {
 
 // 0x49EB00
 void Fx_c::AddBlood(const CVector& pos, const CVector& direction, int32 amount, float lightMult) {
-    plugin::CallMethod<0x49EB00, Fx_c*, const CVector&, const CVector&, int32, float>(this, pos, direction, amount, lightMult);
+    if (!CLocalisation::Blood())
+        return;
+    if (DistanceBetweenPointsSquared(TheCamera.GetPosition(), pos) > 625.0f)
+        return;
+
+    FxPrtMult_c prtMult(0.5f, 0.0f, 0.0f, 1.0f, 0.8f, 0.0f, 0.8f);
+
+    for (int32 i = 0; i < amount; ++i) {
+        prtMult.m_fSize = (float)(CGeneral::GetRandomNumber() % 10'000) * 0.0001f * 0.3f + 0.7f;
+
+        CVector velocity = direction * 1.5f;
+        velocity.x += (float)(CGeneral::GetRandomNumber() % 10'000) * 0.0001f * 2.0f - 1.0f;
+        velocity.y += (float)(CGeneral::GetRandomNumber() % 10'000) * 0.0001f * 2.0f - 1.0f;
+        velocity.z += (float)(CGeneral::GetRandomNumber() % 10'000) * 0.0001f * 2.0f - 1.0f;
+
+        m_Blood->AddParticle(pos, velocity, 0.0f, prtMult, -1.0f, lightMult, 0.6f, false);
+    }
+
+    CVector shadowPos = pos + direction * 0.5f;
+    shadowPos.x += (float)(CGeneral::GetRandomNumber() % 10'000) * 0.0001f * 0.2f - 0.1f;
+    shadowPos.y += (float)(CGeneral::GetRandomNumber() % 10'000) * 0.0001f * 0.2f - 0.1f;
+    shadowPos.z += 1.0f;
+
+    switch (++m_Randomizer & 7) {
+    case 5:
+        CShadows::AddPermanentShadow(1, gpBloodPoolTex, &shadowPos, 0.1f, 0.0f, 0.0f, -0.1f, 0xFF, 200, 0, 0, 4.0f, (CGeneral::GetRandomNumber() & 0xFFF) + 2000, 1.0f);
+        break;
+    case 2:
+        CShadows::AddPermanentShadow(1, gpBloodPoolTex, &shadowPos, 0.2f, 0.0f, 0.0f, -0.2f, 0xFF, 200, 0, 0, 4.0f, (CGeneral::GetRandomNumber() & 0xFFF) + 8000, 1.0f);
+        break;
+    }
 }
 
 // 0x49EE10
 void Fx_c::AddWood(const CVector& pos, const CVector& direction, int32 amount, float lightMult) {
-    plugin::CallMethod<0x49EE10, Fx_c*, const CVector&, const CVector&, int32, float>(this, pos, direction, amount, lightMult);
+    if (DistanceBetweenPointsSquared(TheCamera.GetPosition(), pos) > 625.0f)
+        return;
+
+    FxPrtMult_c prtMult(0.5f, 0.25f, 0.0f, 1.0f, 0.3f, 0.0f, 1.0f);
+
+    for (int32 i = 0; i < amount; ++i) {
+        prtMult.m_Color.red   = (float)(CGeneral::GetRandomNumber() % 10'000) * 0.0001f * 0.12f + 0.13f;
+        prtMult.m_Color.green = (float)(CGeneral::GetRandomNumber() % 10'000) * 0.0001f * 0.03f + 0.12f;
+        prtMult.m_Color.blue  = (float)(CGeneral::GetRandomNumber() % 10'000) * 0.0001f * 0.03f + 0.04f;
+        prtMult.m_fSize       = (float)(CGeneral::GetRandomNumber() % 10'000) * 0.0001f * 0.3f + 0.7f;
+
+        CVector velocity = direction * 4.0f;
+        velocity.x += (float)(CGeneral::GetRandomNumber() % 10'000) * 0.0001f * 4.0f - 2.0f;
+        velocity.y += (float)(CGeneral::GetRandomNumber() % 10'000) * 0.0001f * 4.0f - 2.0f;
+        velocity.z += (float)(CGeneral::GetRandomNumber() % 10'000) * 0.0001f * 4.0f - 2.0f;
+
+        m_Blood->AddParticle(pos, velocity, 0.0f, prtMult, -1.0f, lightMult, 0.6f, false);
+    }
 }
 
 // 0x49F040
-void Fx_c::AddSparks(const CVector& origin, const CVector& direction, float force, int32 amount, CVector across, eSparkType sparksType, float spread, float life) {
-    plugin::CallMethod<0x49F040, Fx_c*, const CVector&, const CVector&, float, int32, CVector, uint8, float, float>(this, origin, direction, force, amount, across, sparksType, spread, life);
+void Fx_c::AddSparks(const CVector& pos, const CVector& direction, float force, int32 amount, CVector across, eSparkType sparksType, float spread, float life) {
+    const float dist2 = DistanceBetweenPointsSquared(TheCamera.GetPosition(), pos);
+    if (dist2 > 22500.0f)
+        return;
+    if (dist2 > 225.0f && (CTimer::GetFrameCounter() & 1))
+        return;
+
+    FxPrtMult_c prtMult(1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, life * 0.8f);
+
+    across *= CTimer::GetTimeStep();
+
+    FxSystem_c* system = sparksType ? m_Spark : m_Spark2;
+
+    for (int32 i = 0; i < amount; ++i) {
+        const float ratio = 1.0f - (float)i / (float)amount;
+
+        const CVector velocity = {
+            (direction.x + (FxRand01() * (spread - (-spread)) + (-spread))) * force,
+            (direction.y + (FxRand01() * (spread - (-spread)) + (-spread))) * force,
+            (direction.z + (FxRand01() * (spread - (-spread)) + (-spread))) * force,
+        };
+
+        system->AddParticle(pos - across * ratio, velocity, ratio * 0.05f, prtMult, -1.0f, 1.2f, 0.6f, false);
+    }
 }
 
 // 0x49F300
 void Fx_c::AddTyreBurst(const CVector& posn, const CVector& velocity) {
-    plugin::CallMethod<0x49F300, Fx_c*, const CVector&, const CVector&>(this, posn, velocity);
+    if (DistanceBetweenPointsSquared(TheCamera.GetPosition(), posn) > 625.0f)
+        return;
+
+    FxPrtMult_c prtMult(1.0f, 1.0f, 1.0f, 0.4f, 0.03f, 0.0f, 0.1f);
+
+    for (int32 i = 0; i < 4; ++i)
+        m_SmokeII3expand->AddParticle(posn, velocity, (float)i * 0.05f, prtMult, -1.0f, 1.2f, 0.6f, false);
 }
 
 // 0x49F3D0
-void Fx_c::AddBulletImpact(const CVector& posn, const CVector& direction, int32 bulletFxType, int32 amount, float arg4) {
-    plugin::CallMethod<0x49F3D0, Fx_c*, const CVector&, const CVector&, int32, int32, float>(this, posn, direction, bulletFxType, amount, arg4);
+void Fx_c::AddBulletImpact(const CVector& posn, const CVector& direction, int32 bulletFxType, int32 amount, float lightMult) {
+    const int32 bulletFx = g_surfaceInfos.GetBulletFx((SurfaceId)bulletFxType);
+    if (!bulletFx || DistanceBetweenPointsSquared(TheCamera.GetPosition(), posn) > 22500.0f)
+        return;
+
+    switch (bulletFx) {
+    case 1: { // Metal
+        AddSparks(posn, direction, 3.0f, amount, CVector{}, SPARK_PARTICLE_SPARK, 0.4f, 1.0f);
+
+        FxPrtMult_c prtMult(1.0f, 1.0f, 1.0f, 0.15f, 0.4f, 0.0f, 0.075f);
+
+        int32 numParticles = 2;
+        if (amount > 7) {
+            numParticles         = 1;
+            prtMult.m_Color.alpha += prtMult.m_Color.alpha;
+        }
+
+        for (int32 i = 0; i < numParticles; ++i)
+            m_SmokeII3expand->AddParticle(posn, direction, (float)i * 0.05f, prtMult, -1.0f, lightMult, 0.6f, false);
+        break;
+    }
+    case 2:
+    case 4: { // Dust / stone
+        FxPrtMult_c prtMult(0.81f, 0.67f, 0.57f, 0.15f, 0.4f, 0.0f, 0.3f);
+
+        if (bulletFx == 4) {
+            prtMult.m_Color.red   = 0.6f;
+            prtMult.m_Color.green = 0.6f;
+            prtMult.m_Color.blue  = 0.6f;
+        }
+
+        int32 numParticles = 4;
+        if (amount > 7) {
+            numParticles         = 2;
+            prtMult.m_Color.alpha += prtMult.m_Color.alpha;
+        }
+
+        for (int32 i = 0; i < numParticles; ++i)
+            m_Sand->AddParticle(posn, direction * 0.3f, (float)i * 0.05f, prtMult, -1.0f, lightMult, 0.6f, false);
+        break;
+    }
+    case 3: // Wood
+        AddWood(posn, direction, 1, 1.0f);
+        break;
+    }
 }
 
 // 0x49F670
 void Fx_c::AddPunchImpact(const CVector& pos, const CVector& velocity, int32 num) {
-    plugin::CallMethod<0x49F670, Fx_c*, const CVector&, const CVector&, int32>(this, pos, velocity, num);
+    if (DistanceBetweenPointsSquared(TheCamera.GetPosition(), pos) > 625.0f)
+        return;
+
+    FxPrtMult_c prtMult(1.0f, 1.0f, 1.0f, 0.4f, 0.1f, 0.0f, 0.1f);
+
+    m_SmokeII3expand->AddParticle(pos, velocity, 0.00f, prtMult, -1.0f, 1.2f, 0.6f, false);
+    m_SmokeII3expand->AddParticle(pos, velocity, 0.05f, prtMult, -1.0f, 1.2f, 0.6f, false);
 }
 
 // 0x49F750
 void Fx_c::AddDebris(const CVector& pos, const RwRGBA& color, float scale, int32 amount) {
-    plugin::CallMethod<0x49F750, Fx_c*, const CVector&, const RwRGBA&, float, int32>(this, pos, color, scale, amount);
+    if (DistanceBetweenPointsSquared(TheCamera.GetPosition(), pos) > 625.0f)
+        return;
+
+    FxPrtMult_c prtMult;
+    prtMult.SetColor(color.red / 255.0f, color.green / 255.0f, color.blue / 255.0f, color.alpha / 255.0f);
+    prtMult.m_fSize = scale;
+    prtMult.m_Rot  = ((float)(CGeneral::GetRandomNumber() % 10'000) * 0.0001f + 1.0f) * 0.5f;
+    prtMult.m_fLife = 0.2f;
+
+    for (int32 i = 0; i < amount; ++i) {
+        const CVector velocity = {
+            FxRand01() * 10.0f - 5.0f,
+            FxRand01() * 10.0f - 5.0f,
+            FxRand01() * 3.0f + 2.0f,
+        };
+
+        m_Cardebris->EnablePrim(0, false);
+        m_Cardebris->EnablePrim(1, false);
+        m_Cardebris->EnablePrim(2, false);
+        m_Cardebris->EnablePrim(3, false);
+        m_Cardebris->EnablePrim(g_FxDebrisPrimIndex, true);
+
+        m_Cardebris->AddParticle(pos, velocity, 0.0f, prtMult, -1.0f, 1.2f, 0.6f, false);
+
+        g_FxDebrisPrimIndex = (g_FxDebrisPrimIndex + 1) & 3;
+    }
 }
 
 // 0x49F970
 void Fx_c::AddGlass(const CVector& pos, const RwRGBA& color, float scale, int32 amount) {
-    plugin::CallMethod<0x49F970, Fx_c*, const CVector&, const RwRGBA&, float, int32>(this, pos, color, scale, amount);
+    if (DistanceBetweenPointsSquared(TheCamera.GetPosition(), pos) > 625.0f)
+        return;
+
+    FxPrtMult_c prtMult;
+    prtMult.SetColor(color.red / 255.0f, color.green / 255.0f, color.blue / 255.0f, color.alpha / 255.0f);
+    prtMult.m_fSize = scale;
+    prtMult.m_Rot  = ((float)(CGeneral::GetRandomNumber() % 10'000) * 0.0001f + 1.0f) * 0.5f;
+    prtMult.m_fLife = 0.2f;
+
+    for (int32 i = 0; i < amount; ++i) {
+        const CVector velocity = {
+            FxRand01() * 10.0f - 5.0f,
+            FxRand01() * 10.0f - 5.0f,
+            FxRand01() * 3.0f + 2.0f,
+        };
+
+        m_Glass->AddParticle(pos, velocity, 0.0f, prtMult, -1.0f, 1.2f, 0.6f, false);
+    }
 }
 
 // 0x49FB30
 void Fx_c::AddWheelSpray(CVehicle* vehicle, CVector pos, bool bWheelsSpinning, bool bInWater, float lightMult) {
-    plugin::CallMethod<0x49FB30, Fx_c*, CVehicle*, CVector, uint8, uint8, float>(this, vehicle, pos, bWheelsSpinning, bInWater, lightMult);
+    CVehicle* playerVehicle = FindPlayerVehicle(-1, false);
+
+    const float dist2 = DistanceBetweenPointsSquared(TheCamera.GetPosition(), pos);
+    if (dist2 > 625.0f)
+        return;
+    if (dist2 > 400.0f) {
+        if ((CTimer::GetFrameCounter() + vehicle->m_nModelIndex) & 3)
+            return;
+    } else if (!(dist2 <= 64.0f && playerVehicle) && ((CTimer::GetFrameCounter() + vehicle->m_nModelIndex) & 1)) {
+        return;
+    }
+
+    const float speed = vehicle->m_vecMoveSpeed.Magnitude();
+    if (speed <= 0.01f && !bWheelsSpinning)
+        return;
+
+    FxPrtMult_c prtMult(1.0f, 1.0f, 1.0f, 0.05f, 0.0f, 1.0f, 0.0f);
+
+    const float mul = bWheelsSpinning ? 1.0f : std::min(speed * 2.0f, 1.0f);
+
+    prtMult.m_Color.alpha = (mul + 1.0f) * (bInWater ? 0.20f : 0.15f);
+    prtMult.m_fSize       = (mul + 1.0f) * 0.20f;
+    prtMult.m_fLife       = 0.08f;
+
+    const float v0 = (mul + 1.0f) * 10.0f;
+    const float v  = (30.0f - v0) + FxRand01() * (2.0f * v0);
+
+    const int32 count = std::max(1, (int32)(CTimer::GetTimeStep() * speed * mul));
+
+    const CVector step = vehicle->m_vecMoveSpeed * CTimer::GetTimeStep();
+
+    for (int32 i = 0; i < count; ++i) {
+        const float t = (float)i / (float)count;
+
+        CVector p = pos - step * t;
+        p.z += 0.25f;
+
+        CVector velocity = vehicle->m_vecMoveSpeed * v;
+        velocity.z += (FxRand01() + 1.0f) * mul;
+
+        m_BoatSplash->AddParticle(p, velocity, 0.0f, prtMult, -1.0f, lightMult, 0.6f, false);
+    }
 }
 
 // 0x49FF20
 void Fx_c::AddWheelGrass(CVehicle* vehicle, CVector pos, bool bWheelsSpinning, float lightMult) {
-    plugin::CallMethod<0x49FF20, Fx_c*, CVehicle*, CVector, uint8, float>(this, vehicle, pos, bWheelsSpinning, lightMult);
+    if (vehicle->m_pDriver != FindPlayerPed(0) && vehicle->m_pDriver != FindPlayerPed(1))
+        return;
+
+    CVehicle* playerVehicle = FindPlayerVehicle(-1, false);
+
+    const float dist2 = DistanceBetweenPointsSquared(TheCamera.GetPosition(), pos);
+    if (dist2 > 625.0f)
+        return;
+    if (dist2 > 400.0f) {
+        if ((CTimer::GetFrameCounter() + vehicle->m_nModelIndex) & 3)
+            return;
+    } else if (!(dist2 <= 64.0f && playerVehicle) && ((CTimer::GetFrameCounter() + vehicle->m_nModelIndex) & 1)) {
+        return;
+    }
+
+    FxPrtMult_c prtMult(0.03f, 0.09f, 0.03f, 1.0f, 0.0f, 0.0f, 0.05f);
+
+    for (int32 i = 0; i < 3; ++i) {
+        prtMult.m_fSize = FxRand01() * 0.03f + 0.03f;
+
+        const CVector velocity = {
+            FxRand01() * (vehicle->m_vecMoveSpeed.x * -1.5f),
+            FxRand01() * (vehicle->m_vecMoveSpeed.y * -1.5f),
+            FxRand01() * 1.5f + 2.0f,
+        };
+
+        CVector p = pos;
+        p.x += FxRand01() * 0.4f - 0.2f;
+        p.y += FxRand01() * 0.4f - 0.2f;
+
+        m_WheelDirt->AddParticle(p, velocity, 0.0f, prtMult, -1.0f, lightMult, 0.6f, false);
+    }
 }
 
 // 0x4A0170
 void Fx_c::AddWheelGravel(CVehicle* vehicle, CVector pos, bool bWheelsSpinning, float lightMult) {
-    plugin::CallMethod<0x4A0170, Fx_c*, CVehicle*, CVector, uint8, float>(this, vehicle, pos, bWheelsSpinning, lightMult);
+    if (vehicle->m_pDriver != FindPlayerPed(0) && vehicle->m_pDriver != FindPlayerPed(1))
+        return;
+
+    CVehicle* playerVehicle = FindPlayerVehicle(-1, false);
+
+    const float dist2 = DistanceBetweenPointsSquared(TheCamera.GetPosition(), pos);
+    if (dist2 > 625.0f)
+        return;
+    if (dist2 > 400.0f) {
+        if ((CTimer::GetFrameCounter() + vehicle->m_nModelIndex) & 3)
+            return;
+    } else if (!(dist2 <= 64.0f && playerVehicle) && ((CTimer::GetFrameCounter() + vehicle->m_nModelIndex) & 1)) {
+        return;
+    }
+
+    FxPrtMult_c prtMult(0.25f, 0.25f, 0.25f, 1.0f, 0.0f, 0.0f, 0.05f);
+
+    for (int32 i = 0; i < 3; ++i) {
+        prtMult.m_fSize = FxRand01() * 0.03f + 0.03f;
+
+        const CVector velocity = {
+            FxRand01() * (vehicle->m_vecMoveSpeed.x * -1.5f),
+            FxRand01() * (vehicle->m_vecMoveSpeed.y * -1.5f),
+            FxRand01() * 1.5f + 2.0f,
+        };
+
+        CVector p = pos;
+        p.x += FxRand01() * 0.4f - 0.2f;
+        p.y += FxRand01() * 0.4f - 0.2f;
+
+        m_WheelDirt->AddParticle(p, velocity, 0.0f, prtMult, -1.0f, lightMult, 0.6f, false);
+    }
 }
 
 // 0x4A03C0
 void Fx_c::AddWheelMud(CVehicle* vehicle, CVector pos, bool bWheelsSpinning, float lightMult) {
-    plugin::CallMethod<0x4A03C0, Fx_c*, CVehicle*, CVector, uint8, float>(this, vehicle, pos, bWheelsSpinning, lightMult);
+    if (vehicle->m_pDriver != FindPlayerPed(0) && vehicle->m_pDriver != FindPlayerPed(1))
+        return;
+
+    CVehicle* playerVehicle = FindPlayerVehicle(-1, false);
+
+    const float dist2 = DistanceBetweenPointsSquared(TheCamera.GetPosition(), pos);
+    if (dist2 > 625.0f)
+        return;
+    if (dist2 > 400.0f) {
+        if ((CTimer::GetFrameCounter() + vehicle->m_nModelIndex) & 3)
+            return;
+    } else if (!(dist2 <= 64.0f && playerVehicle) && ((CTimer::GetFrameCounter() + vehicle->m_nModelIndex) & 1)) {
+        return;
+    }
+
+    FxPrtMult_c prtMult(0.25f, 0.12f, 0.06f, 1.0f, 0.0f, 0.0f, 0.05f);
+
+    for (int32 i = 0; i < 3; ++i) {
+        prtMult.m_fSize = FxRand01() * 0.03f + 0.03f;
+
+        const CVector velocity = {
+            FxRand01() * (vehicle->m_vecMoveSpeed.x * -1.5f),
+            FxRand01() * (vehicle->m_vecMoveSpeed.y * -1.5f),
+            FxRand01() * 1.5f + 2.0f,
+        };
+
+        CVector p = pos;
+        p.x += FxRand01() * 0.4f - 0.2f;
+        p.y += FxRand01() * 0.4f - 0.2f;
+
+        m_WheelDirt->AddParticle(p, velocity, 0.0f, prtMult, -1.0f, lightMult, 0.6f, false);
+    }
 }
 
 // 0x4A0610
 void Fx_c::AddWheelSand(CVehicle* vehicle, CVector pos, bool bWheelsSpinning, float lightMult) {
-    plugin::CallMethod<0x4A0610, Fx_c*, CVehicle*, CVector, uint8, float>(this, vehicle, pos, bWheelsSpinning, lightMult);
+    CVehicle* playerVehicle = FindPlayerVehicle(-1, false);
+
+    const float dist2 = DistanceBetweenPointsSquared(TheCamera.GetPosition(), pos);
+    if (dist2 > 625.0f)
+        return;
+
+    const uint32 band = CTimer::GetFrameCounter() + vehicle->m_nModelIndex;
+    if (m_FxQuality < FX_QUALITY_MEDIUM) {
+        if (m_FxQuality == FX_QUALITY_LOW) {
+            if (band & 3)
+                return;
+            if (!(dist2 <= 64.0f && playerVehicle) && (band & 7))
+                return;
+        }
+    } else {
+        if (band & 1)
+            return;
+        if (!(dist2 <= 64.0f && playerVehicle) && (band & 3))
+            return;
+    }
+
+    FxPrtMult_c prtMult(0.81f, 0.67f, 0.57f, 0.5f, 1.0f, 0.0f, 0.0f);
+
+    const float gas = std::abs(vehicle->m_GasPedal);
+    const float mul = bWheelsSpinning ? 1.0f : std::min(vehicle->m_vecMoveSpeed.Magnitude() * 2.0f, 1.0f);
+
+    prtMult.m_fLife = (mul + 1.0f) * 0.1f;
+
+    float size = mul * 0.9f + 0.1f;
+    switch (vehicle->m_nVehicleSubType) {
+    case VEHICLE_TYPE_BMX:  size *= 0.25f; break;
+    case VEHICLE_TYPE_BIKE:
+    case VEHICLE_TYPE_QUAD: size *= 0.5f;  break;
+    default:                size *= 0.7f;  break;
+    }
+    prtMult.m_fSize = size;
+
+    const CVector step  = vehicle->m_vecMoveSpeed * CTimer::GetTimeStep();
+    const int32   count = std::max(1, (int32)(step.Magnitude() * mul));
+
+    for (int32 i = 0; i < count; ++i) {
+        const float t = 1.0f - (float)i / (float)count;
+        const CVector p = pos - step * t;
+
+        const CVector velocity = {
+            FxRand01() * (-40.0f) * vehicle->m_vecMoveSpeed.x * gas,
+            FxRand01() * (-40.0f) * vehicle->m_vecMoveSpeed.y * gas,
+            FxRand01() * (mul + 0.6f) + 0.2f,
+        };
+
+        m_Sand->AddParticle(p, velocity, 0.0f, prtMult, -1.0f, lightMult, 1.4f, false);
+    }
 }
 
 // 0x4A09C0
 void Fx_c::AddWheelDust(CVehicle* vehicle, CVector pos, bool bWheelsSpinning, float lightMult) {
-    plugin::CallMethod<0x4A09C0, Fx_c*, CVehicle*, CVector, uint8, float>(this, vehicle, pos, bWheelsSpinning, lightMult);
+    CVehicle* playerVehicle = FindPlayerVehicle(-1, false);
+
+    const float dist2 = DistanceBetweenPointsSquared(TheCamera.GetPosition(), pos);
+    if (dist2 > 625.0f)
+        return;
+
+    const uint32 band = CTimer::GetFrameCounter() + vehicle->m_nModelIndex;
+    if (m_FxQuality < FX_QUALITY_MEDIUM) {
+        if (m_FxQuality == FX_QUALITY_LOW) {
+            if (band & 3)
+                return;
+            if (!(dist2 <= 64.0f && playerVehicle) && (band & 7))
+                return;
+        }
+    } else {
+        if (band & 1)
+            return;
+        if (!(dist2 <= 64.0f && playerVehicle) && (band & 3))
+            return;
+    }
+
+    FxPrtMult_c prtMult(0.51f, 0.44f, 0.31f, 0.5f, 1.0f, 0.0f, 0.0f);
+
+    const float gas = std::abs(vehicle->m_GasPedal);
+    const float mul = bWheelsSpinning ? 1.0f : std::min(vehicle->m_vecMoveSpeed.Magnitude() * 2.0f, 1.0f);
+
+    prtMult.m_fLife = mul * 0.05f + 0.1f;
+
+    float size = mul * 0.9f + 0.1f;
+    switch (vehicle->m_nVehicleSubType) {
+    case VEHICLE_TYPE_BMX:  size *= 0.25f; break;
+    case VEHICLE_TYPE_BIKE:
+    case VEHICLE_TYPE_QUAD: size *= 0.5f;  break;
+    default:                size *= 0.7f;  break;
+    }
+    prtMult.m_fSize = size;
+
+    const CVector step  = vehicle->m_vecMoveSpeed * CTimer::GetTimeStep();
+    const int32   count = std::max(1, (int32)(step.Magnitude() * mul));
+
+    for (int32 i = 0; i < count; ++i) {
+        const float t = 1.0f - (float)i / (float)count;
+        const CVector p = pos - step * t;
+
+        const CVector velocity = {
+            FxRand01() * (-40.0f) * vehicle->m_vecMoveSpeed.x * gas,
+            FxRand01() * (-40.0f) * vehicle->m_vecMoveSpeed.y * gas,
+            FxRand01() * (mul + 0.6f) + 0.2f,
+        };
+
+        m_Sand->AddParticle(p, velocity, 0.0f, prtMult, -1.0f, lightMult, 1.4f, false);
+    }
 }
 
 // 0x4A0D70
 void Fx_c::TriggerWaterHydrant(const CVector& pos) {
-    plugin::CallMethod<0x4A0D70, Fx_c*, const CVector&>(this, pos);
+    if (DistanceBetweenPointsSquared(TheCamera.GetPosition(), pos) > 625.0f)
+        return;
+
+    if (FxSystem_c* system = g_fxMan.CreateFxSystem("water_hydrant", pos, nullptr, false))
+        system->PlayAndKill();
 }
 
 // 0x4A0DE0
-void Fx_c::TriggerGunshot(CEntity* entity, const CVector& origin, const CVector& target, bool doGunflash) {
-    plugin::CallMethod<0x4A0DE0, Fx_c*, CEntity*, const CVector&, const CVector&, bool>(this, entity, origin, target, doGunflash);
+void Fx_c::TriggerGunshot(CEntity* entity, const CVector& origin, const CVector& direction, bool doGunflash) {
+    if (DistanceBetweenPointsSquared(TheCamera.GetPosition(), origin) > 625.0f)
+        return;
+
+    RwMatrix* tempMatrix = nullptr;
+    CVector   fxPos;
+    RwMatrix* fxMat;
+
+    if (!entity) {
+        tempMatrix = g_fxMan.FxRwMatrixCreate();
+        CreateMatFromVec(tempMatrix, &origin, &direction);
+        fxPos = CVector{ 0.0f, 0.0f, 0.0f };
+        fxMat = tempMatrix;
+    } else {
+        const CVector offset = origin - entity->GetPosition();
+
+        if (!entity->m_matrix) {
+            entity->AllocateMatrix();
+            entity->m_placement.UpdateMatrix(entity->m_matrix);
+        }
+
+        // World -> entity-local space (the transpose of the rotation part)
+        fxPos.x = offset.Dot(entity->m_matrix->GetRight());
+        fxPos.y = offset.Dot(entity->m_matrix->GetUp());
+        fxPos.z = offset.Dot(entity->m_matrix->GetForward());
+
+        if (!entity->GetRwObject())
+            return;
+
+        fxMat = &reinterpret_cast<RwFrame*>(entity->GetRwObject()->parent)->modelling;
+    }
+
+    if (!fxMat)
+        return;
+
+    if (doGunflash) {
+        if (FxSystem_c* system = g_fxMan.CreateFxSystem("gunflash", fxPos, fxMat, false)) {
+            if (!entity)
+                system->CopyParentMatrix();
+            system->PlayAndKill();
+        }
+    }
+
+    if (FxSystem_c* system = g_fxMan.CreateFxSystem("gunsmoke", fxPos, fxMat, false)) {
+        if (!entity)
+            system->CopyParentMatrix();
+        system->PlayAndKill();
+    }
+
+    if (tempMatrix)
+        g_fxMan.FxRwMatrixDestroy(tempMatrix);
 }
 
 // 0x4A0FA0
-void Fx_c::TriggerTankFire(const CVector& pos, const CVector& dir) {
-    plugin::CallMethod<0x4A0FA0, Fx_c*, const CVector&, const CVector&>(this, pos, dir);
+void Fx_c::TriggerTankFire(const CVector& origin, const CVector& direction) {
+    if (DistanceBetweenPointsSquared(TheCamera.GetPosition(), origin) > 625.0f)
+        return;
+
+    RwMatrix* matrix = g_fxMan.FxRwMatrixCreate();
+    CreateMatFromVec(matrix, &origin, &direction);
+
+    if (FxSystem_c* system = g_fxMan.CreateFxSystem("tank_fire", CVector{ 0.0f, 0.0f, 0.0f }, matrix, false)) {
+        system->CopyParentMatrix();
+        system->PlayAndKill();
+    }
+
+    g_fxMan.FxRwMatrixDestroy(matrix);
 }
 
 // 0x4A1070

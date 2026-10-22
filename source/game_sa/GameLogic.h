@@ -63,11 +63,20 @@ public:
     static inline auto& GameState = StaticRef<eGameLogicState>(0x96A8B0);
     static inline auto& ActivePlayers = StaticRef<int32>(0x96A8B1);
 
+#ifdef NOTSA_NATIVE
+    //! File-backed defaults of the executable's `.data`; the native build defines them itself.
+    static inline bool bPenaltyForDeathApplies  = true;
+    static inline bool bPenaltyForArrestApplies = true;
+    static inline bool bLimitPlayerDistance     = true;
+    static inline float MaxPlayerDistance       = 20.0f;
+    static inline eFocusedPlayer n2PlayerPedInFocus = eFocusedPlayer::NONE;
+#else
     static inline auto& bPenaltyForDeathApplies = StaticRef<bool>(0x8A5E48);
     static inline auto& bPenaltyForArrestApplies = StaticRef<bool>(0x8A5E49);
     static inline auto& bLimitPlayerDistance = StaticRef<bool>(0x8A5E4A);
     static inline auto& MaxPlayerDistance = StaticRef<float>(0x8A5E4C);  // default 20.0
     static inline auto& n2PlayerPedInFocus = StaticRef<eFocusedPlayer>(0x8A5E50); // default eFocusedPlayer::NONE
+#endif
 
 public:
     static void InjectHooks();

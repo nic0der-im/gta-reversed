@@ -47,6 +47,7 @@ void CTaskComplexEnterCar::InjectHooks() {
     RH_ScopedInstall(CreateTaskUtilityLineUpPedWithCar, 0x63ACC0);
     RH_ScopedInstall(GetTargetPos, 0x63A300);
     RH_ScopedInstall(GetCameraAvoidVehicle, 0x63A690);
+    RH_ScopedInstall(GetCameraStickModifier, 0x63A380);
     RH_ScopedInstall(SetVehicleFlags, 0x63AB90);
     RH_ScopedInstall(CreateSubTask, 0x63E040);
 
@@ -846,4 +847,93 @@ CVehicle* CTaskComplexEnterCar::GetCameraAvoidVehicle() {
         }
     }
     return nullptr;
+}
+
+// 0x63A380
+void CTaskComplexEnterCar::GetCameraStickModifier(CPed* ped, float distToVehicle, float& verticalAngle, float& horizontalAngle, float& stickY, float& stickX) {
+    if (!m_Car) {
+        return;
+    }
+    if (m_Car->m_nVehicleSubType == VEHICLE_TYPE_HELI) {
+        return;
+    }
+
+    CPad* pad = CPad::GetPad(0);
+    if (ped->m_nPedType == PED_TYPE_PLAYER2) {
+        pad = CPad::GetPad(1);
+    }
+
+    // Only tweak the camera while the ped is in the process of getting in
+    const auto subTask = GetSubTask();
+    if (!subTask) {
+        return;
+    }
+    switch (subTask->GetTaskType()) {
+    case TASK_SIMPLE_CAR_OPEN_DOOR_FROM_OUTSIDE:
+    case TASK_SIMPLE_BIKE_PICK_UP:
+    case TASK_SIMPLE_CAR_SLOW_DRAG_PED_OUT:
+    case TASK_SIMPLE_CAR_GET_IN:
+    case TASK_SIMPLE_CAR_SHUFFLE:
+        break;
+    default:
+        return;
+    }
+
+    // Decide which way the camera should move (1 - braking, 2 - accelerating, 3 - aiming, no movement at all)
+    if (std::abs((float)pad->AimWeaponLeftRight(ped)) > 20.0f || std::abs((float)pad->AimWeaponUpDown(ped)) > 20.0f) {
+        m_CamMovementChoice = 3;
+    } else if (pad->GetAccelerate()) {
+        m_CamMovementChoice = 2;
+    } else if (pad->GetBrake()) {
+        m_CamMovementChoice = 1;
+    }
+
+    if (m_CamMovementChoice == 3) {
+        return;
+    }
+
+    const float carHeadingOffset = m_Car->GetHeading() - HALF_PI;
+    const auto  carMatrix        = m_Car->m_matrix;
+    const float carLateralOffset = DotProduct(ped->GetPosition() - m_Car->GetPosition(), carMatrix->GetRight());
+    const float headingOffset    = std::atan2(carLateralOffset, distToVehicle) * 0.7f;
+
+    // If the ped is behind the car, the camera has to travel the other way around
+    const auto colModel = m_Car->GetColModel();
+    float offset = headingOffset;
+    if (distToVehicle < -colModel->m_boundBox.m_vecMin.y) {
+        offset = headingOffset > 0.0f ? -0.13962634f : 0.13962634f; // -8deg / 8deg
+    }
+
+    if (m_CamMovementChoice == 1) {
+        offset = carHeadingOffset + PI + offset;
+    } else {
+        offset = carHeadingOffset - offset;
+    }
+
+    // Wrap the offset around the current horizontal angle
+    if (offset > horizontalAngle + PI) {
+        offset -= TWO_PI;
+    } else if (offset < horizontalAngle - PI) {
+        offset += TWO_PI;
+    }
+    offset -= horizontalAngle;
+
+    // Flip the offset if it points away from the ped
+    const bool flip = carLateralOffset > 0.0f
+        ? (m_CamMovementChoice == 1 ? offset <= -HALF_PI : offset >= HALF_PI)
+        : (m_CamMovementChoice == 1 ? offset >= HALF_PI : offset <= -HALF_PI);
+    if (flip) {
+        offset = -offset;
+    }
+
+    static auto& s_Scales = StaticRef<std::array<float, 4>>(0x86E678); // { 0.1f, 0.2f, 0.2f, 0.1f }
+    static auto& s_Limits = StaticRef<std::array<float, 4>>(0x86E684); // { 0.1f, 0.2f, 0.2f, 0.7f }
+
+    const auto limit = s_Limits[m_CamMovementChoice];
+    offset = std::clamp(offset, -limit, limit);
+
+    stickX += offset * s_Scales[m_CamMovementChoice];
+    if (verticalAngle > StaticRef<float>(0x8D2ECC)) { // -10deg
+        stickY -= s_Scales[m_CamMovementChoice] * limit;
+    }
 }

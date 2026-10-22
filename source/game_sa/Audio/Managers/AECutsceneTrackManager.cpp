@@ -154,7 +154,14 @@ void CAECutsceneTrackManager::PreloadCutsceneTrack(int16 trackId, bool wait) {
 
 // 0x4DC130
 void CAECutsceneTrackManager::PreloadBeatTrack(int16 trackId, bool wait) {
+#ifdef NOTSA_NATIVE
+    //! 0x8AE538, file-backed in the executable's `.data`.
+    static const std::array<int16, 14> gBeatTrackLookup = {
+        0xB4, 0xAF, 0xB2, 0xB3, 0xB1, 0xAF, 0xAF, 0xAF, 0xAF, 0xB0, 0xB8, 0xB7, 0xB6, 0xB5
+    };
+#else
     static auto& gBeatTrackLookup = StaticRef<std::array<int16, 14>>(0x8AE538);
+#endif
 
     PreloadCutsceneTrack(gBeatTrackLookup[trackId], wait);
 }

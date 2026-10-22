@@ -4,9 +4,6 @@
 
 class NOTSA_EXPORT_VTABLE CTaskComplexPartnerShove : public CTaskComplexPartner {
 public:
-    int32 field_70;
-
-public:
     static constexpr auto Type = TASK_COMPLEX_PARTNER_SHOVE;
 
     CTaskComplexPartnerShove(const char* commandName, CPed* partner, bool leadSpeaker, float distanceMultiplier, int8 updateDirectionCount, CVector point);

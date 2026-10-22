@@ -45,7 +45,13 @@ public:
     static inline auto& NumMessages = StaticRef<uint16>(0x978678);
     static inline auto& aMessages = StaticRef<std::array<tPickupMessage, MAX_PICKUP_MESSAGES>>(0x978680);
     static inline auto& aPickUps = StaticRef<std::array<CPickup, MAX_NUM_PICKUPS>>(0x9788C0);
+#ifdef NOTSA_NATIVE
+    //! File-backed in the executable's `.data`; the native build defines it in `Pickups.cpp`.
+    static tPickupMessageColour aMessageColoursX[NUM_PICKUP_MESSAGE_COLOURS];
+    static inline auto& aMessageColours = aMessageColoursX;
+#else
     static inline auto& aMessageColours = StaticRef<tPickupMessageColour[NUM_PICKUP_MESSAGE_COLOURS]>(0x8A5FB0);
+#endif
 
 public:
     static void InjectHooks();

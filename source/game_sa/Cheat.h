@@ -16,8 +16,17 @@ public:
     static constexpr auto CHEAT_STRING_SIZE = 30;
     static constexpr auto CHEAT_MIN_HASH_SIZE = 6;
 
+#ifdef NOTSA_NATIVE
+    //! Both tables are file-backed in the executable's `.data`; the native build builds them from
+    //! the cheat descriptors (see `Cheat.cpp`).
+    static std::array<void (*)(), TOTAL_CHEATS> m_aCheatFunctionsX;
+    static inline auto& m_aCheatFunctions = m_aCheatFunctionsX;
+    static std::array<int32, TOTAL_CHEATS> m_aCheatHashKeysX;
+    static inline auto& m_aCheatHashKeys = m_aCheatHashKeysX;
+#else
     static inline auto& m_aCheatFunctions = StaticRef<void (*[TOTAL_CHEATS])()>(0x8A5B58);
     static inline auto& m_aCheatHashKeys = StaticRef<int32[TOTAL_CHEATS]>(0x8A5CC8);
+#endif
     static inline auto& m_CheatString = StaticRef<char[CHEAT_STRING_SIZE]>(0x969110);
     static inline auto& m_aCheatsActive = StaticRef<bool[TOTAL_CHEATS]>(0x969130);
     static inline auto& m_bHasPlayerCheated = StaticRef<bool>(0x96918C);

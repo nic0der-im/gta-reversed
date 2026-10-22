@@ -316,7 +316,11 @@ FILESTREAM CFileMgr::OpenFile(const char *path, const char *mode) {
     ZoneScoped;
 
 #ifdef NOTSA_NATIVE
-    return std::fopen(notsa::native::NormalizePath(path).c_str(), mode);
+    FILE* f = std::fopen(notsa::native::NormalizePath(path).c_str(), mode);
+    if (!f) {
+        NOTSA_LOG_WARN("Native: failed to open '{}'", path);
+    }
+    return f;
 #else
     FILESTREAM fs{nullptr};
     if (WindowsCharset == CP_UTF8) {

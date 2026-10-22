@@ -2,7 +2,13 @@
 
 #include "TheZones.h"
 
+#ifdef NOTSA_NATIVE
+//! Both tables only exist as file bytes in the executable's `.data`, which the native build has no
+//! copy of, so it defines them itself.
+static inline std::array<float, NUM_LEVELS> gPriceMultipliers = { 1.0f, 1.0f, 1.0f, 1.2f };
+#else
 static inline auto& gPriceMultipliers = StaticRef<std::array<float, NUM_LEVELS>>(0x8A6204);
+#endif
 
 // incomplete, todo: move
 class CMultiBuilding {};
@@ -67,7 +73,12 @@ class CShopping {
     static constexpr auto NUM_BUYABLE_ITEMS = 300u; // ?
     static constexpr auto NUM_SECTION_NAMES = 11u;
 
+#ifdef NOTSA_NATIVE
+    static std::array<const char*, NUM_SECTION_NAMES> ms_sectionNamesX; // defined in `Shopping.cpp`
+    static inline auto& ms_sectionNames = ms_sectionNamesX;
+#else
     static inline auto& ms_sectionNames = StaticRef<std::array<const char*, NUM_SECTION_NAMES>>(0x8A61D8);
+#endif
 
     static inline auto& ms_bHasBought = StaticRef<std::array<bool, NUM_ITEMS>>(0xA972A0);
     static inline auto& ms_statModifiers = StaticRef<std::array<StatModifiers, NUM_ITEMS>>(0xA974D0);

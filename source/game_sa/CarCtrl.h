@@ -14,6 +14,7 @@ class CVehicle;
 class CAutomobile;
 class CHeli;
 class CPlane;
+class CPed;
 
 constexpr auto GAME_SPEED_TO_METERS_PER_SECOND = 50.0f;
 constexpr auto METERS_PER_SECOND_TO_GAME_SPEED = 1.0f / GAME_SPEED_TO_METERS_PER_SECOND;
@@ -27,14 +28,24 @@ public:
     static inline auto& NumParkedCars = StaticRef<uint32>(0x9690A0);
     static inline auto& NumAmbulancesOnDuty = StaticRef<uint32>(0x9690A8);
     static inline auto& NumFireTrucksOnDuty = StaticRef<uint32>(0x9690AC);
+#ifdef NOTSA_NATIVE
+    //! File-backed defaults of the executable's `.data`; the native build defines them itself.
+    static inline uint32 MaxNumberOfCarsInUse = 12;
+    static inline float  CarDensityMultiplier = 1.0f;
+#else
     static inline auto& MaxNumberOfCarsInUse = StaticRef<uint32>(0x8A5B24);
     static inline auto& CarDensityMultiplier = StaticRef<float>(0x8A5B20);
+#endif
     static inline auto& NumRandomCars = StaticRef<int32>(0x969094);
     static inline auto& NumMissionCars = StaticRef<int32>(0x96909C);
     static inline auto& NumPermanentVehicles = StaticRef<int32>(0x9690A4);
     static inline auto& LastTimeAmbulanceCreated = StaticRef<int32>(0x9690B0);
     static inline auto& LastTimeFireTruckCreated = StaticRef<int32>(0x9690B4);
+#ifdef NOTSA_NATIVE
+    static inline bool bAllowEmergencyServicesToBeCreated = true; // File-backed default in the executable's `.data`
+#else
     static inline auto& bAllowEmergencyServicesToBeCreated = StaticRef<bool>(0x8A5B28);
+#endif
     static inline auto& bCarsGeneratedAroundCamera = StaticRef<bool>(0x9690C1);
     static inline auto& CountDownToCarsAtStart = StaticRef<int8>(0x9690C0);
     static inline auto& TimeNextMadDriverChaseCreated = StaticRef<float>(0x9690BC);
@@ -42,6 +53,8 @@ public:
     static inline auto& SequenceRandomOffset = StaticRef<int32>(0x969074);
     static inline auto& bSequenceOtherWay = StaticRef<bool>(0x969070);
     static inline auto& LastTimeLawEnforcerCreated = StaticRef<int32>(0x9690B8);
+    static inline auto& bForceGangCars = StaticRef<bool>(0x96915B);       //!< Debug: Always create a gang car (of a random gang)
+    static inline auto& bDebugRareCarCreation = StaticRef<bool>(0x96917A); //!< Debug: Only create a car once every ~100 calls
 
 public:
     static void InjectHooks();
@@ -155,6 +168,7 @@ public:
     static void UpdateCarOnRails(CVehicle* vehicle);
     static void WeaveForObject(CEntity* entity, CVehicle* vehicle, float* arg3, float* arg4);
     static void WeaveForOtherCar(CEntity* entity, CVehicle* vehicle, float* arg3, float* arg4);
+    static void WeaveForPed(CPed* ped, CVehicle* vehicle, float* arg3, float* arg4);
     template<typename PtrListType>
     static void WeaveThroughCarsSectorList(PtrListType& ptrList, CVehicle* vehicle, CPhysical* physical, float arg4, float arg5, float arg6, float arg7, float* arg8, float* arg9);
     template<typename PtrListType>

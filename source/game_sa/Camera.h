@@ -449,6 +449,13 @@ public:
     void CalculateMirroredMatrix(CVector posn, float mirrorV, CMatrix* camMatrix, CMatrix* mirrorMatrix);
     void CamControl();
 
+    bool IsCinemaCamModeInvalid(int32 mode, uint32 lastTime);
+    void ProcessCarCinemaCams();
+    void ProcessTrainCinemaCams();
+    void ProcessHeliCinemaCams();
+    void ProcessPlaneCinemaCams();
+    void ProcessBoatCinemaCams();
+
     void AddShake(float duration, float a2, float a3, float a4, float a5);
     void AddShakeSimple(float duration, int32 type, float intensity);
     void CamShake(float strength, CVector from);

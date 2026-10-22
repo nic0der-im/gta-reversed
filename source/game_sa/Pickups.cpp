@@ -18,6 +18,67 @@
 #include "TaskSimpleJetPack.h"
 
 using namespace ModelIndices;
+
+#ifdef NOTSA_NATIVE
+//! 0x8A5FB0, file-backed in the executable's `.data`: the HUD colours used by pickup messages.
+tPickupMessageColour CPickups::aMessageColoursX[NUM_PICKUP_MESSAGE_COLOURS] = {
+    { { 128, 128, 128, 0 }, 1.0f },
+    { { 128, 128, 128, 0 }, 1.0f },
+    { {  97, 194, 247, 0 }, 1.0f },
+    { {  97, 194, 247, 0 }, 1.0f },
+    { {  97, 194, 247, 0 }, 1.0f },
+    { {  97, 194, 247, 0 }, 1.0f },
+    { {  97, 194, 247, 0 }, 1.0f },
+    { {  97, 194, 247, 0 }, 1.0f },
+    { {  97, 194, 247, 0 }, 1.0f },
+    { {  97, 194, 247, 0 }, 1.0f },
+    { {  97,  97,  97, 0 }, 1.0f },
+    { {  97,  97,  97, 0 }, 1.0f },
+    { {  97,  97,  97, 0 }, 1.0f },
+    { {  97,  97,  97, 0 }, 1.0f },
+    { {  97,  97,  97, 0 }, 1.0f },
+    { {  97,  97,  97, 0 }, 1.0f },
+    { {  27,  89, 130, 0 }, 1.0f },
+    { {  27,  89, 130, 0 }, 1.0f },
+    { {  27,  89, 130, 0 }, 1.0f },
+    { {  27,  89, 130, 0 }, 1.0f },
+    { {  27,  89, 130, 0 }, 1.0f },
+    { {  27,  89, 130, 0 }, 1.0f },
+    { { 149, 194,  24, 0 }, 1.0f },
+    { { 149, 194,  24, 0 }, 1.0f },
+    { { 149, 194,  24, 0 }, 1.0f },
+    { {  45, 155,  90, 0 }, 1.0f },
+    { {  45, 155,  90, 0 }, 1.0f },
+    { {  45, 155,  90, 0 }, 1.0f },
+    { { 255, 227,  79, 0 }, 1.0f },
+    { { 255, 227,  79, 0 }, 1.0f },
+    { { 254, 137,   0, 0 }, 1.0f },
+    { { 254, 137,   0, 0 }, 1.0f },
+    { { 255, 227,  79, 0 }, 1.0f },
+    { { 249, 131, 215, 0 }, 1.0f },
+    { { 249, 131, 215, 0 }, 1.0f },
+    { { 164,  40, 178, 0 }, 1.0f },
+    { { 164,  40, 178, 0 }, 1.0f },
+    { { 164,  40, 178, 0 }, 1.0f },
+    { { 164,  40, 178, 0 }, 1.0f },
+    { { 164,  40, 178, 0 }, 1.0f },
+    { { 164,  40, 178, 0 }, 1.0f },
+    { {  97, 194, 247, 0 }, 1.0f },
+    { {  69,  69,  69, 0 }, 1.0f },
+    { {  69,  69,  69, 0 }, 1.0f },
+    { {  69,  69,  69, 0 }, 1.0f },
+    { {  69,  69,  69, 0 }, 1.0f },
+    { {  69,  69,  69, 0 }, 1.0f },
+    { { 255, 100, 100, 0 }, 1.0f },
+    { { 128, 255, 128, 0 }, 1.0f },
+    { { 100, 100, 255, 0 }, 1.0f },
+    { { 255, 255, 100, 0 }, 1.0f },
+    { { 255, 100, 100, 0 }, 1.0f },
+    { {  54, 104,  44, 0 }, 1.0f },
+    { {  54, 104,  44, 0 }, 1.0f },
+};
+#endif
+
 void CPickups::InjectHooks() {
     RH_ScopedClass(CPickups);
     RH_ScopedCategoryGlobal();
@@ -34,8 +95,7 @@ void CPickups::InjectHooks() {
     RH_ScopedInstall(DoPickUpEffects, 0x455720);
     RH_ScopedInstall(FindPickUpForThisObject, 0x4551C0);
 
-    // Cannot be hooked at all for now due to ABI fuckery, the return value is 32 bit, but causes the function to assume the calling convention of of T* Function(T*, ...)
-    //RH_ScopedInstall(GenerateNewOne, 0x456F20, { .Reversed = false });
+    RH_ScopedInstall(GenerateNewOne, 0x456F20);
 
     RH_ScopedInstall(GenerateNewOne_WeaponType, 0x457380);
     RH_ScopedInstall(GetActualPickupIndex, 0x4552A0);
@@ -451,10 +511,119 @@ CPickup* CPickups::FindPickUpForThisObject(CObject* object) {
 }
 
 // returns pickup handle
-// g
+// 0x456F20
 tPickupReference CPickups::GenerateNewOne(CVector coors, uint32 modelId, ePickupType pickupType, uint32 ammo, uint32 moneyPerDay, bool isEmpty, char* message) {
-    auto retVal = plugin::CallAndReturn<int32, 0x456F20, CVector, uint32, ePickupType, uint32, uint32, bool, char*>(coors, modelId, pickupType, ammo, moneyPerDay, isEmpty, message);
-    return tPickupReference(retVal);
+    // Find a slot for the new pickup
+    int32 slotIndex = -1;
+
+    // These kinds of pickups are searched for in reverse order, so they end up in the last free slots
+    if (pickupType == PICKUP_FLOATINGPACKAGE || pickupType == PICKUP_NAUTICAL_MINE_INACTIVE || isEmpty) {
+        for (int32 i = (int32)MAX_NUM_PICKUPS - 1; i >= 0; i--) {
+            if (aPickUps[i].m_nPickupType == PICKUP_NONE) {
+                slotIndex = i;
+                break;
+            }
+        }
+    }
+
+    if (slotIndex < 0) {
+        for (int32 i = 0; i < (int32)MAX_NUM_PICKUPS; i++) {
+            if (aPickUps[i].m_nPickupType == PICKUP_NONE) {
+                slotIndex = i;
+                break;
+            }
+        }
+    }
+
+    // No free slot, so an existing pickup is recycled instead (Deleting its object first)
+    if (slotIndex < 0) {
+        for (int32 i = 0; i < (int32)MAX_NUM_PICKUPS; i++) {
+            if (aPickUps[i].m_nPickupType == PICKUP_MONEY) {
+                slotIndex = i;
+                break;
+            }
+        }
+
+        if (slotIndex < 0) {
+            for (int32 i = 0; i < (int32)MAX_NUM_PICKUPS; i++) {
+                const auto type = aPickUps[i].m_nPickupType;
+                if (type == PICKUP_ONCE_TIMEOUT || type == PICKUP_ONCE_TIMEOUT_SLOW) {
+                    slotIndex = i;
+                    break;
+                }
+            }
+        }
+
+        if (slotIndex < 0) {
+            return tPickupReference(-1);
+        }
+
+        aPickUps[slotIndex].GetRidOfObjects();
+    }
+
+    auto& pickup = aPickUps[slotIndex];
+
+    pickup.m_nAmmo        = ammo;
+    pickup.m_nMoneyPerDay = (uint16)moneyPerDay;
+    pickup.m_nFlags.bDisabled             = false;
+    pickup.m_nFlags.bEmpty                = isEmpty;
+    pickup.m_nFlags.bHelpMessageDisplayed = false;
+    pickup.m_nPickupType   = pickupType;
+    pickup.m_fRevenueValue = 0.0f;
+
+    const auto time = CTimer::GetTimeInMS();
+    pickup.m_nRegenerationTime = time;
+
+    switch (pickupType) {
+    case PICKUP_ONCE_TIMEOUT:
+        pickup.m_nRegenerationTime = time + 20'000;
+        break;
+    case PICKUP_ONCE_TIMEOUT_SLOW:
+        pickup.m_nRegenerationTime = time + 120'000;
+        break;
+    case PICKUP_MONEY:
+        pickup.m_nRegenerationTime = time + 30'000;
+        break;
+    case PICKUP_MINE_INACTIVE:
+    case PICKUP_MINE_ARMED:
+        pickup.m_nPickupType       = PICKUP_MINE_INACTIVE;
+        pickup.m_nRegenerationTime = time + 1'500;
+        break;
+    case PICKUP_NAUTICAL_MINE_INACTIVE:
+    case PICKUP_NAUTICAL_MINE_ARMED:
+        pickup.m_nPickupType       = PICKUP_NAUTICAL_MINE_INACTIVE;
+        pickup.m_nRegenerationTime = time + 1'500;
+        break;
+    default:
+        break;
+    }
+
+    pickup.m_nModelIndex = (int16)modelId;
+
+    pickup.m_nFlags.nPropertyTextIndex = (uint8)CPickup::FindTextIndexForString(message);
+
+    // Compress the position (Truncating conversion, just like the exe's x87 -> int64 helper)
+    pickup.m_vecPos = coors;
+
+    pickup.m_nFlags.bVisible = pickup.IsVisible();
+
+    pickup.m_pObject = nullptr;
+    if (pickup.m_nFlags.bVisible) {
+        pickup.GiveUsAPickUpObject(pickup.m_pObject, -1);
+        if (pickup.m_pObject) {
+            CWorld::Add(pickup.m_pObject);
+        }
+    }
+
+    // Bump the reference index so that the old handles of this slot become invalid
+    auto& refIndex = pickup.m_nReferenceIndex;
+    if ((uint16)refIndex < 0xFFFE) {
+        refIndex++;
+    } else {
+        refIndex = 1;
+    }
+
+    return tPickupReference((int16)slotIndex, refIndex);
 }
 
 /*!

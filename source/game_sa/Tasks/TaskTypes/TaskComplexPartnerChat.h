@@ -4,7 +4,6 @@
 
 class NOTSA_EXPORT_VTABLE CTaskComplexPartnerChat : public CTaskComplexPartner {
 public:
-    int32 field_70;
     bool m_conversationEnabled;
     char field_75;
     bool m_pedConversationLoaded;

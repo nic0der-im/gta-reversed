@@ -183,6 +183,26 @@ VALIDATE_SIZE(tStreamingChannel, 0x98);
 
 class CStreaming {
 public:
+#ifdef NOTSA_NATIVE
+    //! These defaults only exist as file bytes in the executable's `.data`, which the native build
+    //! has no copy of (see `ExeGlobals.h`), so it defines them here with the executable's values.
+    static inline size_t ms_memoryAvailable = 25600000; // 25'600'000 == 25.6 MB
+    static inline uint32 desiredNumVehiclesLoaded = 12;
+    static inline bool   ms_bLoadVehiclesInLoadScene = true;
+
+    // Default models for each level (see eLevelNames):
+    static inline std::array<int32, 5> ms_aDefaultCopCarModel = { 599, 596, 597, 598, 523 }; // Last one is bike cop, not matching any level name
+    static inline std::array<int32, 5> ms_aDefaultCopModel = { 283, 280, 281, 282, 284 };    // Last one is bike cop, not matching any level name
+
+    static inline std::array<int32, 4> ms_aDefaultAmbulanceModel = { 416, 416, 416, -1 };
+    static inline std::array<int32, 4> ms_aDefaultMedicModel = { 274, 276, 275, -1 };
+    static inline std::array<int32, 4> ms_aDefaultFireEngineModel = { 407, 407, 407, -1 };
+    static inline std::array<int32, 4> ms_aDefaultFiremanModel = { 277, 279, 278, -1 };
+
+    // Default models for current level
+    static inline int32 ms_DefaultCopBikeModel = 284;
+    static inline int32 ms_DefaultCopBikerModel = -1;
+#else
     static inline auto& ms_memoryAvailable = StaticRef<size_t>(0x8A5A80); // 25'600'000 == 25.6 MB
     static inline auto& desiredNumVehiclesLoaded = StaticRef<uint32>(0x8A5A84);
     static inline auto& ms_bLoadVehiclesInLoadScene = StaticRef<bool>(0x8A5A88);
@@ -192,8 +212,6 @@ public:
     static inline auto& ms_aDefaultCopCarModel = StaticRef<std::array<int32, 5>>(0x8A5A8C); // Last one is bike cop, not matching any level name
     static inline auto& ms_aDefaultCopModel = StaticRef<std::array<int32, 5>>(0x8A5AA0); // Last one is bike cop, not matching any level name
 
-    static inline auto& ms_nTimePassedSinceLastCopBikeStreamedIn = StaticRef<uint32>(0x9654C0);
-
     static inline auto& ms_aDefaultAmbulanceModel = StaticRef<std::array<int32, 4>>(0x8A5AB4);
     static inline auto& ms_aDefaultMedicModel = StaticRef<std::array<int32, 4>>(0x8A5AC4);
     static inline auto& ms_aDefaultFireEngineModel = StaticRef<std::array<int32, 4>>(0x8A5AD4);
@@ -202,6 +220,9 @@ public:
     // Default models for current level
     static inline auto& ms_DefaultCopBikeModel = StaticRef<int32>(0x8A5A9C);
     static inline auto& ms_DefaultCopBikerModel = StaticRef<int32>(0x8A5AB0);
+#endif
+
+    static inline auto& ms_nTimePassedSinceLastCopBikeStreamedIn = StaticRef<uint32>(0x9654C0);
 
     static inline auto& ms_pExtraObjectsDir = StaticRef<CDirectory*>(0x8E48D0);
     static inline auto& ms_files = StaticRef<tStreamingFileDesc[TOTAL_IMG_ARCHIVES]>(0x8E48D8);

@@ -39,8 +39,17 @@ public:
     static constexpr int32 NUM_PED_NAME_ID_ASSOC = 13;
     static constexpr int32 NUM_PED_COL_NODE_INFOS = 12;
 
+#ifdef NOTSA_NATIVE
+    //! Both tables are file-backed in the executable's `.data`; the native build defines them in
+    //! `PedModelInfo.cpp` (the names point at string literals instead of the executable's `.rdata`).
+    static RwObjectNameIdAssocation m_pPedIdsX[NUM_PED_NAME_ID_ASSOC];
+    static inline auto& m_pPedIds = m_pPedIdsX;
+    static tPedColNodeInfo m_pColNodeInfosX[NUM_PED_COL_NODE_INFOS];
+    static inline auto& m_pColNodeInfos = m_pColNodeInfosX;
+#else
     static inline auto& m_pPedIds = StaticRef<RwObjectNameIdAssocation[NUM_PED_NAME_ID_ASSOC]>(0x8A6268);
     static inline auto& m_pColNodeInfos = StaticRef<tPedColNodeInfo[NUM_PED_COL_NODE_INFOS]>(0x8A6308);
+#endif
 
 public:
     static void InjectHooks();

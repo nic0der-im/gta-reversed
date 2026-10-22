@@ -55,7 +55,7 @@ void CAnimManager::Initialise() {
 
     ms_numAnimations = 0;
     ms_numAnimBlocks = 0;
-    ms_numAnimAssocDefinitions = 118; // ANIM_TOTAL_GROUPS aka NUM_ANIM_ASSOC_GROUPS
+    ms_numAnimAssocDefinitions = NUM_ANIM_ASSOC_GROUPS;
     ms_AnimCache.Init(50);
     ReadAnimAssociationDefinitions();
     RegisterAnimBlock("ped");

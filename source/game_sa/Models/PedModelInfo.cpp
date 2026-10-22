@@ -2,6 +2,41 @@
 
 #include "PedModelInfo.h"
 
+#ifdef NOTSA_NATIVE
+//! 0x8A6268, file-backed in the executable's `.data`: ped bone-name/hierarchy-id pairs.
+RwObjectNameIdAssocation CPedModelInfo::m_pPedIdsX[NUM_PED_NAME_ID_ASSOC] = {
+    { const_cast<char*>("Smid"),        1,  0x0 },
+    { const_cast<char*>("Shead"),       2,  0x0 },
+    { const_cast<char*>("Supperarml"),  3,  0x0 },
+    { const_cast<char*>("Supperarmr"),  4,  0x0 },
+    { const_cast<char*>("SLhand"),      5,  0x0 },
+    { const_cast<char*>("SRhand"),      6,  0x0 },
+    { const_cast<char*>("Supperlegl"),  7,  0x0 },
+    { const_cast<char*>("Supperlegr"),  8,  0x0 },
+    { const_cast<char*>("Sfootl"),      9,  0x0 },
+    { const_cast<char*>("Sfootr"),      10, 0x0 },
+    { const_cast<char*>("Slowerlegl"),  12, 0x0 },
+    { const_cast<char*>("Slowerlegr"),  11, 0x0 },
+    { nullptr,                          0,  0x0 },
+};
+
+//! 0x8A6308, file-backed in the executable's `.data`: collision spheres for the ped bones.
+tPedColNodeInfo CPedModelInfo::m_pColNodeInfosX[NUM_PED_COL_NODE_INFOS] = {
+    { {}, 5,  9, { 0.05f,  0.0f, 0.0f },  0.15f },
+    { {}, 3,  3, { 0.2f,   0.0f, 0.0f },  0.2f  },
+    { {}, 3,  3, { 0.0f,   0.0f, 0.0f },  0.2f  },
+    { {}, 2,  4, { -0.1f,  0.0f, 0.0f },  0.2f  },
+    { {}, 32, 5, { 0.06f,  0.0f, 0.0f },  0.14f },
+    { {}, 22, 6, { 0.06f,  0.0f, 0.0f },  0.14f },
+    { {}, 33, 5, { 0.05f,  0.0f, 0.0f },  0.14f },
+    { {}, 23, 6, { 0.05f,  0.0f, 0.0f },  0.14f },
+    { {}, 42, 7, { -0.1f,  0.0f, 0.0f },  0.18f },
+    { {}, 52, 8, { -0.1f,  0.0f, 0.0f },  0.18f },
+    { {}, 43, 7, { -0.18f, 0.0f, 0.0f },  0.16f },
+    { {}, 53, 8, { -0.18f, 0.0f, 0.0f },  0.16f },
+};
+#endif
+
 void CPedModelInfo::InjectHooks() {
     RH_ScopedVirtualClass(CPedModelInfo, 0x85BDC0, 17);
     RH_ScopedCategory("Models");
